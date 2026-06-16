@@ -107,7 +107,50 @@
 
             <div data-members-content hidden>
               <div class="member-summary-grid" data-members-summary></div>
-              <div class="member-list" data-members-list></div>
+
+              <section class="content-card is-tight member-filter-card">
+                <div class="member-filter-header">
+                  <div>
+                    <p class="section-kicker">Filter</p>
+                    <h3 class="content-title">學年度與學期</h3>
+                    <p class="content-copy">先選擇你要查看的區間，再看待審核名單與社員名單。</p>
+                  </div>
+                </div>
+                <div class="member-filter-grid">
+                  <div class="form-field">
+                    <label for="member-academic-year">學年度</label>
+                    <select id="member-academic-year" data-filter-year></select>
+                  </div>
+                  <div class="form-field">
+                    <label for="member-term">學期</label>
+                    <select id="member-term" data-filter-term>
+                      <option value="all">全部學期</option>
+                      <option value="上學期">上學期</option>
+                      <option value="下學期">下學期</option>
+                      <option value="暑期">暑期</option>
+                      <option value="未設定">未設定</option>
+                    </select>
+                  </div>
+                </div>
+              </section>
+
+              <section class="member-section">
+                <div class="section-header is-compact">
+                  <div class="section-kicker">Applications</div>
+                  <h3 class="content-title">待審核申請</h3>
+                  <p class="section-description">管理員可直接決定是否通過、是否已付款，並指定學年度與學期。</p>
+                </div>
+                <div class="member-list" data-application-list></div>
+              </section>
+
+              <section class="member-section">
+                <div class="section-header is-compact">
+                  <div class="section-kicker">Members</div>
+                  <h3 class="content-title">社員名單</h3>
+                  <p class="section-description">只顯示目前篩選條件下的社員資料。</p>
+                </div>
+                <div class="member-list" data-members-list></div>
+              </section>
             </div>
           </section>
         </div>

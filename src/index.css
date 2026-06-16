@@ -1373,10 +1373,10 @@ img {
 .auth-status-card {
   display: grid;
   gap: 10px;
-  padding: 20px;
+  padding: 24px;
   border: 1px solid rgba(15, 76, 129, 0.1);
   border-radius: var(--radius-md);
-  background: rgba(245, 248, 252, 0.92);
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(241, 246, 252, 0.94));
 }
 
 .auth-status-label {
@@ -1389,7 +1389,7 @@ img {
 }
 
 .auth-status-email {
-  margin: 0;
+  margin: 4px 0 0;
   color: var(--ink);
   font-size: 1rem;
   font-weight: 700;
@@ -1435,6 +1435,27 @@ img {
 
 .members-gate {
   margin-top: 12px;
+}
+
+.member-section {
+  margin-top: 28px;
+}
+
+.member-filter-card {
+  margin-top: 24px;
+}
+
+.member-filter-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.member-filter-grid {
+  display: grid;
+  gap: 18px;
+  margin-top: 20px;
 }
 
 .member-summary-grid {
@@ -1537,6 +1558,33 @@ img {
   line-height: 1.7;
 }
 
+.member-row-controls {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.member-row-controls .form-field {
+  min-width: 0;
+}
+
+.member-row-controls select {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 16px;
+  border: 1px solid rgba(15, 76, 129, 0.14);
+  border-radius: 16px;
+  background: rgba(248, 251, 255, 0.94);
+  color: var(--ink);
+  font: inherit;
+}
+
+.member-row-controls select:focus {
+  outline: none;
+  border-color: rgba(15, 76, 129, 0.28);
+  box-shadow: 0 0 0 4px rgba(15, 76, 129, 0.08);
+}
+
 .application-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1546,6 +1594,15 @@ img {
 
 .application-toggle {
   min-width: 150px;
+}
+
+.application-toggle.is-active {
+  background: var(--ink);
+  color: #ffffff;
+}
+
+.application-save {
+  min-width: 168px;
 }
 
 .visually-hidden {
@@ -1572,6 +1629,11 @@ img {
   }
 
   .member-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .member-filter-grid,
+  .member-row-controls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

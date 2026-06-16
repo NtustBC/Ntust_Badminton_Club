@@ -54,6 +54,12 @@ const authCopy = {
   },
 };
 
+const signedInCopy = {
+  title: "登入完成",
+  subtitle: "你的帳號已經登入成功，現在可以繼續使用社員功能。",
+  buttonLabel: "Sign Out",
+};
+
 const authErrorMessages = {
   "auth/email-already-in-use": "這個信箱已經註冊過了，請直接登入。",
   "auth/invalid-credential": "信箱或密碼不正確，請再確認一次。",
@@ -179,6 +185,12 @@ const getLoginButtons = () => document.querySelectorAll("[data-open-login]");
 const getApplicationButtons = () => document.querySelectorAll("[data-open-application]");
 const getApprovalDocId = (email) => email.trim().toLowerCase();
 const normalizedBootstrapAdminEmail = bootstrapAdminEmail.trim().toLowerCase();
+const academicTerms = ["上學期", "下學期", "暑期"];
+
+const memberFilters = {
+  year: "all",
+  term: "all",
+};
 
 const rememberLoginButtonLabels = () => {
   getLoginButtons().forEach((button) => {
@@ -229,6 +241,7 @@ const getLoginModalElements = () => {
     loginHint: loginModal.querySelector("[data-login-hint]"),
     authSubtitle: loginModal.querySelector("[data-auth-subtitle]"),
     authSubmit: loginModal.querySelector("[data-auth-submit]"),
+    authSwitch: loginModal.querySelector(".auth-switch"),
     authTabs: loginModal.querySelectorAll("[data-auth-tab]"),
     confirmField: loginModal.querySelector("[data-auth-confirm-field]"),
     confirmInput: loginModal.querySelector("#login-password-confirm"),
@@ -310,23 +323,30 @@ const setAuthMode = (mode) => {
 };
 
 const updateAuthView = () => {
-  const { loginForm, statusCard, statusEmail, statusHint, adminLink, authSubmit } = getLoginModalElements();
+  const { loginModal, loginForm, statusCard, statusEmail, statusHint, adminLink, authSubmit, authSwitch } =
+    getLoginModalElements();
 
   if (currentUser) {
+    loginModal.querySelector(".modal-title").textContent = signedInCopy.title;
+    loginModal.querySelector("[data-auth-subtitle]").textContent = signedInCopy.subtitle;
     loginForm.hidden = true;
     statusCard.hidden = false;
+    authSwitch.hidden = true;
     adminLink.hidden = !currentUserIsAdmin;
     statusEmail.textContent = currentUser.email || "";
     statusHint.textContent = currentUserIsAdmin ? "你目前是管理員，可以進入審核後台。" : "你已登入社員入口。";
-    authSubmit.textContent = "Sign Out";
+    authSubmit.textContent = signedInCopy.buttonLabel;
     authSubmit.dataset.authAction = "signout";
     authSubmit.removeAttribute("form");
     authSubmit.type = "button";
     return;
   }
 
+  loginModal.querySelector(".modal-title").textContent = authCopy[authMode].title;
+  loginModal.querySelector("[data-auth-subtitle]").textContent = authCopy[authMode].subtitle;
   loginForm.hidden = false;
   statusCard.hidden = true;
+  authSwitch.hidden = false;
   adminLink.hidden = true;
   statusEmail.textContent = "";
   statusHint.textContent = "";
@@ -389,7 +409,7 @@ const ensureAuthReady = async () => {
       updateAuthView();
 
       if (pageName === "members") {
-        await renderMembersPage();
+        await refreshMembersDashboard();
       }
     });
 
@@ -471,6 +491,8 @@ const syncMemberProfile = async (user, source) => {
 
   const memberRef = getMemberDocRef(user.uid);
   const existingDoc = await getDoc(memberRef);
+  const approvalDoc = user.email ? await getDoc(getApprovalDocRef(user.email)) : null;
+  const approvalData = approvalDoc?.exists() ? approvalDoc.data() : null;
   const payload = {
     uid: user.uid,
     email: user.email || "",
@@ -482,6 +504,15 @@ const syncMemberProfile = async (user, source) => {
   if (!existingDoc.exists()) {
     payload.createdAt = serverTimestamp();
     payload.status = "active";
+  }
+
+  if (approvalData) {
+    payload.applicationId = approvalData.applicationId || "";
+    payload.applicationType = approvalData.applicationType || "club";
+    payload.academicYear = approvalData.academicYear || "未設定";
+    payload.term = approvalData.term || "未設定";
+    payload.school = approvalData.school || "";
+    payload.approvedAt = approvalData.approvedAt || serverTimestamp();
   }
 
   await setDoc(memberRef, payload, { merge: true });
@@ -531,6 +562,9 @@ const syncApprovalFromApplication = async (applicationId, data) => {
         email: data.email || "",
         applicationId,
         applicationType: data.applicationType || "club",
+        school: data.school || "",
+        academicYear: data.academicYear || "未設定",
+        term: data.term || "未設定",
         approvedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       },
@@ -543,6 +577,90 @@ const syncApprovalFromApplication = async (applicationId, data) => {
   if (approvalDoc.exists()) {
     await deleteDoc(approvalRef);
   }
+};
+
+const getRocAcademicYear = (date = new Date()) => {
+  const month = date.getMonth() + 1;
+  const year = date.getFullYear() - 1911;
+  return month >= 8 ? year : year - 1;
+};
+
+const buildAcademicYearOptions = () => {
+  const baseYear = getRocAcademicYear();
+  return ["all", ...Array.from({ length: 6 }, (_, index) => String(baseYear + 1 - index)), "未設定"];
+};
+
+const getAcademicYearLabel = (value) => {
+  if (!value || value === "未設定") {
+    return "未設定";
+  }
+
+  return `${value} 學年度`;
+};
+
+const getAcademicTermLabel = (value) => value || "未設定";
+
+const matchesMemberFilter = (entry) => {
+  const yearValue = entry.academicYear || "未設定";
+  const termValue = entry.term || "未設定";
+
+  const yearMatch = memberFilters.year === "all" || yearValue === memberFilters.year;
+  const termMatch = memberFilters.term === "all" || termValue === memberFilters.term;
+  return yearMatch && termMatch;
+};
+
+const initMembersFilters = () => {
+  const yearSelect = document.querySelector("[data-filter-year]");
+  const termSelect = document.querySelector("[data-filter-term]");
+
+  if (!yearSelect || !termSelect || yearSelect.dataset.initialized === "true") {
+    return;
+  }
+
+  yearSelect.innerHTML = buildAcademicYearOptions()
+    .map((value) => {
+      const label = value === "all" ? "全部學年度" : getAcademicYearLabel(value);
+      return `<option value="${value}">${label}</option>`;
+    })
+    .join("");
+
+  yearSelect.value = memberFilters.year;
+  termSelect.value = memberFilters.term;
+
+  yearSelect.addEventListener("change", async (event) => {
+    memberFilters.year = event.target.value;
+    await refreshMembersDashboard();
+  });
+
+  termSelect.addEventListener("change", async (event) => {
+    memberFilters.term = event.target.value;
+    await refreshMembersDashboard();
+  });
+
+  yearSelect.dataset.initialized = "true";
+};
+
+const syncMemberRecordFromApplication = async (application) => {
+  if (!db || !application?.email) {
+    return;
+  }
+
+  const membersSnapshot = await getDocs(collection(db, "members"));
+  const matchingMember = membersSnapshot.docs.find((entry) => {
+    const memberEmail = String(entry.data().email || "").trim().toLowerCase();
+    return memberEmail === String(application.email || "").trim().toLowerCase();
+  });
+
+  if (!matchingMember) {
+    return;
+  }
+
+  await updateDoc(doc(db, "members", matchingMember.id), {
+    academicYear: application.academicYear || "未設定",
+    term: application.term || "未設定",
+    school: application.school || "",
+    updatedAt: serverTimestamp(),
+  });
 };
 
 const formatTimestamp = (value) => {
@@ -628,7 +746,8 @@ const renderApplications = async () => {
       await updateDoc(applicationRef, nextData);
       const updatedDoc = await getDoc(applicationRef);
       await syncApprovalFromApplication(id, updatedDoc.data());
-      await renderMembersPage();
+      await syncMemberRecordFromApplication(updatedDoc.data());
+      await refreshMembersDashboard();
     });
   });
 };
@@ -729,6 +848,227 @@ const renderMembersPage = async () => {
   `;
 };
 
+const renderApplicationReviewList = async (applications = []) => {
+  const applicationList = document.querySelector("[data-application-list]");
+  if (!applicationList) {
+    return;
+  }
+
+  const filteredApplications = applications.filter(matchesMemberFilter);
+
+  if (filteredApplications.length === 0) {
+    applicationList.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">目前沒有符合條件的申請</h3>
+        <p class="content-copy">你可以切換學年度或學期篩選，或等待新的社員申請送出。</p>
+      </article>
+    `;
+    return;
+  }
+
+  const yearOptions = buildAcademicYearOptions()
+    .filter((value) => value !== "all")
+    .map((value) => `<option value="${value}">${getAcademicYearLabel(value)}</option>`)
+    .join("");
+
+  const termOptions = [...academicTerms, "未設定"]
+    .map((value) => `<option value="${value}">${getAcademicTermLabel(value)}</option>`)
+    .join("");
+
+  applicationList.innerHTML = filteredApplications
+    .map((application) => {
+      const approved = Boolean(application.approved);
+      const paid = Boolean(application.paid);
+      const academicYear = application.academicYear || String(getRocAcademicYear());
+      const term = application.term || "未設定";
+      const statusLabel = approved && paid ? "ready" : approved ? "awaiting payment" : "pending";
+
+      return `
+        <article class="member-row">
+          <div class="member-row-top">
+            <p class="member-row-index">加入申請</p>
+            <p class="member-row-status">${statusLabel}</p>
+          </div>
+          <p class="member-row-email">${application.name || "未填姓名"} / ${application.email || "未填信箱"}</p>
+          <div class="member-row-meta">
+            <span>學校 / 單位：${application.school || "未填寫"}</span>
+            <span>送出時間：${formatTimestamp(application.submittedAt)}</span>
+            <span>備註：${application.note || "無"}</span>
+          </div>
+          <div class="member-row-controls">
+            <div class="form-field">
+              <label for="application-year-${application.id}">學年度</label>
+              <select id="application-year-${application.id}" data-application-year data-application-id="${application.id}">
+                ${yearOptions.replace(`value="${academicYear}"`, `value="${academicYear}" selected`)}
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="application-term-${application.id}">學期</label>
+              <select id="application-term-${application.id}" data-application-term data-application-id="${application.id}">
+                ${termOptions.replace(`value="${term}"`, `value="${term}" selected`)}
+              </select>
+            </div>
+          </div>
+          <div class="application-actions">
+            <button class="button-secondary application-toggle ${approved ? "is-active" : ""}" data-application-action="approve" data-application-id="${application.id}">
+              ${approved ? "已同意" : "同意申請"}
+            </button>
+            <button class="button-secondary application-toggle ${paid ? "is-active" : ""}" data-application-action="paid" data-application-id="${application.id}">
+              ${paid ? "已付款" : "確認付款"}
+            </button>
+            <button class="button-secondary application-save" data-application-action="save-meta" data-application-id="${application.id}">
+              儲存學期資料
+            </button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  applicationList.querySelectorAll("[data-application-action]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const id = button.dataset.applicationId;
+      const action = button.dataset.applicationAction;
+      const applicationRef = doc(db, "applications", id);
+      const currentDoc = await getDoc(applicationRef);
+
+      if (!currentDoc.exists()) {
+        return;
+      }
+
+      const yearSelect = applicationList.querySelector(`[data-application-year][data-application-id="${id}"]`);
+      const termSelect = applicationList.querySelector(`[data-application-term][data-application-id="${id}"]`);
+      const academicYear = yearSelect?.value || "未設定";
+      const term = termSelect?.value || "未設定";
+      const data = currentDoc.data();
+      const nextData = {
+        academicYear,
+        term,
+        updatedAt: serverTimestamp(),
+      };
+
+      if (action === "approve") {
+        nextData.approved = !Boolean(data.approved);
+      } else if (action === "paid") {
+        nextData.paid = !Boolean(data.paid);
+      }
+
+      await updateDoc(applicationRef, nextData);
+      const updatedDoc = await getDoc(applicationRef);
+      await syncApprovalFromApplication(id, updatedDoc.data());
+      await refreshMembersDashboard();
+    });
+  });
+};
+
+const refreshMembersDashboard = async () => {
+  if (pageName !== "members") {
+    return;
+  }
+
+  const gate = document.querySelector("[data-members-gate]");
+  const content = document.querySelector("[data-members-content]");
+  const summary = document.querySelector("[data-members-summary]");
+  const list = document.querySelector("[data-members-list]");
+
+  if (!gate || !content || !summary || !list) {
+    return;
+  }
+
+  if (!firebaseConfigured) {
+    gate.hidden = false;
+    content.hidden = true;
+    gate.innerHTML = `
+      <h2 class="content-title">請先完成 Firebase 設定</h2>
+      <p class="content-copy">請先在 <code>src/firebase-config.js</code> 填入正確的 Firebase 專案資訊。</p>
+    `;
+    return;
+  }
+
+  if (!currentUser) {
+    gate.hidden = false;
+    content.hidden = true;
+    gate.innerHTML = `
+      <h2 class="content-title">請先登入管理員帳號</h2>
+      <p class="content-copy">先按右上角 <code>Sign In</code>，登入後才可以查看審核後台與社員名單。</p>
+    `;
+    return;
+  }
+
+  if (!currentUserIsAdmin) {
+    gate.hidden = false;
+    content.hidden = true;
+    gate.innerHTML = `
+      <h2 class="content-title">這個帳號還不是管理員</h2>
+      <p class="content-copy">請先在 Firestore 建立 <code>admins/${currentUser.uid}</code> 文件，或使用已經開通的管理員帳號登入。</p>
+    `;
+    return;
+  }
+
+  gate.hidden = true;
+  content.hidden = false;
+  initMembersFilters();
+
+  const membersQuery = query(collection(db, "members"), orderBy("createdAt", "desc"));
+  const membersSnapshot = await getDocs(membersQuery);
+  const members = membersSnapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+
+  const applicationsQuery = query(collection(db, "applications"), orderBy("submittedAt", "desc"));
+  const applicationsSnapshot = await getDocs(applicationsQuery);
+  const applications = applicationsSnapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+
+  const filteredMembers = members.filter(matchesMemberFilter);
+  const pendingApplications = applications.filter((application) => !application.approved || !application.paid);
+
+  summary.innerHTML = `
+    <article class="member-stat">
+      <p class="member-stat-label">待審核申請</p>
+      <p class="member-stat-value">${pendingApplications.length}</p>
+    </article>
+    <article class="member-stat">
+      <p class="member-stat-label">目前篩選社員</p>
+      <p class="member-stat-value">${filteredMembers.length}</p>
+    </article>
+    <article class="member-stat">
+      <p class="member-stat-label">目前學期</p>
+      <p class="member-stat-value member-stat-value-small">${memberFilters.year === "all" ? "全部學年度" : getAcademicYearLabel(memberFilters.year)}<br />${memberFilters.term === "all" ? "全部學期" : getAcademicTermLabel(memberFilters.term)}</p>
+    </article>
+  `;
+
+  await renderApplicationReviewList(applications);
+
+  const memberRows = filteredMembers
+    .map(
+      (member, index) => `
+        <article class="member-row">
+          <div class="member-row-top">
+            <p class="member-row-index">#${String(index + 1).padStart(2, "0")}</p>
+            <p class="member-row-status">${member.status || "active"}</p>
+          </div>
+          <p class="member-row-email">${member.email || "未填信箱"}</p>
+          <div class="member-row-meta">
+            <span>UID：${member.uid || member.id}</span>
+            <span>學年度：${getAcademicYearLabel(member.academicYear || "未設定")}</span>
+            <span>學期：${getAcademicTermLabel(member.term)}</span>
+            <span>學校 / 單位：${member.school || "未填寫"}</span>
+            <span>建立時間：${formatTimestamp(member.createdAt)}</span>
+            <span>最近登入：${formatTimestamp(member.lastLoginAt)}</span>
+          </div>
+        </article>
+      `,
+    )
+    .join("");
+
+  list.innerHTML =
+    memberRows ||
+    `
+      <article class="content-card is-tight">
+        <h3 class="content-title">這個篩選下還沒有社員</h3>
+        <p class="content-copy">可以先切換學年度或學期，或等社員完成審核、付款與註冊後再回來查看。</p>
+      </article>
+    `;
+};
+
 const handleAuthSubmit = async (event) => {
   event.preventDefault();
 
@@ -824,6 +1164,8 @@ const handleApplicationSubmit = async (event) => {
       school,
       note,
       applicationType,
+      academicYear: String(getRocAcademicYear()),
+      term: "未設定",
       approved: false,
       paid: false,
       submittedAt: serverTimestamp(),
@@ -999,7 +1341,7 @@ const init = async () => {
   }
 
   if (pageName === "members") {
-    await renderMembersPage();
+    await refreshMembersDashboard();
   }
 };
 
