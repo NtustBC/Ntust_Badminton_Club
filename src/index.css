@@ -2,6 +2,7 @@
 
 :root {
   color-scheme: light;
+  --page-scale: 0.9;
   --bg: #f3f5f7;
   --surface: rgba(255, 255, 255, 0.94);
   --surface-strong: #ffffff;
@@ -51,6 +52,7 @@ body {
   background:
     linear-gradient(180deg, #f7f9fb 0%, #eef3f8 100%);
   color: var(--ink);
+  zoom: var(--page-scale);
 }
 
 body.modal-open {
@@ -87,6 +89,20 @@ img {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+}
+
+@supports not (zoom: 1) {
+  body {
+    zoom: 1;
+    overflow-x: hidden;
+  }
+
+  .page-shell {
+    width: calc(100% / var(--page-scale));
+    min-height: calc(100vh / var(--page-scale));
+    transform: scale(var(--page-scale));
+    transform-origin: top left;
+  }
 }
 
 .container {
@@ -301,8 +317,8 @@ img {
 
 .page-hero {
   display: grid;
-  gap: 24px;
-  align-items: stretch;
+  gap: 32px;
+  align-items: start;
 }
 
 .hero-card,
@@ -327,7 +343,12 @@ img {
 .privacy-card,
 .timeline-card,
 .contact-card {
-  padding: 32px;
+  padding: 40px;
+}
+
+.hero-card {
+  display: grid;
+  align-content: start;
 }
 
 .eyebrow {
@@ -379,17 +400,50 @@ img {
 }
 
 .hero-copy {
-  max-width: 700px;
-  margin: 22px 0 0;
-  font-size: 1.02rem;
+  max-width: 760px;
+  margin: 26px 0 0;
+  font-size: 1.08rem;
 }
 
 .hero-actions,
 .page-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 28px;
+  gap: 18px;
+  margin-top: 34px;
+}
+
+.hero-facts {
+  display: grid;
+  gap: 18px;
+  margin-top: 38px;
+}
+
+.hero-fact-card {
+  display: grid;
+  gap: 10px;
+  min-height: 156px;
+  padding: 20px 22px;
+  border: 1px solid rgba(15, 76, 129, 0.1);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.96), rgba(240, 246, 252, 0.9));
+}
+
+.hero-fact-label {
+  margin: 0;
+  color: var(--brand);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.hero-fact-value {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: clamp(1.04rem, 1.5vw, 1.24rem);
+  line-height: 1.5;
 }
 
 .side-card {
@@ -520,15 +574,39 @@ img {
   flex-direction: column;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 28px 28px 16px 14px;
+  padding: 24px 20px 24px 20px;
   color: #ffffff;
 }
 
 .side-home-copy {
   display: grid;
-  gap: 12px;
-  max-width: 29rem;
+  gap: 8px;
+  max-width: 21rem;
   margin-top: auto;
+}
+
+.side-home-copy-hero {
+  gap: 8px;
+  max-width: 21rem;
+}
+
+.side-home-title {
+  margin: 0;
+  color: #ffffff;
+  font-family: var(--font-serif);
+  max-width: 14rem;
+  font-size: clamp(2rem, 3.2vw, 2.7rem);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+}
+
+.side-home-text {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.86);
+  max-width: 18rem;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.65;
 }
 
 .side-home-line {
@@ -650,6 +728,11 @@ img {
 
 .section-shell {
   padding-top: 12px;
+}
+
+.page-hero + .section-shell,
+.section-shell + .section-shell {
+  margin-top: 52px;
 }
 
 .section-header {
@@ -1248,6 +1331,14 @@ img {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .hero-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hero-fact-card-wide {
+    grid-column: 1 / -1;
+  }
+
   .footer-panel {
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
     align-items: start;
@@ -1265,7 +1356,17 @@ img {
   }
 
   .page-hero {
-    grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+    grid-template-columns: minmax(0, 1.3fr) minmax(340px, 0.8fr);
+    gap: 36px;
+  }
+
+  .hero-facts {
+    grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 0.9fr));
+    align-items: stretch;
+  }
+
+  .hero-fact-card-wide {
+    grid-column: span 1;
   }
 
   .feature-grid {
@@ -1346,6 +1447,11 @@ img {
     padding: 22px 24px;
   }
 
+  .page-hero + .section-shell,
+  .section-shell + .section-shell {
+    margin-top: 40px;
+  }
+
   .faq-panel {
     padding: 0 24px 24px;
   }
@@ -1364,7 +1470,7 @@ img {
   }
 
   .side-home-overlay {
-    padding: 24px 24px 14px 14px;
+    padding: 24px 24px 24px;
   }
 
   .side-card-photo::after {
