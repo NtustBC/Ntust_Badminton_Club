@@ -1,4 +1,4 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
+﻿import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
 import {
   createUserWithEmailAndPassword,
   getAuth,
@@ -41,35 +41,35 @@ const firebaseConfigured = Object.values(firebaseConfig).every(Boolean);
 
 const authCopy = {
   signin: {
-    title: "登入社員入口",
-    subtitle: "已通過審核並完成付款者，可用你的信箱與密碼登入。",
+    title: "?餃蝷曉?亙",
+    subtitle: "撌脤?撖拇銝血???甈曇??舐雿?靽∠拳??蝣潛?乓?,
     submitLabel: "Sign In",
-    hint: "如果你還沒建立帳號，請先完成報名審核與付款，再切到註冊。",
+    hint: "憒?雿?瘝遣蝡董??隢?摰??勗?撖拇??甈橘????啗酉??,
   },
   signup: {
-    title: "建立社員帳號",
-    subtitle: "只有審核通過且已完成付款的申請，才能建立登入帳號。",
+    title: "撱箇?蝷曉撣唾?",
+    subtitle: "?芣?撖拇??銝歇摰?隞狡?隢??撱箇??餃撣唾???,
     submitLabel: "Create Account",
-    hint: "先送出報名申請，等管理員確認資料與付款後，再回來註冊。",
+    hint: "??勗??唾?嚗?蝞∠??∠Ⅱ隤???隞狡敺???靘酉??,
   },
 };
 
 const signedInCopy = {
-  title: "登入完成",
-  subtitle: "你的帳號已經登入成功，現在可以繼續使用社員功能。",
+  title: "?餃摰?",
+  subtitle: "雿?撣唾?撌脩??餃??嚗?典隞亦匱蝥蝙?函冗?∪??賬?,
   buttonLabel: "Sign Out",
 };
 
 const authErrorMessages = {
-  "auth/email-already-in-use": "這個信箱已經註冊過了，請直接登入。",
-  "auth/invalid-credential": "信箱或密碼不正確，請再確認一次。",
-  "auth/invalid-email": "請輸入正確的信箱格式。",
-  "auth/missing-password": "請輸入密碼。",
-  "auth/network-request-failed": "目前無法連線到 Firebase，請檢查網路後重試。",
-  "auth/too-many-requests": "嘗試次數過多，請稍後再試。",
-  "auth/user-disabled": "這個帳號目前無法使用，請聯絡管理者。",
-  "auth/user-not-found": "找不到這個帳號，請先建立帳號。",
-  "auth/weak-password": "密碼強度不足，請至少使用 8 碼。",
+  "auth/email-already-in-use": "?縑蝞勗歇蝬酉??鈭?隢?亦?乓?,
+  "auth/invalid-credential": "靽∠拳??蝣潔?甇?Ⅱ嚗??Ⅱ隤?甈～?,
+  "auth/invalid-email": "隢撓?交迤蝣箇?靽∠拳?澆???,
+  "auth/missing-password": "隢撓?亙?蝣潦?,
+  "auth/network-request-failed": "?桀??⊥??????Firebase嚗?瑼Ｘ蝬脰楝敺?閰艾?,
+  "auth/too-many-requests": "?岫甈⊥??嚗?蝔??岫??,
+  "auth/user-disabled": "?董??瘜蝙?剁?隢蝯∠恣??,
+  "auth/user-not-found": "?曆??圈董??隢?撱箇?撣唾???,
+  "auth/weak-password": "撖Ⅳ撘瑕漲銝雲嚗??喳?雿輻 8 蝣潦?,
 };
 
 const loginModalMarkup = `
@@ -78,20 +78,20 @@ const loginModalMarkup = `
     <div class="modal-dialog auth-modal-dialog">
       <div class="modal-header">
         <div>
-          <h2 class="modal-title" id="login-title">登入社員入口</h2>
+          <h2 class="modal-title" id="login-title">?餃蝷曉?亙</h2>
           <p class="modal-subtitle" data-auth-subtitle></p>
         </div>
-        <button class="modal-close" data-close-login type="button" aria-label="關閉登入視窗">
+        <button class="modal-close" data-close-login type="button" aria-label="???餃閬?">
           <span aria-hidden="true">+</span>
         </button>
       </div>
       <div class="modal-body">
-        <div class="auth-switch" role="tablist" aria-label="登入模式切換">
+        <div class="auth-switch" role="tablist" aria-label="?餃璅∪???">
           <button class="auth-tab is-active" data-auth-tab="signin" type="button" role="tab" aria-selected="true">
-            登入
+            ?餃
           </button>
           <button class="auth-tab" data-auth-tab="signup" type="button" role="tab" aria-selected="false">
-            註冊
+            閮餃?
           </button>
         </div>
 
@@ -100,31 +100,31 @@ const loginModalMarkup = `
           <p class="auth-status-email" data-auth-email></p>
           <p class="login-note" data-auth-status-hint></p>
           <div class="auth-status-actions">
-            <a class="button-secondary auth-admin-link" data-auth-admin-link href="./members.html" hidden>審核後台</a>
+            <a class="button-secondary auth-admin-link" data-auth-admin-link href="./members.html" hidden>撖拇敺</a>
           </div>
         </div>
 
         <form class="form-grid" data-login-form id="login-form" novalidate>
           <div class="form-field">
-            <label for="login-email">信箱</label>
+            <label for="login-email">靽∠拳</label>
             <input id="login-email" name="email" placeholder="your@email.com" type="email" autocomplete="email" />
           </div>
           <div class="form-field">
-            <label for="login-password">密碼</label>
+            <label for="login-password">撖Ⅳ</label>
             <input
               id="login-password"
               name="password"
-              placeholder="至少 8 碼"
+              placeholder="?喳? 8 蝣?
               type="password"
               autocomplete="current-password"
             />
           </div>
           <div class="form-field" data-auth-confirm-field hidden>
-            <label for="login-password-confirm">確認密碼</label>
+            <label for="login-password-confirm">蝣箄?撖Ⅳ</label>
             <input
               id="login-password-confirm"
               name="passwordConfirm"
-              placeholder="再次輸入密碼"
+              placeholder="?活頛詨撖Ⅳ"
               type="password"
               autocomplete="new-password"
             />
@@ -145,10 +145,10 @@ const applicationModalMarkup = `
     <div class="modal-dialog auth-modal-dialog">
       <div class="modal-header">
         <div>
-          <h2 class="modal-title" id="application-title">送出羽球社加入申請</h2>
-          <p class="modal-subtitle" data-application-subtitle>先填資料，等管理員審核與確認付款後，你才能建立登入帳號。</p>
+          <h2 class="modal-title" id="application-title">?蝢賜?蝷曉??亦隢?/h2>
+          <p class="modal-subtitle" data-application-subtitle>?‵鞈?嚗?蝞∠??∪祟?貉?蝣箄?隞狡敺?雿??賢遣蝡?亙董??/p>
         </div>
-        <button class="modal-close" data-close-application type="button" aria-label="關閉申請視窗">
+        <button class="modal-close" data-close-application type="button" aria-label="???唾?閬?">
           <span aria-hidden="true">+</span>
         </button>
       </div>
@@ -156,26 +156,76 @@ const applicationModalMarkup = `
         <form class="form-grid" data-application-form id="application-form" novalidate>
           <input data-application-type name="applicationType" type="hidden" value="club" />
           <div class="form-field">
-            <label for="application-name">姓名</label>
-            <input id="application-name" name="name" placeholder="王小明" type="text" autocomplete="name" />
+            <label for="application-name">憪?</label>
+            <input id="application-name" name="name" placeholder="???? type="text" autocomplete="name" />
           </div>
           <div class="form-field">
-            <label for="application-email">聯絡信箱</label>
+            <label for="application-email">?舐窗靽∠拳</label>
             <input id="application-email" name="email" placeholder="your@email.com" type="email" autocomplete="email" />
           </div>
           <div class="form-field">
-            <label for="application-school">學校 / 單位</label>
-            <input id="application-school" name="school" placeholder="臺科大 / 外校 / 其他" type="text" />
+            <label for="application-school">摮豢 / ?桐?</label>
+            <input id="application-school" name="school" placeholder="?箇?憭?/ 憭 / ?嗡?" type="text" />
           </div>
           <div class="form-field">
-            <label for="application-note">備註</label>
-            <textarea id="application-note" name="note" rows="4" placeholder="可填寫身份、想報名的內容或付款說明。"></textarea>
+            <label for="application-note">?酉</label>
+            <textarea id="application-note" name="note" rows="4" placeholder="?臬‵撖怨澈隞賬?勗??摰寞?隞狡隤芣???></textarea>
           </div>
           <p class="login-note" data-application-hint></p>
         </form>
       </div>
       <div class="modal-footer">
-        <button class="login-button modal-submit" data-application-submit form="application-form" type="submit">送出申請</button>
+        <button class="login-button modal-submit" data-application-submit form="application-form" type="submit">??唾?</button>
+      </div>
+    </div>
+  </div>
+`;
+
+const applicationModalMarkupV2 = `
+  <div class="modal" data-application-modal hidden>
+    <div class="modal-backdrop" data-modal-backdrop></div>
+    <div class="modal-dialog auth-modal-dialog">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title" id="application-title">?蝢賜?蝷曉??亦隢?/h2>
+          <p class="modal-subtitle" data-application-subtitle>??箸鞈?嚗?蝞∠??∪祟?貉?蝣箄?隞狡敺?雿停?賢遣蝡?亙董??/p>
+        </div>
+        <button class="modal-close" data-close-application type="button" aria-label="???唾?閬?">
+          <span aria-hidden="true">+</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form class="form-grid" data-application-form id="application-form" novalidate>
+          <input data-application-type name="applicationType" type="hidden" value="club" />
+          <div class="form-field">
+            <label for="application-name">憪?</label>
+            <input id="application-name" name="name" placeholder="???? type="text" autocomplete="name" />
+          </div>
+          <div class="form-field">
+            <label for="application-student-id">摮貉?</label>
+            <input id="application-student-id" name="studentId" placeholder="B11303044" type="text" />
+          </div>
+          <div class="form-field">
+            <label for="application-department">蝟餃</label>
+            <input id="application-department" name="department" placeholder="璈１鈭" type="text" />
+          </div>
+          <div class="form-field">
+            <label for="application-phone">??窗?餉店</label>
+            <input id="application-phone" name="phone" placeholder="09xx-xxx-xxx" type="tel" autocomplete="tel" />
+          </div>
+          <div class="form-field">
+            <label for="application-email">?舐窗靽∠拳</label>
+            <input id="application-email" name="email" placeholder="your@email.com" type="email" autocomplete="email" />
+          </div>
+          <div class="form-field">
+            <label for="application-note">?酉</label>
+            <textarea id="application-note" name="note" rows="4" placeholder="?臬‵撖急鋆??澈隞賬?甈暹??勗?隤芣???></textarea>
+          </div>
+          <p class="login-note" data-application-hint></p>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="login-button modal-submit" data-application-submit form="application-form" type="submit">??唾?</button>
       </div>
     </div>
   </div>
@@ -185,14 +235,14 @@ const getLoginButtons = () => document.querySelectorAll("[data-open-login]");
 const getApplicationButtons = () => document.querySelectorAll("[data-open-application]");
 const getApprovalDocId = (email) => email.trim().toLowerCase();
 const normalizedBootstrapAdminEmail = bootstrapAdminEmail.trim().toLowerCase();
-const academicTerms = ["上學期", "下學期", "暑期"];
+const academicTerms = ["銝飛??, "銝飛??, "??"];
 
 const memberFilters = {
   year: "all",
   term: "all",
 };
 
-const adminAcademicTerms = ["上學期", "下學期"];
+const adminAcademicTerms = ["銝飛??, "銝飛??];
 const minAcademicYear = 115;
 const customAcademicYearsStorageKey = "ntust-badminton-custom-academic-years";
 
@@ -219,7 +269,7 @@ const updateAdminNavigation = () => {
     const link = document.createElement("a");
     link.className = "nav-link";
     link.href = "./members.html";
-    link.textContent = "成員管理";
+    link.textContent = "?蝞∠?";
     link.dataset.adminNavLink = "true";
     return link;
   };
@@ -243,7 +293,7 @@ const updateAdminNavigation = () => {
 };
 
 const getFriendlyAuthError = (error) =>
-  authErrorMessages[error.code] || "登入流程出了點問題，請稍後再試一次。";
+  authErrorMessages[error.code] || "?餃瘚??箔?暺?憿?隢?敺?閰虫?甈～?;
 
 const closeMobileNav = () => {
   if (!menuButton || !mobileNav) {
@@ -270,7 +320,7 @@ const ensureApplicationModal = () => {
     return existing;
   }
 
-  document.body.insertAdjacentHTML("beforeend", applicationModalMarkup);
+  document.body.insertAdjacentHTML("beforeend", applicationModalMarkupV2);
   return document.querySelector("[data-application-modal]");
 };
 
@@ -376,7 +426,7 @@ const updateAuthView = () => {
     authSwitch.hidden = true;
     adminLink.hidden = !currentUserIsAdmin;
     statusEmail.textContent = currentUser.email || "";
-    statusHint.textContent = currentUserIsAdmin ? "你目前是管理員，可以進入審核後台。" : "你已登入社員入口。";
+    statusHint.textContent = currentUserIsAdmin ? "雿?蝞∠??∴??臭誑?脣撖拇敺?? : "雿歇?餃蝷曉?亙??;
     authSubmit.textContent = signedInCopy.buttonLabel;
     authSubmit.dataset.authAction = "signout";
     authSubmit.removeAttribute("form");
@@ -436,7 +486,7 @@ const ensureAuthReady = async () => {
   }
 
   if (!firebaseConfigured) {
-    setHint("請先在 src/firebase-config.js 填入 Firebase 專案設定。");
+    setHint("隢???src/firebase-config.js 憛怠 Firebase 撠?閮剖???);
     return null;
   }
 
@@ -500,10 +550,10 @@ const openApplicationModal = (trigger) => {
 
   lastApplicationTrigger = trigger || null;
   applicationType.value = type;
-  applicationSubtitle.textContent = "先送出羽球社加入申請，等管理員審核與確認付款後，你才能建立登入帳號。";
+  applicationSubtitle.textContent = "?蝢賜?蝷曉??亦隢?蝑恣?撖拇?Ⅱ隤?甈曉?嚗??撱箇??餃撣唾???;
   applicationModal.hidden = false;
   body.classList.add("modal-open");
-  setApplicationHint("送出後，管理員會在後台看到你的申請。");
+  setApplicationHint("?敺?蝞∠??⊥??典??啁??唬??隢?);
 
   const firstInput = applicationModal.querySelector("input, textarea");
   if (firstInput) {
@@ -555,10 +605,14 @@ const syncMemberProfile = async (user, source) => {
   }
 
   if (approvalData) {
+    payload.name = approvalData.name || "";
     payload.applicationId = approvalData.applicationId || "";
     payload.applicationType = approvalData.applicationType || "club";
-    payload.academicYear = approvalData.academicYear || "未設定";
-    payload.term = approvalData.term || "未設定";
+    payload.academicYear = approvalData.academicYear || "?芾身摰?;
+    payload.term = approvalData.term || "?芾身摰?;
+    payload.studentId = approvalData.studentId || "";
+    payload.department = approvalData.department || approvalData.school || "";
+    payload.phone = approvalData.phone || "";
     payload.school = approvalData.school || "";
     payload.approvedAt = approvalData.approvedAt || serverTimestamp();
   }
@@ -607,12 +661,16 @@ const syncApprovalFromApplication = async (applicationId, data) => {
     await setDoc(
       approvalRef,
       {
+        name: data.name || "",
         email: data.email || "",
         applicationId,
         applicationType: data.applicationType || "club",
+        studentId: data.studentId || "",
+        department: data.department || data.school || "",
+        phone: data.phone || "",
         school: data.school || "",
-        academicYear: data.academicYear || "未設定",
-        term: data.term || "未設定",
+        academicYear: data.academicYear || "?芾身摰?,
+        term: data.term || "?芾身摰?,
         approvedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       },
@@ -635,22 +693,22 @@ const getRocAcademicYear = (date = new Date()) => {
 
 const buildAcademicYearOptions = () => {
   const baseYear = getRocAcademicYear();
-  return ["all", ...Array.from({ length: 6 }, (_, index) => String(baseYear + 1 - index)), "未設定"];
+  return ["all", ...Array.from({ length: 6 }, (_, index) => String(baseYear + 1 - index)), "?芾身摰?];
 };
 
 const getAcademicYearLabel = (value) => {
-  if (!value || value === "未設定") {
-    return "未設定";
+  if (!value || value === "?芾身摰?) {
+    return "?芾身摰?;
   }
 
-  return `${value} 學年度`;
+  return `${value} 摮詨僑摨圳;
 };
 
-const getAcademicTermLabel = (value) => value || "未設定";
+const getAcademicTermLabel = (value) => value || "?芾身摰?;
 
 const matchesMemberFilter = (entry) => {
-  const yearValue = entry.academicYear || "未設定";
-  const termValue = entry.term || "未設定";
+  const yearValue = entry.academicYear || "?芾身摰?;
+  const termValue = entry.term || "?芾身摰?;
 
   const yearMatch = memberFilters.year === "all" || yearValue === memberFilters.year;
   const termMatch = memberFilters.term === "all" || termValue === memberFilters.term;
@@ -667,7 +725,7 @@ const initMembersFilters = () => {
 
   yearSelect.innerHTML = buildAcademicYearOptions()
     .map((value) => {
-      const label = value === "all" ? "全部學年度" : getAcademicYearLabel(value);
+      const label = value === "all" ? "?券摮詨僑摨? : getAcademicYearLabel(value);
       return `<option value="${value}">${label}</option>`;
     })
     .join("");
@@ -719,18 +777,18 @@ const buildAdminAcademicYearOptions = () => {
 
   return ["all", ...Array.from(new Set([...defaultYears, ...getStoredAdminAcademicYears()])).sort(
     (left, right) => Number(right) - Number(left),
-  ), "未設定"];
+  ), "?芾身摰?];
 };
 
 const getSafeAcademicYearLabel = (value) => {
-  if (!value || value === "未設定") {
-    return "未設定";
+  if (!value || value === "?芾身摰?) {
+    return "?芾身摰?;
   }
 
-  return `${value} 學年度`;
+  return `${value} 摮詨僑摨圳;
 };
 
-const getSafeAcademicTermLabel = (value) => value || "未設定";
+const getSafeAcademicTermLabel = (value) => value || "?芾身摰?;
 
 const initCustomAcademicYearControls = () => {
   const yearSelect = document.querySelector("[data-filter-year]");
@@ -756,7 +814,7 @@ const initCustomAcademicYearControls = () => {
     saveAdminAcademicYears(years);
     yearSelect.innerHTML = buildAdminAcademicYearOptions()
       .map((optionValue) => {
-        const label = optionValue === "all" ? "全部學年度" : getSafeAcademicYearLabel(optionValue);
+        const label = optionValue === "all" ? "?券摮詨僑摨? : getSafeAcademicYearLabel(optionValue);
         const selected = optionValue === value ? " selected" : "";
         return `<option value="${optionValue}"${selected}>${label}</option>`;
       })
@@ -785,8 +843,11 @@ const syncMemberRecordFromApplication = async (application) => {
   }
 
   await updateDoc(doc(db, "members", matchingMember.id), {
-    academicYear: application.academicYear || "未設定",
-    term: application.term || "未設定",
+    academicYear: application.academicYear || "?芾身摰?,
+    term: application.term || "?芾身摰?,
+    studentId: application.studentId || "",
+    department: application.department || application.school || "",
+    phone: application.phone || "",
     school: application.school || "",
     updatedAt: serverTimestamp(),
   });
@@ -794,7 +855,7 @@ const syncMemberRecordFromApplication = async (application) => {
 
 const formatTimestamp = (value) => {
   if (!value?.toDate) {
-    return "尚未記錄";
+    return "撠閮?";
   }
 
   return value.toDate().toLocaleString("zh-TW", {
@@ -819,8 +880,8 @@ const renderApplications = async () => {
   if (applications.length === 0) {
     applicationList.innerHTML = `
       <article class="content-card is-tight">
-        <h3 class="content-title">目前沒有待處理申請</h3>
-        <p class="content-copy">等有人送出社團或社課申請後，這裡就會出現通知。</p>
+        <h3 class="content-title">?桀?瘝?敺??隢?/h3>
+        <p class="content-copy">蝑?鈭粹蝷曉??冗隤脩隢?嚗ㄐ撠望??箇???/p>
       </article>
     `;
     return;
@@ -833,21 +894,23 @@ const renderApplications = async () => {
       return `
         <article class="member-row">
           <div class="member-row-top">
-            <p class="member-row-index">社團申請</p>
+            <p class="member-row-index">蝷曉??唾?</p>
             <p class="member-row-status">${approved && paid ? "ready" : "pending"}</p>
           </div>
-          <p class="member-row-email">${application.name || "未填姓名"} / ${application.email || "未填信箱"}</p>
+          <p class="member-row-email">${application.name || "?芸‵憪?"} / ${application.studentId || "?芸‵摮貉?"}</p>
           <div class="member-row-meta">
-            <span>學校 / 單位：${application.school || "未填寫"}</span>
-            <span>送出時間：${formatTimestamp(application.submittedAt)}</span>
-            <span>備註：${application.note || "無"}</span>
+            <span>蝟餃嚗?{application.department || application.school || "?芸‵撖?}</span>
+            <span>??窗?餉店嚗?{application.phone || "?芸‵撖?}</span>
+            <span>?舐窗靽∠拳嚗?{application.email || "?芸‵撖?}</span>
+            <span>???嚗?{formatTimestamp(application.submittedAt)}</span>
+            <span>?酉嚗?{application.note || "??}</span>
           </div>
           <div class="application-actions">
             <button class="button-secondary application-toggle" data-application-action="approve" data-application-id="${application.id}" data-approved="${approved}">
-              ${approved ? "取消審核通過" : "審核通過"}
+              ${approved ? "??撖拇??" : "撖拇??"}
             </button>
             <button class="button-secondary application-toggle" data-application-action="paid" data-application-id="${application.id}" data-paid="${paid}">
-              ${paid ? "取消付款完成" : "付款完成"}
+              ${paid ? "??隞狡摰?" : "隞狡摰?"}
             </button>
           </div>
         </article>
@@ -899,8 +962,8 @@ const renderMembersPage = async () => {
     gate.hidden = false;
     content.hidden = true;
     gate.innerHTML = `
-      <h2 class="content-title">尚未完成 Firebase 設定</h2>
-      <p class="content-copy">請先在 <code>src/firebase-config.js</code> 填入 Firebase 專案資訊。</p>
+      <h2 class="content-title">撠摰? Firebase 閮剖?</h2>
+      <p class="content-copy">隢???<code>src/firebase-config.js</code> 憛怠 Firebase 撠?鞈???/p>
     `;
     return;
   }
@@ -909,8 +972,8 @@ const renderMembersPage = async () => {
     gate.hidden = false;
     content.hidden = true;
     gate.innerHTML = `
-      <h2 class="content-title">請先登入管理頁</h2>
-      <p class="content-copy">先用右上角 <code>Sign In</code> 登入，再回到這裡查看待審核名單。</p>
+      <h2 class="content-title">隢??餃蝞∠???/h2>
+      <p class="content-copy">??喃?閫?<code>Sign In</code> ?餃嚗???ㄐ?亦?敺祟?詨??柴?/p>
     `;
     return;
   }
@@ -919,8 +982,8 @@ const renderMembersPage = async () => {
     gate.hidden = false;
     content.hidden = true;
     gate.innerHTML = `
-      <h2 class="content-title">這個帳號目前沒有管理權限</h2>
-      <p class="content-copy">請在 Firestore 建立 <code>admins/${currentUser.uid}</code> 文件後，再重新整理頁面。</p>
+      <h2 class="content-title">?董????恣????/h2>
+      <p class="content-copy">隢 Firestore 撱箇? <code>admins/${currentUser.uid}</code> ?辣敺????唳???Ｕ?/p>
     `;
     return;
   }
@@ -939,11 +1002,11 @@ const renderMembersPage = async () => {
 
   summary.innerHTML = `
     <article class="member-stat">
-      <p class="member-stat-label">待審核申請</p>
+      <p class="member-stat-label">敺祟?貊隢?/p>
       <p class="member-stat-value">${pendingApplications.length}</p>
     </article>
     <article class="member-stat">
-      <p class="member-stat-label">已建立帳號</p>
+      <p class="member-stat-label">撌脣遣蝡董??/p>
       <p class="member-stat-value">${members.length}</p>
     </article>
   `;
@@ -958,11 +1021,11 @@ const renderMembersPage = async () => {
             <p class="member-row-index">#${String(index + 1).padStart(2, "0")}</p>
             <p class="member-row-status">${member.status || "active"}</p>
           </div>
-          <p class="member-row-email">${member.email || "未提供信箱"}</p>
+          <p class="member-row-email">${member.email || "?芣?靘縑蝞?}</p>
           <div class="member-row-meta">
-            <span>UID：${member.uid || member.id}</span>
-            <span>建立時間：${formatTimestamp(member.createdAt)}</span>
-            <span>最近登入：${formatTimestamp(member.lastLoginAt)}</span>
+            <span>UID嚗?{member.uid || member.id}</span>
+            <span>撱箇???嚗?{formatTimestamp(member.createdAt)}</span>
+            <span>?餈?伐?${formatTimestamp(member.lastLoginAt)}</span>
           </div>
         </article>
       `,
@@ -971,8 +1034,8 @@ const renderMembersPage = async () => {
 
   list.innerHTML = memberRows || `
     <article class="content-card is-tight">
-      <h3 class="content-title">目前還沒有已註冊帳號</h3>
-      <p class="content-copy">等申請通過、付款完成且註冊成功後，這裡就會出現帳號名單。</p>
+      <h3 class="content-title">?桀????歇閮餃?撣唾?</h3>
+      <p class="content-copy">蝑隢???甈曉???閮餃???敺??ㄐ撠望??箇撣唾????/p>
     </article>
   `;
 };
@@ -988,8 +1051,8 @@ const renderApplicationReviewList = async (applications = []) => {
   if (filteredApplications.length === 0) {
     applicationList.innerHTML = `
       <article class="content-card is-tight">
-        <h3 class="content-title">目前沒有符合條件的申請</h3>
-        <p class="content-copy">你可以切換學年度或學期篩選，或等待新的社員申請送出。</p>
+        <h3 class="content-title">?桀?瘝?蝚血?璇辣?隢?/h3>
+        <p class="content-copy">雿隞亙??飛撟游漲?飛?祟?賂???敺?冗?∠隢??/p>
       </article>
     `;
     return;
@@ -1015,24 +1078,26 @@ const renderApplicationReviewList = async (applications = []) => {
       return `
         <article class="member-row">
           <div class="member-row-top">
-            <p class="member-row-index">加入申請</p>
+            <p class="member-row-index">??唾?</p>
             <p class="member-row-status">${statusLabel}</p>
           </div>
-          <p class="member-row-email">${application.name || "未填姓名"} / ${application.email || "未填信箱"}</p>
+          <p class="member-row-email">${application.name || "未填姓名"} / ${application.studentId || "未填學號"}</p>
           <div class="member-row-meta">
-            <span>學校 / 單位：${application.school || "未填寫"}</span>
+            <span>系別：${application.department || application.school || "未填寫"}</span>
+            <span>連絡電話：${application.phone || "未填寫"}</span>
+            <span>聯絡信箱：${application.email || "未填寫"}</span>
             <span>送出時間：${formatTimestamp(application.submittedAt)}</span>
             <span>備註：${application.note || "無"}</span>
           </div>
           <div class="member-row-controls">
             <div class="form-field">
-              <label for="application-year-${application.id}">學年度</label>
+              <label for="application-year-${application.id}">摮詨僑摨?/label>
               <select id="application-year-${application.id}" data-application-year data-application-id="${application.id}">
                 ${yearOptions.replace(`value="${academicYear}"`, `value="${academicYear}" selected`)}
               </select>
             </div>
             <div class="form-field">
-              <label for="application-term-${application.id}">學期</label>
+              <label for="application-term-${application.id}">摮豢?</label>
               <select id="application-term-${application.id}" data-application-term data-application-id="${application.id}">
                 ${termOptions.replace(`value="${term}"`, `value="${term}" selected`)}
               </select>
@@ -1040,13 +1105,13 @@ const renderApplicationReviewList = async (applications = []) => {
           </div>
           <div class="application-actions">
             <button class="button-secondary application-toggle ${approved ? "is-active" : ""}" data-application-action="approve" data-application-id="${application.id}">
-              ${approved ? "已同意" : "同意申請"}
+              ${approved ? "撌脣??? : "???唾?"}
             </button>
             <button class="button-secondary application-toggle ${paid ? "is-active" : ""}" data-application-action="paid" data-application-id="${application.id}">
-              ${paid ? "已付款" : "確認付款"}
+              ${paid ? "撌脖?甈? : "蝣箄?隞狡"}
             </button>
             <button class="button-secondary application-save" data-application-action="save-meta" data-application-id="${application.id}">
-              儲存學期資料
+              ?脣?摮豢?鞈?
             </button>
           </div>
         </article>
@@ -1108,8 +1173,8 @@ const refreshMembersDashboard = async () => {
     gate.hidden = false;
     content.hidden = true;
     gate.innerHTML = `
-      <h2 class="content-title">請先完成 Firebase 設定</h2>
-      <p class="content-copy">請先在 <code>src/firebase-config.js</code> 填入正確的 Firebase 專案資訊。</p>
+      <h2 class="content-title">隢?摰? Firebase 閮剖?</h2>
+      <p class="content-copy">隢???<code>src/firebase-config.js</code> 憛怠甇?Ⅱ??Firebase 撠?鞈???/p>
     `;
     return;
   }
@@ -1118,8 +1183,8 @@ const refreshMembersDashboard = async () => {
     gate.hidden = false;
     content.hidden = true;
     gate.innerHTML = `
-      <h2 class="content-title">請先登入管理員帳號</h2>
-      <p class="content-copy">先按右上角 <code>Sign In</code>，登入後才可以查看審核後台與社員名單。</p>
+      <h2 class="content-title">隢??餃蝞∠??∪董??/h2>
+      <p class="content-copy">???喃?閫?<code>Sign In</code>嚗?亙??隞交?祟?詨??啗?蝷曉???/p>
     `;
     return;
   }
@@ -1128,8 +1193,8 @@ const refreshMembersDashboard = async () => {
     gate.hidden = false;
     content.hidden = true;
     gate.innerHTML = `
-      <h2 class="content-title">這個帳號還不是管理員</h2>
-      <p class="content-copy">請先在 Firestore 建立 <code>admins/${currentUser.uid}</code> 文件，或使用已經開通的管理員帳號登入。</p>
+      <h2 class="content-title">?董??銝蝞∠???/h2>
+      <p class="content-copy">隢???Firestore 撱箇? <code>admins/${currentUser.uid}</code> ?辣嚗?雿輻撌脩???蝞∠??∪董??乓?/p>
     `;
     return;
   }
@@ -1153,16 +1218,16 @@ const refreshMembersDashboard = async () => {
 
   summary.innerHTML = `
     <article class="member-stat">
-      <p class="member-stat-label">待審核申請</p>
+      <p class="member-stat-label">敺祟?貊隢?/p>
       <p class="member-stat-value">${pendingApplications.length}</p>
     </article>
     <article class="member-stat">
-      <p class="member-stat-label">目前篩選社員</p>
+      <p class="member-stat-label">?桀?蝭拚蝷曉</p>
       <p class="member-stat-value">${filteredMembers.length}</p>
     </article>
     <article class="member-stat">
-      <p class="member-stat-label">目前學期</p>
-      <p class="member-stat-value member-stat-value-small">${memberFilters.year === "all" ? "全部學年度" : getSafeAcademicYearLabel(memberFilters.year)}<br />${memberFilters.term === "all" ? "全部學期" : getSafeAcademicTermLabel(memberFilters.term)}</p>
+      <p class="member-stat-label">?桀?摮豢?</p>
+      <p class="member-stat-value member-stat-value-small">${memberFilters.year === "all" ? "?券摮詨僑摨? : getSafeAcademicYearLabel(memberFilters.year)}<br />${memberFilters.term === "all" ? "?券摮豢?" : getSafeAcademicTermLabel(memberFilters.term)}</p>
     </article>
   `;
 
@@ -1176,14 +1241,14 @@ const refreshMembersDashboard = async () => {
             <p class="member-row-index">#${String(index + 1).padStart(2, "0")}</p>
             <p class="member-row-status">${member.status || "active"}</p>
           </div>
-          <p class="member-row-email">${member.email || "未填信箱"}</p>
+          <p class="member-row-email">${member.email || "?芸‵靽∠拳"}</p>
           <div class="member-row-meta">
-            <span>UID：${member.uid || member.id}</span>
-            <span>學年度：${getSafeAcademicYearLabel(member.academicYear || "未設定")}</span>
-            <span>學期：${getSafeAcademicTermLabel(member.term)}</span>
-            <span>學校 / 單位：${member.school || "未填寫"}</span>
-            <span>建立時間：${formatTimestamp(member.createdAt)}</span>
-            <span>最近登入：${formatTimestamp(member.lastLoginAt)}</span>
+            <span>UID嚗?{member.uid || member.id}</span>
+            <span>摮詨僑摨佗?${getSafeAcademicYearLabel(member.academicYear || "?芾身摰?)}</span>
+            <span>摮豢?嚗?{getSafeAcademicTermLabel(member.term)}</span>
+            <span>摮豢 / ?桐?嚗?{member.school || "?芸‵撖?}</span>
+            <span>撱箇???嚗?{formatTimestamp(member.createdAt)}</span>
+            <span>?餈?伐?${formatTimestamp(member.lastLoginAt)}</span>
           </div>
         </article>
       `,
@@ -1194,8 +1259,8 @@ const refreshMembersDashboard = async () => {
     memberRows ||
     `
       <article class="content-card is-tight">
-        <h3 class="content-title">這個篩選下還沒有社員</h3>
-        <p class="content-copy">可以先切換學年度或學期，或等社員完成審核、付款與註冊後再回來查看。</p>
+        <h3 class="content-title">?祟?訾????冗??/h3>
+        <p class="content-copy">?臭誑???飛撟游漲?飛????蝷曉摰?撖拇??甈曇?閮餃?敺????亦???/p>
       </article>
     `;
 };
@@ -1207,7 +1272,7 @@ const patchMembersFilterUI = () => {
   if (yearSelect) {
     yearSelect.innerHTML = buildAdminAcademicYearOptions()
       .map((value) => {
-        const label = value === "all" ? "全部學年度" : getSafeAcademicYearLabel(value);
+        const label = value === "all" ? "?券摮詨僑摨? : getSafeAcademicYearLabel(value);
         const selected = value === memberFilters.year ? " selected" : "";
         return `<option value="${value}"${selected}>${label}</option>`;
       })
@@ -1215,9 +1280,9 @@ const patchMembersFilterUI = () => {
   }
 
   if (termSelect) {
-    termSelect.innerHTML = ["all", ...adminAcademicTerms, "未設定"]
+    termSelect.innerHTML = ["all", ...adminAcademicTerms, "?芾身摰?]
       .map((value) => {
-        const label = value === "all" ? "全部學期" : getSafeAcademicTermLabel(value);
+        const label = value === "all" ? "?券摮豢?" : getSafeAcademicTermLabel(value);
         const selected = value === memberFilters.term ? " selected" : "";
         return `<option value="${value}"${selected}>${label}</option>`;
       })
@@ -1236,8 +1301,8 @@ const renderApplicationReviewListSafe = async (applications = []) => {
   if (filteredApplications.length === 0) {
     applicationList.innerHTML = `
       <article class="content-card is-tight">
-        <h3 class="content-title">目前沒有符合條件的申請</h3>
-        <p class="content-copy">請確認篩選條件，或先檢查 Firestore 的 applications 集合是否已有新資料。</p>
+        <h3 class="content-title">?桀?瘝?蝚血?璇辣?隢?/h3>
+        <p class="content-copy">隢Ⅱ隤祟?豢?隞塚???瑼Ｘ Firestore ??applications ???臬撌脫??啗???/p>
       </article>
     `;
     return;
@@ -1248,7 +1313,7 @@ const renderApplicationReviewListSafe = async (applications = []) => {
     .map((value) => `<option value="${value}">${getSafeAcademicYearLabel(value)}</option>`)
     .join("");
 
-  const termOptions = [...adminAcademicTerms, "未設定"]
+  const termOptions = [...adminAcademicTerms, "?芾身摰?]
     .map((value) => `<option value="${value}">${getSafeAcademicTermLabel(value)}</option>`)
     .join("");
 
@@ -1257,20 +1322,20 @@ const renderApplicationReviewListSafe = async (applications = []) => {
       const approved = Boolean(application.approved);
       const paid = Boolean(application.paid);
       const academicYear = application.academicYear || String(Math.max(getRocAcademicYear(), minAcademicYear));
-      const term = application.term || "未設定";
+      const term = application.term || "?芾身摰?;
       const statusLabel = approved && paid ? "ready" : approved ? "awaiting payment" : "pending";
 
       return `
         <article class="member-row">
           <div class="member-row-top">
-            <p class="member-row-index">加入申請</p>
+            <p class="member-row-index">??唾?</p>
             <p class="member-row-status">${statusLabel}</p>
           </div>
-          <p class="member-row-email">${application.name || "未填姓名"} / ${application.email || "未填信箱"}</p>
+          <p class="member-row-email">${application.name || "?芸‵憪?"} / ${application.email || "?芸‵靽∠拳"}</p>
           <div class="member-row-meta">
-            <span>學校 / 單位：${application.school || "未填寫"}</span>
-            <span>送出時間：${formatTimestamp(application.submittedAt)}</span>
-            <span>備註：${application.note || "無"}</span>
+            <span>摮豢 / ?桐?嚗?{application.school || "?芸‵撖?}</span>
+            <span>???嚗?{formatTimestamp(application.submittedAt)}</span>
+            <span>?酉嚗?{application.note || "??}</span>
           </div>
           <div class="member-row-controls">
             <div class="form-field">
@@ -1315,8 +1380,8 @@ const renderApplicationReviewListSafe = async (applications = []) => {
 
       const yearSelect = applicationList.querySelector(`[data-application-year][data-application-id="${id}"]`);
       const termSelect = applicationList.querySelector(`[data-application-term][data-application-id="${id}"]`);
-      const academicYear = yearSelect?.value || "未設定";
-      const term = termSelect?.value || "未設定";
+      const academicYear = yearSelect?.value || "?芾身摰?;
+      const term = termSelect?.value || "?芾身摰?;
       const data = currentDoc.data();
       const nextData = {
         academicYear,
@@ -1358,8 +1423,8 @@ const refreshMembersDashboardSafe = async () => {
     gate.hidden = false;
     content.hidden = true;
     gate.innerHTML = `
-      <h2 class="content-title">請先完成 Firebase 設定</h2>
-      <p class="content-copy">請先在 <code>src/firebase-config.js</code> 填入正確的 Firebase 專案資訊。</p>
+      <h2 class="content-title">隢?摰? Firebase 閮剖?</h2>
+      <p class="content-copy">隢???<code>src/firebase-config.js</code> 憛怠甇?Ⅱ??Firebase 撠?鞈???/p>
     `;
     return;
   }
@@ -1368,8 +1433,8 @@ const refreshMembersDashboardSafe = async () => {
     gate.hidden = false;
     content.hidden = true;
     gate.innerHTML = `
-      <h2 class="content-title">請先登入管理員帳號</h2>
-      <p class="content-copy">先按右上角 <code>Sign In</code>，登入後才可以查看審核後台與社員名單。</p>
+      <h2 class="content-title">隢??餃蝞∠??∪董??/h2>
+      <p class="content-copy">???喃?閫?<code>Sign In</code>嚗?亙??隞交?祟?詨??啗?蝷曉???/p>
     `;
     return;
   }
@@ -1378,8 +1443,8 @@ const refreshMembersDashboardSafe = async () => {
     gate.hidden = false;
     content.hidden = true;
     gate.innerHTML = `
-      <h2 class="content-title">這個帳號還不是管理員</h2>
-      <p class="content-copy">請確認 Firestore 裡存在 <code>admins/${currentUser.uid}</code> 這份文件。</p>
+      <h2 class="content-title">?董??銝蝞∠???/h2>
+      <p class="content-copy">隢Ⅱ隤?Firestore 鋆∪???<code>admins/${currentUser.uid}</code> ?遢?辣??/p>
     `;
     return;
   }
@@ -1404,16 +1469,16 @@ const refreshMembersDashboardSafe = async () => {
 
     summary.innerHTML = `
       <article class="member-stat">
-        <p class="member-stat-label">待審核申請</p>
+        <p class="member-stat-label">敺祟?貊隢?/p>
         <p class="member-stat-value">${pendingApplications.length}</p>
       </article>
       <article class="member-stat">
-        <p class="member-stat-label">目前篩選社員</p>
+        <p class="member-stat-label">?桀?蝭拚蝷曉</p>
         <p class="member-stat-value">${filteredMembers.length}</p>
       </article>
       <article class="member-stat">
-        <p class="member-stat-label">目前學期</p>
-        <p class="member-stat-value member-stat-value-small">${memberFilters.year === "all" ? "全部學年度" : getSafeAcademicYearLabel(memberFilters.year)}<br />${memberFilters.term === "all" ? "全部學期" : getSafeAcademicTermLabel(memberFilters.term)}</p>
+        <p class="member-stat-label">?桀?摮豢?</p>
+        <p class="member-stat-value member-stat-value-small">${memberFilters.year === "all" ? "?券摮詨僑摨? : getSafeAcademicYearLabel(memberFilters.year)}<br />${memberFilters.term === "all" ? "?券摮豢?" : getSafeAcademicTermLabel(memberFilters.term)}</p>
       </article>
     `;
 
@@ -1427,14 +1492,16 @@ const refreshMembersDashboardSafe = async () => {
               <p class="member-row-index">#${String(index + 1).padStart(2, "0")}</p>
               <p class="member-row-status">${member.status || "active"}</p>
             </div>
-            <p class="member-row-email">${member.email || "未填信箱"}</p>
+            <p class="member-row-email">${member.name || "未填姓名"} / ${member.studentId || "未填學號"}</p>
             <div class="member-row-meta">
-              <span>UID：${member.uid || member.id}</span>
-              <span>學年度：${getSafeAcademicYearLabel(member.academicYear || "未設定")}</span>
-              <span>學期：${getSafeAcademicTermLabel(member.term)}</span>
-              <span>學校 / 單位：${member.school || "未填寫"}</span>
-              <span>建立時間：${formatTimestamp(member.createdAt)}</span>
-              <span>最近登入：${formatTimestamp(member.lastLoginAt)}</span>
+              <span>UID嚗?{member.uid || member.id}</span>
+              <span>摮詨僑摨佗?${getSafeAcademicYearLabel(member.academicYear || "?芾身摰?)}</span>
+              <span>摮豢?嚗?{getSafeAcademicTermLabel(member.term)}</span>
+              <span>系別：${member.department || member.school || "未填寫"}</span>
+              <span>連絡電話：${member.phone || "未填寫"}</span>
+              <span>聯絡信箱：${member.email || "未填寫"}</span>
+              <span>撱箇???嚗?{formatTimestamp(member.createdAt)}</span>
+              <span>?餈?伐?${formatTimestamp(member.lastLoginAt)}</span>
             </div>
           </article>
         `,
@@ -1445,27 +1512,27 @@ const refreshMembersDashboardSafe = async () => {
       memberRows ||
       `
         <article class="content-card is-tight">
-          <h3 class="content-title">這個篩選下還沒有社員</h3>
-          <p class="content-copy">可以先切換學年度或學期，或等社員完成審核、付款與註冊後再回來查看。</p>
+          <h3 class="content-title">?祟?訾????冗??/h3>
+          <p class="content-copy">?臭誑???飛撟游漲?飛????蝷曉摰?撖拇??甈曇?閮餃?敺????亦???/p>
         </article>
       `;
   } catch (error) {
     summary.innerHTML = `
       <article class="content-card is-tight">
-        <h3 class="content-title">後台讀取失敗</h3>
-        <p class="content-copy">請確認 Firestore rules 已發布，且目前管理員帳號有 applications 與 members 的讀取權限。</p>
+        <h3 class="content-title">敺霈?仃??/h3>
+        <p class="content-copy">隢Ⅱ隤?Firestore rules 撌脩撣?銝?恣?撣唾???applications ??members ??????/p>
       </article>
     `;
     applicationList.innerHTML = `
       <article class="content-card is-tight">
-        <h3 class="content-title">無法載入申請資料</h3>
-        <p class="content-copy">${error?.message || "讀取 applications 時發生錯誤。"}</p>
+        <h3 class="content-title">?⊥?頛?唾?鞈?</h3>
+        <p class="content-copy">${error?.message || "霈??applications ??隤扎?}</p>
       </article>
     `;
     list.innerHTML = `
       <article class="content-card is-tight">
-        <h3 class="content-title">無法載入社員資料</h3>
-        <p class="content-copy">${error?.message || "讀取 members 時發生錯誤。"}</p>
+        <h3 class="content-title">?⊥?頛蝷曉鞈?</h3>
+        <p class="content-copy">${error?.message || "霈??members ??隤扎?}</p>
       </article>
     `;
   }
@@ -1480,22 +1547,22 @@ const handleAuthSubmit = async (event) => {
   const passwordConfirm = confirmInput.value;
 
   if (!firebaseConfigured) {
-    setHint("Firebase 尚未設定完成。請先填寫 src/firebase-config.js。", "error");
+    setHint("Firebase 撠閮剖?摰????‵撖?src/firebase-config.js??, "error");
     return;
   }
 
   if (!email.includes("@")) {
-    setHint("請輸入正確的信箱。", "error");
+    setHint("隢撓?交迤蝣箇?靽∠拳??, "error");
     return;
   }
 
   if (password.length < 8) {
-    setHint("密碼至少需要 8 碼。", "error");
+    setHint("撖Ⅳ?喳??閬?8 蝣潦?, "error");
     return;
   }
 
   if (authMode === "signup" && password !== passwordConfirm) {
-    setHint("兩次輸入的密碼不一致。", "error");
+    setHint("?拇活頛詨??蝣潔?銝?氬?, "error");
     return;
   }
 
@@ -1510,7 +1577,7 @@ const handleAuthSubmit = async (event) => {
     if (authMode === "signup") {
       const approved = await ensureSignupApproved(email);
       if (!approved) {
-        setHint("這個信箱尚未完成審核或付款，請先到報名頁送出申請。", "error");
+        setHint("?縑蝞勗??芸??祟?豢?隞狡嚗???勗???唾???, "error");
         return;
       }
 
@@ -1518,12 +1585,12 @@ const handleAuthSubmit = async (event) => {
       await syncMemberProfile(credential.user, "signup");
       await ensureBootstrapAdminDoc(credential.user);
       await loadAdminStatus(credential.user);
-      setHint("帳號建立完成，已自動登入。", "success");
+      setHint("撣唾?撱箇?摰?嚗歇?芸??餃??, "success");
     } else {
       const credential = await signInWithEmailAndPassword(readyAuth, email, password);
       await syncMemberProfile(credential.user, "signin");
       await loadAdminStatus(credential.user);
-      setHint("登入成功。", "success");
+      setHint("?餃????, "success");
     }
 
     event.target.reset();
@@ -1540,18 +1607,20 @@ const handleApplicationSubmit = async (event) => {
   const { applicationForm, applicationHint, submitButton } = getApplicationModalElements();
   const formData = new FormData(applicationForm);
   const name = String(formData.get("name") || "").trim();
+  const studentId = String(formData.get("studentId") || "").trim();
+  const department = String(formData.get("department") || "").trim();
+  const phone = String(formData.get("phone") || "").trim();
   const email = String(formData.get("email") || "").trim().toLowerCase();
-  const school = String(formData.get("school") || "").trim();
   const note = String(formData.get("note") || "").trim();
   const applicationType = String(formData.get("applicationType") || "club");
 
   if (!firebaseConfigured) {
-    setApplicationHint("Firebase 尚未設定完成。請先填寫 src/firebase-config.js。", "error");
+    setApplicationHint("Firebase 尚未設定完成，請先確認 src/firebase-config.js。", "error");
     return;
   }
 
-  if (!name || !email || !school) {
-    setApplicationHint("請至少填寫姓名、信箱與學校 / 單位。", "error");
+  if (!name || !studentId || !department || !phone || !email) {
+    setApplicationHint("請完整填寫姓名、學號、系別、連絡電話與聯絡信箱。", "error");
     return;
   }
 
@@ -1562,8 +1631,11 @@ const handleApplicationSubmit = async (event) => {
 
     await addDoc(collection(db, "applications"), {
       name,
+      studentId,
+      department,
+      phone,
       email,
-      school,
+      school: department,
       note,
       applicationType,
       academicYear: String(Math.max(getRocAcademicYear(), minAcademicYear)),
@@ -1577,7 +1649,7 @@ const handleApplicationSubmit = async (event) => {
     applicationForm.reset();
     setApplicationHint("申請已送出。等管理員審核並確認付款後，你就能建立登入帳號。", "success");
   } catch (error) {
-    applicationHint.textContent = "送出申請時發生問題，請稍後再試。";
+    applicationHint.textContent = "送出申請時發生問題，請稍後再試一次。";
     applicationHint.classList.add("is-error");
   } finally {
     submitButton.disabled = false;
@@ -1591,7 +1663,7 @@ const handleSignOut = async () => {
 
   try {
     await signOut(auth);
-    setHint("你已登出。");
+    setHint("雿歇?餃??);
     closeLoginModal();
   } catch (error) {
     setHint(getFriendlyAuthError(error), "error");
@@ -1739,7 +1811,7 @@ const init = async () => {
   if (firebaseConfigured) {
     await ensureAuthReady();
   } else {
-    setHint("這裡已經接好 Firebase 流程，下一步只要填入設定就能啟用。");
+    setHint("?ㄐ撌脩??亙末 Firebase 瘚?嚗?銝甇亙閬‵?亥身摰停?賢??具?);
   }
 
   if (pageName === "members") {
@@ -1748,3 +1820,4 @@ const init = async () => {
 };
 
 init();
+
