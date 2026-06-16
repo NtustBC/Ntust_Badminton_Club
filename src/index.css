@@ -1217,6 +1217,8 @@ img {
 
 .modal-dialog {
   position: relative;
+  display: flex;
+  flex-direction: column;
   width: min(460px, calc(100% - 28px));
   margin: clamp(42px, 12vh, 96px) auto 0;
   max-height: calc(100vh - 40px);
@@ -1233,6 +1235,8 @@ img {
 }
 
 .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding-bottom: 24px;
 }
@@ -1283,7 +1287,7 @@ img {
 
 .form-grid {
   display: grid;
-  gap: 18px;
+  gap: 16px;
 }
 
 .form-field {
@@ -1321,6 +1325,7 @@ img {
   position: sticky;
   bottom: 0;
   z-index: 2;
+  margin-top: 4px;
   box-shadow: 0 -14px 24px rgba(255, 255, 255, 0.96);
 }
 
@@ -1700,14 +1705,20 @@ img {
   .modal-dialog,
   .auth-modal-dialog {
     width: min(100% - 16px, 460px);
-    max-height: calc(100vh - 24px);
+    max-height: calc(100vh - 16px);
     margin-top: 0;
   }
 
+  .modal-header,
   .modal-body {
-    max-height: calc(100vh - 180px);
+    padding: 20px;
+  }
+
+  .modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
-    padding-bottom: 20px;
+    padding-bottom: 16px;
   }
 
   .hero-title {
