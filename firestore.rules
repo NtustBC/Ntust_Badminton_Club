@@ -17,6 +17,18 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /applications/{applicationId} {
+      allow create: if true;
+      allow get, list: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    match /signupApprovals/{emailId} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
     match /admins/{userId} {
       allow read: if isSignedIn() && request.auth.uid == userId;
       allow create: if isSignedIn()

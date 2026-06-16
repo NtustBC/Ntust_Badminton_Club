@@ -95,7 +95,6 @@ const loginModalMarkup = `
           <p class="login-note" data-auth-status-hint></p>
           <div class="auth-status-actions">
             <a class="button-secondary auth-admin-link" data-auth-admin-link href="./members.html" hidden>審核後台</a>
-            <button class="button-secondary auth-signout" data-auth-signout type="button">Sign Out</button>
           </div>
         </div>
 
@@ -239,7 +238,6 @@ const getLoginModalElements = () => {
     statusEmail: loginModal.querySelector("[data-auth-email]"),
     statusHint: loginModal.querySelector("[data-auth-status-hint]"),
     adminLink: loginModal.querySelector("[data-auth-admin-link]"),
-    signOutButton: loginModal.querySelector("[data-auth-signout]"),
     closeButtons: loginModal.querySelectorAll("[data-close-login]"),
   };
 };
@@ -312,24 +310,30 @@ const setAuthMode = (mode) => {
 };
 
 const updateAuthView = () => {
-  const { loginForm, statusCard, statusEmail, statusHint, adminLink, signOutButton } = getLoginModalElements();
+  const { loginForm, statusCard, statusEmail, statusHint, adminLink, authSubmit } = getLoginModalElements();
 
   if (currentUser) {
     loginForm.hidden = true;
     statusCard.hidden = false;
-    signOutButton.hidden = false;
     adminLink.hidden = !currentUserIsAdmin;
     statusEmail.textContent = currentUser.email || "";
     statusHint.textContent = currentUserIsAdmin ? "你目前是管理員，可以進入審核後台。" : "你已登入社員入口。";
+    authSubmit.textContent = "Sign Out";
+    authSubmit.dataset.authAction = "signout";
+    authSubmit.removeAttribute("form");
+    authSubmit.type = "button";
     return;
   }
 
   loginForm.hidden = false;
   statusCard.hidden = true;
-  signOutButton.hidden = true;
   adminLink.hidden = true;
   statusEmail.textContent = "";
   statusHint.textContent = "";
+  authSubmit.textContent = authCopy[authMode].submitLabel;
+  authSubmit.dataset.authAction = "submit";
+  authSubmit.setAttribute("form", "login-form");
+  authSubmit.type = "submit";
   setAuthMode(authMode);
 };
 
@@ -851,14 +855,18 @@ const handleSignOut = async () => {
 };
 
 const bindLoginModalEvents = () => {
-  const { loginModal, loginForm, authTabs, signOutButton, closeButtons } = getLoginModalElements();
+  const { loginModal, loginForm, authTabs, authSubmit, closeButtons } = getLoginModalElements();
 
   authTabs.forEach((tab) => {
     tab.addEventListener("click", () => setAuthMode(tab.dataset.authTab));
   });
 
   loginForm.addEventListener("submit", handleAuthSubmit);
-  signOutButton.addEventListener("click", handleSignOut);
+  authSubmit.addEventListener("click", async () => {
+    if (authSubmit.dataset.authAction === "signout") {
+      await handleSignOut();
+    }
+  });
 
   closeButtons.forEach((button) => {
     button.addEventListener("click", closeLoginModal);
