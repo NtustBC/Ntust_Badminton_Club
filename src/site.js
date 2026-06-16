@@ -200,6 +200,44 @@ const rememberLoginButtonLabels = () => {
   });
 };
 
+const updateAdminNavigation = () => {
+  const existingAdminLinks = document.querySelectorAll("[data-admin-nav-link]");
+
+  existingAdminLinks.forEach((link) => {
+    link.remove();
+  });
+
+  if (!currentUserIsAdmin) {
+    return;
+  }
+
+  const createAdminLink = () => {
+    const link = document.createElement("a");
+    link.className = "nav-link";
+    link.href = "./members.html";
+    link.textContent = "成員管理";
+    link.dataset.adminNavLink = "true";
+    return link;
+  };
+
+  const desktopNav = document.querySelector(".site-nav");
+  if (desktopNav) {
+    desktopNav.append(createAdminLink());
+  }
+
+  const mobileNavGrid = document.querySelector(".mobile-nav-grid");
+  if (mobileNavGrid) {
+    const mobileLoginButton = mobileNavGrid.querySelector(".login-button");
+    const mobileAdminLink = createAdminLink();
+
+    if (mobileLoginButton) {
+      mobileNavGrid.insertBefore(mobileAdminLink, mobileLoginButton);
+    } else {
+      mobileNavGrid.append(mobileAdminLink);
+    }
+  }
+};
+
 const getFriendlyAuthError = (error) =>
   authErrorMessages[error.code] || "登入流程出了點問題，請稍後再試一次。";
 
@@ -359,6 +397,7 @@ const updateAuthView = () => {
 
 const updateLoginButtons = () => {
   rememberLoginButtonLabels();
+  updateAdminNavigation();
 
   getLoginButtons().forEach((button) => {
     if (button.classList.contains("login-button")) {
