@@ -416,6 +416,11 @@ const loadAdminStatus = async (user) => {
     return false;
   }
 
+  if (isBootstrapAdminEmail(user.email || "")) {
+    currentUserIsAdmin = true;
+    return true;
+  }
+
   const adminDoc = await getDoc(getAdminDocRef(user.uid));
   currentUserIsAdmin = adminDoc.exists();
   return currentUserIsAdmin;
