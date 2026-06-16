@@ -1234,6 +1234,7 @@ img {
 
 .modal-body {
   overflow-y: auto;
+  padding-bottom: 24px;
 }
 
 .modal-header {
@@ -1317,6 +1318,10 @@ img {
 
 .modal-submit {
   width: 100%;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  box-shadow: 0 -14px 24px rgba(255, 255, 255, 0.96);
 }
 
 .auth-modal-dialog {
@@ -1525,6 +1530,17 @@ img {
   line-height: 1.7;
 }
 
+.application-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.application-toggle {
+  min-width: 150px;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -1691,6 +1707,7 @@ img {
   .modal-body {
     max-height: calc(100vh - 180px);
     overflow-y: auto;
+    padding-bottom: 20px;
   }
 
   .hero-title {

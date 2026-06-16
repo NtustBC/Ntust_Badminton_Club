@@ -7,7 +7,9 @@ import {
   signOut,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
+  addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -16,8 +18,9 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
-import { allowedEmailDomain, firebaseConfig } from "./firebase-config.js";
+import { firebaseConfig } from "./firebase-config.js";
 
 const body = document.body;
 const pageName = body.dataset.page || "";
@@ -27,33 +30,34 @@ const languageSelects = document.querySelectorAll("[data-language-select]");
 
 let auth = null;
 let db = null;
+let currentUser = null;
+let currentUserIsAdmin = false;
 let authMode = "signin";
 let authReadyPromise = null;
-let currentUser = null;
-let lastTrigger = null;
-let currentUserIsAdmin = false;
+let lastLoginTrigger = null;
+let lastApplicationTrigger = null;
 
 const firebaseConfigured = Object.values(firebaseConfig).every(Boolean);
 
 const authCopy = {
   signin: {
     title: "登入社員入口",
-    subtitle: `請使用 ${allowedEmailDomain} 信箱與你設定的密碼登入。`,
+    subtitle: "已通過審核並完成付款者，可用你的信箱與密碼登入。",
     submitLabel: "Sign In",
-    hint: `第一次使用請先建立帳號，只接受 ${allowedEmailDomain} 信箱。`,
+    hint: "如果你還沒建立帳號，請先完成報名審核與付款，再切到註冊。",
   },
   signup: {
     title: "建立社員帳號",
-    subtitle: `使用 ${allowedEmailDomain} 信箱註冊，之後就能直接登入。`,
+    subtitle: "只有審核通過且已完成付款的申請，才能建立登入帳號。",
     submitLabel: "Create Account",
-    hint: "密碼建議至少 8 碼，建立完成後會自動登入。",
+    hint: "先送出報名申請，等管理員確認資料與付款後，再回來註冊。",
   },
 };
 
 const authErrorMessages = {
-  "auth/email-already-in-use": "這個學校信箱已經註冊過了，請直接登入。",
+  "auth/email-already-in-use": "這個信箱已經註冊過了，請直接登入。",
   "auth/invalid-credential": "信箱或密碼不正確，請再確認一次。",
-  "auth/invalid-email": "請輸入正確的學校信箱格式。",
+  "auth/invalid-email": "請輸入正確的信箱格式。",
   "auth/missing-password": "請輸入密碼。",
   "auth/network-request-failed": "目前無法連線到 Firebase，請檢查網路後重試。",
   "auth/too-many-requests": "嘗試次數過多，請稍後再試。",
@@ -62,7 +66,7 @@ const authErrorMessages = {
   "auth/weak-password": "密碼強度不足，請至少使用 8 碼。",
 };
 
-const modalMarkup = `
+const loginModalMarkup = `
   <div class="modal" data-login-modal hidden>
     <div class="modal-backdrop" data-modal-backdrop></div>
     <div class="modal-dialog auth-modal-dialog">
@@ -90,21 +94,15 @@ const modalMarkup = `
           <p class="auth-status-email" data-auth-email></p>
           <p class="login-note" data-auth-status-hint></p>
           <div class="auth-status-actions">
-            <a class="button-secondary auth-admin-link" data-auth-admin-link href="./members.html" hidden>會員名單</a>
+            <a class="button-secondary auth-admin-link" data-auth-admin-link href="./members.html" hidden>審核後台</a>
             <button class="button-secondary auth-signout" data-auth-signout type="button">Sign Out</button>
           </div>
         </div>
 
         <form class="form-grid" data-login-form novalidate>
           <div class="form-field">
-            <label for="login-email">學校信箱</label>
-            <input
-              id="login-email"
-              name="email"
-              placeholder="b11207001@mail.ntust.edu.tw"
-              type="email"
-              autocomplete="email"
-            />
+            <label for="login-email">信箱</label>
+            <input id="login-email" name="email" placeholder="your@email.com" type="email" autocomplete="email" />
           </div>
           <div class="form-field">
             <label for="login-password">密碼</label>
@@ -134,7 +132,49 @@ const modalMarkup = `
   </div>
 `;
 
+const applicationModalMarkup = `
+  <div class="modal" data-application-modal hidden>
+    <div class="modal-backdrop" data-modal-backdrop></div>
+    <div class="modal-dialog auth-modal-dialog">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title" id="application-title">送出羽球社加入申請</h2>
+          <p class="modal-subtitle" data-application-subtitle>先填資料，等管理員審核與確認付款後，你才能建立登入帳號。</p>
+        </div>
+        <button class="modal-close" data-close-application type="button" aria-label="關閉申請視窗">
+          <span aria-hidden="true">+</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form class="form-grid" data-application-form novalidate>
+          <input data-application-type name="applicationType" type="hidden" value="club" />
+          <div class="form-field">
+            <label for="application-name">姓名</label>
+            <input id="application-name" name="name" placeholder="王小明" type="text" autocomplete="name" />
+          </div>
+          <div class="form-field">
+            <label for="application-email">聯絡信箱</label>
+            <input id="application-email" name="email" placeholder="your@email.com" type="email" autocomplete="email" />
+          </div>
+          <div class="form-field">
+            <label for="application-school">學校 / 單位</label>
+            <input id="application-school" name="school" placeholder="臺科大 / 外校 / 其他" type="text" />
+          </div>
+          <div class="form-field">
+            <label for="application-note">備註</label>
+            <textarea id="application-note" name="note" rows="4" placeholder="可填寫身份、想報名的內容或付款說明。"></textarea>
+          </div>
+          <p class="login-note" data-application-hint></p>
+          <button class="login-button modal-submit" data-application-submit type="submit">送出申請</button>
+        </form>
+      </div>
+    </div>
+  </div>
+`;
+
 const getLoginButtons = () => document.querySelectorAll("[data-open-login]");
+const getApplicationButtons = () => document.querySelectorAll("[data-open-application]");
+const getApprovalDocId = (email) => email.trim().toLowerCase();
 
 const rememberLoginButtonLabels = () => {
   getLoginButtons().forEach((button) => {
@@ -143,9 +183,6 @@ const rememberLoginButtonLabels = () => {
     }
   });
 };
-
-const normalizeSchoolEmail = (email) => email.trim().toLowerCase();
-const isAllowedSchoolEmail = (email) => normalizeSchoolEmail(email).endsWith(allowedEmailDomain);
 
 const getFriendlyAuthError = (error) =>
   authErrorMessages[error.code] || "登入流程出了點問題，請稍後再試一次。";
@@ -165,11 +202,21 @@ const ensureLoginModal = () => {
     return existing;
   }
 
-  document.body.insertAdjacentHTML("beforeend", modalMarkup);
+  document.body.insertAdjacentHTML("beforeend", loginModalMarkup);
   return document.querySelector("[data-login-modal]");
 };
 
-const getModalElements = () => {
+const ensureApplicationModal = () => {
+  const existing = document.querySelector("[data-application-modal]");
+  if (existing) {
+    return existing;
+  }
+
+  document.body.insertAdjacentHTML("beforeend", applicationModalMarkup);
+  return document.querySelector("[data-application-modal]");
+};
+
+const getLoginModalElements = () => {
   const loginModal = ensureLoginModal();
 
   return {
@@ -192,8 +239,22 @@ const getModalElements = () => {
   };
 };
 
+const getApplicationModalElements = () => {
+  const applicationModal = ensureApplicationModal();
+
+  return {
+    applicationModal,
+    applicationForm: applicationModal.querySelector("[data-application-form]"),
+    applicationHint: applicationModal.querySelector("[data-application-hint]"),
+    applicationType: applicationModal.querySelector("[data-application-type]"),
+    applicationSubtitle: applicationModal.querySelector("[data-application-subtitle]"),
+    submitButton: applicationModal.querySelector("[data-application-submit]"),
+    closeButtons: applicationModal.querySelectorAll("[data-close-application]"),
+  };
+};
+
 const setHint = (message, tone = "default") => {
-  const { loginHint } = getModalElements();
+  const { loginHint } = getLoginModalElements();
   loginHint.textContent = message;
   loginHint.classList.remove("is-error", "is-success");
 
@@ -204,11 +265,23 @@ const setHint = (message, tone = "default") => {
   }
 };
 
+const setApplicationHint = (message, tone = "default") => {
+  const { applicationHint } = getApplicationModalElements();
+  applicationHint.textContent = message;
+  applicationHint.classList.remove("is-error", "is-success");
+
+  if (tone === "error") {
+    applicationHint.classList.add("is-error");
+  } else if (tone === "success") {
+    applicationHint.classList.add("is-success");
+  }
+};
+
 const setAuthMode = (mode) => {
   authMode = mode;
 
   const { loginModal, authSubtitle, authSubmit, authTabs, confirmField, confirmInput, passwordInput } =
-    getModalElements();
+    getLoginModalElements();
 
   loginModal.querySelector(".modal-title").textContent = authCopy[mode].title;
   authSubtitle.textContent = authCopy[mode].subtitle;
@@ -234,7 +307,7 @@ const setAuthMode = (mode) => {
 };
 
 const updateAuthView = () => {
-  const { loginForm, statusCard, statusEmail, statusHint, adminLink, signOutButton } = getModalElements();
+  const { loginForm, statusCard, statusEmail, statusHint, adminLink, signOutButton } = getLoginModalElements();
 
   if (currentUser) {
     loginForm.hidden = true;
@@ -242,9 +315,7 @@ const updateAuthView = () => {
     signOutButton.hidden = false;
     adminLink.hidden = !currentUserIsAdmin;
     statusEmail.textContent = currentUser.email || "";
-    statusHint.textContent = currentUserIsAdmin
-      ? "你目前是管理員，可以查看會員名單。"
-      : "你已登入社員入口。";
+    statusHint.textContent = currentUserIsAdmin ? "你目前是管理員，可以進入審核後台。" : "你已登入社員入口。";
     return;
   }
 
@@ -269,6 +340,7 @@ const updateLoginButtons = () => {
 
 const getAdminDocRef = (uid) => doc(db, "admins", uid);
 const getMemberDocRef = (uid) => doc(db, "members", uid);
+const getApprovalDocRef = (email) => doc(db, "signupApprovals", getApprovalDocId(email));
 
 const loadAdminStatus = async (user) => {
   if (!db || !user?.uid) {
@@ -319,8 +391,8 @@ const ensureAuthReady = async () => {
 };
 
 const openLoginModal = async (trigger) => {
-  const { loginModal, emailInput } = getModalElements();
-  lastTrigger = trigger || null;
+  const { loginModal, emailInput } = getLoginModalElements();
+  lastLoginTrigger = trigger || null;
   loginModal.hidden = false;
   body.classList.add("modal-open");
 
@@ -336,12 +408,39 @@ const openLoginModal = async (trigger) => {
 };
 
 const closeLoginModal = () => {
-  const { loginModal } = getModalElements();
+  const { loginModal } = getLoginModalElements();
   loginModal.hidden = true;
   body.classList.remove("modal-open");
 
-  if (lastTrigger) {
-    lastTrigger.focus();
+  if (lastLoginTrigger) {
+    lastLoginTrigger.focus();
+  }
+};
+
+const openApplicationModal = (trigger) => {
+  const { applicationModal, applicationType, applicationSubtitle } = getApplicationModalElements();
+  const type = "club";
+
+  lastApplicationTrigger = trigger || null;
+  applicationType.value = type;
+  applicationSubtitle.textContent = "先送出羽球社加入申請，等管理員審核與確認付款後，你才能建立登入帳號。";
+  applicationModal.hidden = false;
+  body.classList.add("modal-open");
+  setApplicationHint("送出後，管理員會在後台看到你的申請。");
+
+  const firstInput = applicationModal.querySelector("input, textarea");
+  if (firstInput) {
+    window.setTimeout(() => firstInput.focus(), 50);
+  }
+};
+
+const closeApplicationModal = () => {
+  const { applicationModal } = getApplicationModalElements();
+  applicationModal.hidden = true;
+  body.classList.remove("modal-open");
+
+  if (lastApplicationTrigger) {
+    lastApplicationTrigger.focus();
   }
 };
 
@@ -379,6 +478,39 @@ const syncMemberProfile = async (user, source) => {
   await setDoc(memberRef, payload, { merge: true });
 };
 
+const ensureSignupApproved = async (email) => {
+  if (!db) {
+    return false;
+  }
+
+  const approvalDoc = await getDoc(getApprovalDocRef(email));
+  return approvalDoc.exists();
+};
+
+const syncApprovalFromApplication = async (applicationId, data) => {
+  const approvalRef = getApprovalDocRef(data.email || "");
+
+  if (data.approved && data.paid) {
+    await setDoc(
+      approvalRef,
+      {
+        email: data.email || "",
+        applicationId,
+        applicationType: data.applicationType || "club",
+        approvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return;
+  }
+
+  const approvalDoc = await getDoc(approvalRef);
+  if (approvalDoc.exists()) {
+    await deleteDoc(approvalRef);
+  }
+};
+
 const formatTimestamp = (value) => {
   if (!value?.toDate) {
     return "尚未記錄";
@@ -390,6 +522,80 @@ const formatTimestamp = (value) => {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+  });
+};
+
+const renderApplications = async () => {
+  const applicationList = document.querySelector("[data-application-list]");
+  if (!applicationList) {
+    return;
+  }
+
+  const applicationsQuery = query(collection(db, "applications"), orderBy("submittedAt", "desc"));
+  const snapshot = await getDocs(applicationsQuery);
+  const applications = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+
+  if (applications.length === 0) {
+    applicationList.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">目前沒有待處理申請</h3>
+        <p class="content-copy">等有人送出社團或社課申請後，這裡就會出現通知。</p>
+      </article>
+    `;
+    return;
+  }
+
+  applicationList.innerHTML = applications
+    .map((application) => {
+      const approved = Boolean(application.approved);
+      const paid = Boolean(application.paid);
+      return `
+        <article class="member-row">
+          <div class="member-row-top">
+            <p class="member-row-index">社團申請</p>
+            <p class="member-row-status">${approved && paid ? "ready" : "pending"}</p>
+          </div>
+          <p class="member-row-email">${application.name || "未填姓名"} / ${application.email || "未填信箱"}</p>
+          <div class="member-row-meta">
+            <span>學校 / 單位：${application.school || "未填寫"}</span>
+            <span>送出時間：${formatTimestamp(application.submittedAt)}</span>
+            <span>備註：${application.note || "無"}</span>
+          </div>
+          <div class="application-actions">
+            <button class="button-secondary application-toggle" data-application-action="approve" data-application-id="${application.id}" data-approved="${approved}">
+              ${approved ? "取消審核通過" : "審核通過"}
+            </button>
+            <button class="button-secondary application-toggle" data-application-action="paid" data-application-id="${application.id}" data-paid="${paid}">
+              ${paid ? "取消付款完成" : "付款完成"}
+            </button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  applicationList.querySelectorAll("[data-application-action]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const id = button.dataset.applicationId;
+      const action = button.dataset.applicationAction;
+      const applicationRef = doc(db, "applications", id);
+      const currentDoc = await getDoc(applicationRef);
+
+      if (!currentDoc.exists()) {
+        return;
+      }
+
+      const data = currentDoc.data();
+      const nextData =
+        action === "approve"
+          ? { approved: !Boolean(data.approved), updatedAt: serverTimestamp() }
+          : { paid: !Boolean(data.paid), updatedAt: serverTimestamp() };
+
+      await updateDoc(applicationRef, nextData);
+      const updatedDoc = await getDoc(applicationRef);
+      await syncApprovalFromApplication(id, updatedDoc.data());
+      await renderMembersPage();
+    });
   });
 };
 
@@ -422,7 +628,7 @@ const renderMembersPage = async () => {
     content.hidden = true;
     gate.innerHTML = `
       <h2 class="content-title">請先登入管理頁</h2>
-      <p class="content-copy">先用右上角 <code>Sign In</code> 登入，再回到這裡查看名單。</p>
+      <p class="content-copy">先用右上角 <code>Sign In</code> 登入，再回到這裡查看待審核名單。</p>
     `;
     return;
   }
@@ -432,7 +638,7 @@ const renderMembersPage = async () => {
     content.hidden = true;
     gate.innerHTML = `
       <h2 class="content-title">這個帳號目前沒有管理權限</h2>
-      <p class="content-copy">請到 Firestore 建立 <code>admins/${currentUser.uid}</code> 文件，之後重新整理頁面。</p>
+      <p class="content-copy">請在 Firestore 建立 <code>admins/${currentUser.uid}</code> 文件後，再重新整理頁面。</p>
     `;
     return;
   }
@@ -441,31 +647,28 @@ const renderMembersPage = async () => {
   content.hidden = false;
 
   const membersQuery = query(collection(db, "members"), orderBy("createdAt", "desc"));
-  const snapshot = await getDocs(membersQuery);
-  const members = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+  const membersSnapshot = await getDocs(membersQuery);
+  const members = membersSnapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+
+  const applicationsQuery = query(collection(db, "applications"), orderBy("submittedAt", "desc"));
+  const applicationsSnapshot = await getDocs(applicationsQuery);
+  const applications = applicationsSnapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+  const pendingApplications = applications.filter((application) => !application.approved || !application.paid);
 
   summary.innerHTML = `
     <article class="member-stat">
-      <p class="member-stat-label">總註冊人數</p>
-      <p class="member-stat-value">${members.length}</p>
+      <p class="member-stat-label">待審核申請</p>
+      <p class="member-stat-value">${pendingApplications.length}</p>
     </article>
     <article class="member-stat">
-      <p class="member-stat-label">目前登入管理者</p>
-      <p class="member-stat-value member-stat-value-small">${currentUser.email || "未登入"}</p>
+      <p class="member-stat-label">已建立帳號</p>
+      <p class="member-stat-value">${members.length}</p>
     </article>
   `;
 
-  if (members.length === 0) {
-    list.innerHTML = `
-      <article class="content-card is-tight">
-        <h3 class="content-title">目前還沒有註冊資料</h3>
-        <p class="content-copy">等第一位社員完成註冊後，這裡就會出現名單。</p>
-      </article>
-    `;
-    return;
-  }
+  await renderApplications();
 
-  list.innerHTML = members
+  const memberRows = members
     .map(
       (member, index) => `
         <article class="member-row">
@@ -483,23 +686,30 @@ const renderMembersPage = async () => {
       `,
     )
     .join("");
+
+  list.innerHTML = memberRows || `
+    <article class="content-card is-tight">
+      <h3 class="content-title">目前還沒有已註冊帳號</h3>
+      <p class="content-copy">等申請通過、付款完成且註冊成功後，這裡就會出現帳號名單。</p>
+    </article>
+  `;
 };
 
 const handleAuthSubmit = async (event) => {
   event.preventDefault();
 
-  const { emailInput, passwordInput, confirmInput, authSubmit } = getModalElements();
-  const email = normalizeSchoolEmail(emailInput.value);
+  const { emailInput, passwordInput, confirmInput, authSubmit } = getLoginModalElements();
+  const email = emailInput.value.trim().toLowerCase();
   const password = passwordInput.value;
   const passwordConfirm = confirmInput.value;
 
   if (!firebaseConfigured) {
-    setHint("Firebase 尚未設定完成，請先填寫 src/firebase-config.js。", "error");
+    setHint("Firebase 尚未設定完成。請先填寫 src/firebase-config.js。", "error");
     return;
   }
 
-  if (!isAllowedSchoolEmail(email)) {
-    setHint(`只接受 ${allowedEmailDomain} 信箱註冊或登入。`, "error");
+  if (!email.includes("@")) {
+    setHint("請輸入正確的信箱。", "error");
     return;
   }
 
@@ -522,6 +732,12 @@ const handleAuthSubmit = async (event) => {
     }
 
     if (authMode === "signup") {
+      const approved = await ensureSignupApproved(email);
+      if (!approved) {
+        setHint("這個信箱尚未完成審核或付款，請先到報名頁送出申請。", "error");
+        return;
+      }
+
       const credential = await createUserWithEmailAndPassword(readyAuth, email, password);
       await syncMemberProfile(credential.user, "signup");
       setHint("帳號建立完成，已自動登入。", "success");
@@ -536,6 +752,54 @@ const handleAuthSubmit = async (event) => {
     setHint(getFriendlyAuthError(error), "error");
   } finally {
     authSubmit.disabled = false;
+  }
+};
+
+const handleApplicationSubmit = async (event) => {
+  event.preventDefault();
+
+  const { applicationForm, applicationHint, submitButton } = getApplicationModalElements();
+  const formData = new FormData(applicationForm);
+  const name = String(formData.get("name") || "").trim();
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  const school = String(formData.get("school") || "").trim();
+  const note = String(formData.get("note") || "").trim();
+  const applicationType = String(formData.get("applicationType") || "club");
+
+  if (!firebaseConfigured) {
+    setApplicationHint("Firebase 尚未設定完成。請先填寫 src/firebase-config.js。", "error");
+    return;
+  }
+
+  if (!name || !email || !school) {
+    setApplicationHint("請至少填寫姓名、信箱與學校 / 單位。", "error");
+    return;
+  }
+
+  submitButton.disabled = true;
+
+  try {
+    await ensureAuthReady();
+
+    await addDoc(collection(db, "applications"), {
+      name,
+      email,
+      school,
+      note,
+      applicationType,
+      approved: false,
+      paid: false,
+      submittedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    applicationForm.reset();
+    setApplicationHint("申請已送出。等管理員審核並確認付款後，你就能建立登入帳號。", "success");
+  } catch (error) {
+    applicationHint.textContent = "送出申請時發生問題，請稍後再試。";
+    applicationHint.classList.add("is-error");
+  } finally {
+    submitButton.disabled = false;
   }
 };
 
@@ -554,7 +818,7 @@ const handleSignOut = async () => {
 };
 
 const bindLoginModalEvents = () => {
-  const { loginModal, loginForm, authTabs, signOutButton, closeButtons } = getModalElements();
+  const { loginModal, loginForm, authTabs, signOutButton, closeButtons } = getLoginModalElements();
 
   authTabs.forEach((tab) => {
     tab.addEventListener("click", () => setAuthMode(tab.dataset.authTab));
@@ -575,11 +839,32 @@ const bindLoginModalEvents = () => {
   });
 };
 
-const bindOpenLoginButtons = () => {
+const bindApplicationModalEvents = () => {
+  const { applicationModal, applicationForm, closeButtons } = getApplicationModalElements();
+
+  applicationForm.addEventListener("submit", handleApplicationSubmit);
+
+  closeButtons.forEach((button) => {
+    button.addEventListener("click", closeApplicationModal);
+  });
+
+  applicationModal.addEventListener("click", (event) => {
+    const target = event.target;
+    if (target === applicationModal || target.hasAttribute("data-modal-backdrop")) {
+      closeApplicationModal();
+    }
+  });
+};
+
+const bindOpenButtons = () => {
   rememberLoginButtonLabels();
 
   getLoginButtons().forEach((button) => {
     button.addEventListener("click", () => openLoginModal(button));
+  });
+
+  getApplicationButtons().forEach((button) => {
+    button.addEventListener("click", () => openApplicationModal(button));
   });
 };
 
@@ -639,9 +924,15 @@ const initKeybindings = () => {
     if (event.key === "Escape") {
       closeMobileNav();
 
-      const { loginModal } = getModalElements();
+      const { loginModal } = getLoginModalElements();
+      const { applicationModal } = getApplicationModalElements();
+
       if (!loginModal.hidden) {
         closeLoginModal();
+      }
+
+      if (!applicationModal.hidden) {
+        closeApplicationModal();
       }
     }
   });
@@ -649,8 +940,10 @@ const initKeybindings = () => {
 
 const init = async () => {
   ensureLoginModal();
+  ensureApplicationModal();
   bindLoginModalEvents();
-  bindOpenLoginButtons();
+  bindApplicationModalEvents();
+  bindOpenButtons();
   initMenu();
   initLanguageSwitcher();
   initFaqAccordion();
@@ -661,7 +954,7 @@ const init = async () => {
   if (firebaseConfigured) {
     await ensureAuthReady();
   } else {
-    setHint("這裡已經接好 Firebase 登入流程，下一步只要填入 Firebase 設定就能啟用。");
+    setHint("這裡已經接好 Firebase 流程，下一步只要填入設定就能啟用。");
   }
 
   if (pageName === "members") {
