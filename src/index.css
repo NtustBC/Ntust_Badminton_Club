@@ -80,6 +80,10 @@ img {
   max-width: 100%;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 ::selection {
   background: var(--brand);
   color: #ffffff;
@@ -1306,6 +1310,97 @@ img {
 
 .modal-submit {
   width: 100%;
+}
+
+.auth-modal-dialog {
+  width: min(480px, calc(100% - 28px));
+}
+
+.auth-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 22px;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(15, 76, 129, 0.06);
+}
+
+.auth-tab {
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 800;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.auth-tab.is-active {
+  background: #ffffff;
+  color: var(--ink);
+  box-shadow: 0 10px 20px rgba(15, 76, 129, 0.08);
+}
+
+.auth-tab:hover,
+.auth-tab:focus-visible {
+  color: var(--ink);
+  outline: none;
+}
+
+.auth-status-card {
+  display: grid;
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid rgba(15, 76, 129, 0.1);
+  border-radius: var(--radius-md);
+  background: rgba(245, 248, 252, 0.92);
+}
+
+.auth-status-label {
+  margin: 0;
+  color: var(--brand);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.auth-status-email {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.auth-signout {
+  justify-self: start;
+  min-width: 136px;
+  margin-top: 6px;
+}
+
+.login-note {
+  margin: 0;
+}
+
+.login-note.is-error {
+  color: #a63c3c;
+}
+
+.login-note.is-success {
+  color: #0f6b48;
+}
+
+.modal-close span {
+  display: inline-block;
+  transform: rotate(45deg);
+  font-size: 1.2rem;
+  line-height: 1;
 }
 
 .visually-hidden {
