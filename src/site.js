@@ -20,7 +20,7 @@ import {
   setDoc,
   updateDoc,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
-import { firebaseConfig } from "./firebase-config.js";
+import { bootstrapAdminEmail, firebaseConfig } from "./firebase-config.js";
 
 const body = document.body;
 const pageName = body.dataset.page || "";
@@ -179,6 +179,7 @@ const applicationModalMarkup = `
 const getLoginButtons = () => document.querySelectorAll("[data-open-login]");
 const getApplicationButtons = () => document.querySelectorAll("[data-open-application]");
 const getApprovalDocId = (email) => email.trim().toLowerCase();
+const normalizedBootstrapAdminEmail = bootstrapAdminEmail.trim().toLowerCase();
 
 const rememberLoginButtonLabels = () => {
   getLoginButtons().forEach((button) => {
@@ -482,9 +483,34 @@ const syncMemberProfile = async (user, source) => {
   await setDoc(memberRef, payload, { merge: true });
 };
 
+const isBootstrapAdminEmail = (email) => email.trim().toLowerCase() === normalizedBootstrapAdminEmail;
+
+const ensureBootstrapAdminDoc = async (user) => {
+  if (!db || !user?.uid || !isBootstrapAdminEmail(user.email || "")) {
+    return;
+  }
+
+  const adminRef = getAdminDocRef(user.uid);
+  const existingAdmin = await getDoc(adminRef);
+  if (existingAdmin.exists()) {
+    return;
+  }
+
+  await setDoc(adminRef, {
+    uid: user.uid,
+    email: user.email || "",
+    role: "admin",
+    createdAt: serverTimestamp(),
+  });
+};
+
 const ensureSignupApproved = async (email) => {
   if (!db) {
     return false;
+  }
+
+  if (isBootstrapAdminEmail(email)) {
+    return true;
   }
 
   const approvalDoc = await getDoc(getApprovalDocRef(email));
@@ -744,10 +770,13 @@ const handleAuthSubmit = async (event) => {
 
       const credential = await createUserWithEmailAndPassword(readyAuth, email, password);
       await syncMemberProfile(credential.user, "signup");
+      await ensureBootstrapAdminDoc(credential.user);
+      await loadAdminStatus(credential.user);
       setHint("帳號建立完成，已自動登入。", "success");
     } else {
       const credential = await signInWithEmailAndPassword(readyAuth, email, password);
       await syncMemberProfile(credential.user, "signin");
+      await loadAdminStatus(credential.user);
       setHint("登入成功。", "success");
     }
 

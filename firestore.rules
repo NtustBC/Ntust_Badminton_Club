@@ -19,7 +19,10 @@ service cloud.firestore {
 
     match /admins/{userId} {
       allow read: if isSignedIn() && request.auth.uid == userId;
-      allow write: if false;
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && request.auth.token.email == "admin@gmail.com";
+      allow update, delete: if false;
     }
 
     match /{document=**} {
