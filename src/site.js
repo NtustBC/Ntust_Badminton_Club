@@ -1,8 +1,4 @@
-const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-const canUseWheelSmoothing = window.matchMedia('(pointer: fine)').matches
-
 const body = document.body
-const root = document.documentElement
 const menuButton = document.querySelector('[data-menu-toggle]')
 const mobileNav = document.querySelector('[data-mobile-nav]')
 const loginButtons = document.querySelectorAll('[data-open-login]')
@@ -11,38 +7,10 @@ const loginModal = document.querySelector('[data-login-modal]')
 const loginForm = document.querySelector('[data-login-form]')
 const languageSelects = document.querySelectorAll('[data-language-select]')
 
-let currentY = window.scrollY
-let targetY = window.scrollY
-let animationFrame = null
 let lastTrigger = null
 
-const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
-const maxScroll = () => Math.max(0, root.scrollHeight - window.innerHeight)
-
-const tick = () => {
-  currentY += (targetY - currentY) * 0.12
-
-  if (Math.abs(targetY - currentY) < 0.4) {
-    currentY = targetY
-    window.scrollTo(0, currentY)
-    animationFrame = null
-    return
-  }
-
-  window.scrollTo(0, currentY)
-  animationFrame = window.requestAnimationFrame(tick)
-}
-
-const requestScroll = (value) => {
-  targetY = clamp(value, 0, maxScroll())
-
-  if (!animationFrame) {
-    animationFrame = window.requestAnimationFrame(tick)
-  }
-}
-
 const applyLanguage = (lang) => {
-  root.lang = lang
+  document.documentElement.lang = lang
   body.dataset.language = lang
 
   languageSelects.forEach((select) => {
@@ -89,46 +57,6 @@ const closeLoginModal = () => {
     lastTrigger.focus()
   }
 }
-
-if (!prefersReducedMotion && canUseWheelSmoothing) {
-  window.addEventListener(
-    'wheel',
-    (event) => {
-      if (event.ctrlKey || (loginModal && !loginModal.hidden)) {
-        return
-      }
-
-      const activeElement = document.activeElement
-      const isFormElement =
-        activeElement &&
-        (
-          activeElement.tagName === 'INPUT' ||
-          activeElement.tagName === 'TEXTAREA' ||
-          activeElement.tagName === 'SELECT' ||
-          activeElement.isContentEditable
-        )
-
-      if (isFormElement) {
-        return
-      }
-
-      event.preventDefault()
-      requestScroll(targetY + event.deltaY * 0.96)
-    },
-    { passive: false },
-  )
-}
-
-window.addEventListener(
-  'scroll',
-  () => {
-    if (!animationFrame) {
-      currentY = window.scrollY
-      targetY = window.scrollY
-    }
-  },
-  { passive: true },
-)
 
 if (menuButton && mobileNav) {
   menuButton.addEventListener('click', () => {
