@@ -99,7 +99,7 @@ const loginModalMarkup = `
           </div>
         </div>
 
-        <form class="form-grid" data-login-form novalidate>
+        <form class="form-grid" data-login-form id="login-form" novalidate>
           <div class="form-field">
             <label for="login-email">信箱</label>
             <input id="login-email" name="email" placeholder="your@email.com" type="email" autocomplete="email" />
@@ -125,8 +125,10 @@ const loginModalMarkup = `
             />
           </div>
           <p class="login-note" data-login-hint></p>
-          <button class="login-button modal-submit" data-auth-submit type="submit">Sign In</button>
         </form>
+      </div>
+      <div class="modal-footer">
+        <button class="login-button modal-submit" data-auth-submit form="login-form" type="submit">Sign In</button>
       </div>
     </div>
   </div>
@@ -146,7 +148,7 @@ const applicationModalMarkup = `
         </button>
       </div>
       <div class="modal-body">
-        <form class="form-grid" data-application-form novalidate>
+        <form class="form-grid" data-application-form id="application-form" novalidate>
           <input data-application-type name="applicationType" type="hidden" value="club" />
           <div class="form-field">
             <label for="application-name">姓名</label>
@@ -165,8 +167,10 @@ const applicationModalMarkup = `
             <textarea id="application-note" name="note" rows="4" placeholder="可填寫身份、想報名的內容或付款說明。"></textarea>
           </div>
           <p class="login-note" data-application-hint></p>
-          <button class="login-button modal-submit" data-application-submit type="submit">送出申請</button>
         </form>
+      </div>
+      <div class="modal-footer">
+        <button class="login-button modal-submit" data-application-submit form="application-form" type="submit">送出申請</button>
       </div>
     </div>
   </div>
