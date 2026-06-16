@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>社員名單 | 臺科大羽球社</title>
+    <meta
+      name="description"
+      content="臺科大羽球社 Firebase 註冊名單管理頁，查看目前註冊社員與最近登入狀態。"
+    />
+    <link rel="stylesheet" href="./src/index.css" />
+    <script defer type="module" src="./src/site.js"></script>
+  </head>
+  <body data-page="members">
+    <div id="page-top"></div>
+    <div class="page-shell">
+      <header class="site-header">
+        <div class="container header-inner">
+          <a class="brand" href="./index.html">
+            <span class="brand-mark">
+              <img alt="臺科大羽球社 Logo" src="./assets/club-logo-cropped.png" />
+            </span>
+            <span class="brand-copy">
+              <p class="brand-title">臺科大羽球社</p>
+              <p class="brand-subtitle">NTUST BADMINTON CLUB</p>
+            </span>
+          </a>
+
+          <nav class="site-nav" aria-label="主要導覽">
+            <a class="nav-link" href="./about.html">關於我們</a>
+            <a class="nav-link" href="./club-signup.html">社團報名</a>
+            <a class="nav-link" href="./class-signup.html">社課報名</a>
+            <a class="nav-link" href="./notices.html">公告</a>
+            <a class="nav-link" href="./faq.html">FAQ</a>
+          </nav>
+
+          <div class="header-actions">
+            <button class="login-button header-login" data-open-login type="button">Sign In</button>
+            <button
+              class="menu-button"
+              data-menu-toggle
+              type="button"
+              aria-expanded="false"
+              aria-label="開啟選單"
+            >
+              MENU
+            </button>
+          </div>
+        </div>
+
+        <div class="mobile-nav" data-mobile-nav>
+          <div class="container mobile-nav-grid">
+            <a class="nav-link" href="./about.html">關於我們</a>
+            <a class="nav-link" href="./club-signup.html">社團報名</a>
+            <a class="nav-link" href="./class-signup.html">社課報名</a>
+            <a class="nav-link" href="./notices.html">公告</a>
+            <a class="nav-link" href="./faq.html">FAQ</a>
+            <button class="login-button" data-open-login type="button">Sign In</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="page-main" id="top">
+        <div class="container">
+          <section class="page-hero">
+            <div class="hero-card">
+              <div class="eyebrow">Members Dashboard</div>
+              <h1 class="page-title">社員註冊名單</h1>
+              <p class="page-copy">
+                這裡會顯示透過 Firebase 註冊進來的社員帳號，方便你快速查看目前註冊數、信箱與最近登入時間。
+              </p>
+              <div class="page-actions">
+                <button class="button-primary" data-open-login type="button">
+                  登入管理頁
+                  <span aria-hidden="true">-></span>
+                </button>
+                <a class="button-secondary" href="./index.html">回到首頁</a>
+              </div>
+            </div>
+
+            <div class="side-card">
+              <div>
+                <p class="side-title">這裡看的是註冊帳號，不是完整社員資料</p>
+                <p class="side-copy">
+                  如果你之後想再追蹤姓名、系級、社費或報名紀錄，我們可以繼續在 Firestore 往下擴充欄位與管理介面。
+                </p>
+              </div>
+              <div class="logo-frame">
+                <img alt="臺科大羽球社 Logo" src="./assets/club-logo-cropped.png" />
+              </div>
+            </div>
+          </section>
+
+          <section class="section-shell">
+            <div class="section-header">
+              <div class="section-kicker">Overview</div>
+              <h2 class="page-title">監看註冊狀態</h2>
+              <p class="section-description">
+                這一頁只會在你登入後載入資料。若有設定管理員信箱，也會只讓指定信箱看到名單。
+              </p>
+            </div>
+
+            <article class="content-card members-gate" data-members-gate>
+              <h3 class="content-title">請先登入</h3>
+              <p class="content-copy">先點右上角 Sign In，之後這裡就會顯示社員名單。</p>
+            </article>
+
+            <div data-members-content hidden>
+              <div class="member-summary-grid" data-members-summary></div>
+              <div class="member-list" data-members-list></div>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <footer class="site-footer">
+        <div class="container">
+          <div class="footer-panel">
+            <div>
+              <div class="footer-brand">
+                <img alt="臺科大羽球社 Logo" src="./assets/club-logo-cropped.png" />
+                <div>
+                  <p class="footer-title">臺科大羽球社</p>
+                  <p class="brand-subtitle">NTUST BADMINTON CLUB</p>
+                </div>
+              </div>
+              <p class="footer-copy">社員名單頁目前以 Firebase Authentication 與 Firestore 為基礎管理。</p>
+              <div class="language-switch">
+                <label class="language-label" for="footer-language-members">LANGUAGE</label>
+                <select id="footer-language-members" class="language-select" data-language-select aria-label="選擇語言">
+                  <option value="zh-Hant">中文</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="footer-meta">
+              <div>
+                <p class="footer-heading">Contact</p>
+                <p class="footer-note">如果你想把這個頁面再變成更完整的社員後台，我們可以再接著擴充。</p>
+              </div>
+
+              <p class="footer-copyright">© 2026 臺科大羽球社 NTUST Badminton Club. All Rights Reserved.</p>
+
+              <ul class="footer-policy">
+                <li><a href="./privacy.html">隱私權政策</a></li>
+                <li>
+                  <a
+                    href="https://mail.google.com/mail/?view=cm&fs=1&to=ntustbc@gmail.com"
+                    target="_blank"
+                    rel="noreferrer"
+                    >聯絡我們</a
+                  >
+                </li>
+                <li>
+                  <a href="https://www.instagram.com/ntust_badminton/" target="_blank" rel="noreferrer">IG</a>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <a class="back-to-top" data-back-to-top href="#page-top" aria-label="回到頁首">
+          <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+            <path d="M6 14 12 8 18 14" />
+          </svg>
+        </a>
+      </footer>
+    </div>
+  </body>
+</html>

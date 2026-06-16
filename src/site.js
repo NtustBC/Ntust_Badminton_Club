@@ -6,19 +6,32 @@ import {
   signInWithEmailAndPassword,
   signOut,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  getFirestore,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { allowedEmailDomain, firebaseConfig } from "./firebase-config.js";
 
 const body = document.body;
+const pageName = body.dataset.page || "";
 const menuButton = document.querySelector("[data-menu-toggle]");
 const mobileNav = document.querySelector("[data-mobile-nav]");
 const languageSelects = document.querySelectorAll("[data-language-select]");
 
-let lastTrigger = null;
 let auth = null;
-let currentUser = null;
+let db = null;
 let authMode = "signin";
-let authInitialized = false;
 let authReadyPromise = null;
+let currentUser = null;
+let lastTrigger = null;
+let currentUserIsAdmin = false;
 
 const firebaseConfigured = Object.values(firebaseConfig).every(Boolean);
 
@@ -42,11 +55,11 @@ const authErrorMessages = {
   "auth/invalid-credential": "信箱或密碼不正確，請再確認一次。",
   "auth/invalid-email": "請輸入正確的學校信箱格式。",
   "auth/missing-password": "請輸入密碼。",
+  "auth/network-request-failed": "目前無法連線到 Firebase，請檢查網路後重試。",
   "auth/too-many-requests": "嘗試次數過多，請稍後再試。",
   "auth/user-disabled": "這個帳號目前無法使用，請聯絡管理者。",
   "auth/user-not-found": "找不到這個帳號，請先建立帳號。",
   "auth/weak-password": "密碼強度不足，請至少使用 8 碼。",
-  "auth/network-request-failed": "目前無法連線到 Firebase，請檢查網路後重試。",
 };
 
 const modalMarkup = `
@@ -76,7 +89,10 @@ const modalMarkup = `
           <p class="auth-status-label">Signed In</p>
           <p class="auth-status-email" data-auth-email></p>
           <p class="login-note" data-auth-status-hint></p>
-          <button class="button-secondary auth-signout" data-auth-signout type="button">Sign Out</button>
+          <div class="auth-status-actions">
+            <a class="button-secondary auth-admin-link" data-auth-admin-link href="./members.html" hidden>會員名單</a>
+            <button class="button-secondary auth-signout" data-auth-signout type="button">Sign Out</button>
+          </div>
         </div>
 
         <form class="form-grid" data-login-form novalidate>
@@ -128,9 +144,8 @@ const rememberLoginButtonLabels = () => {
   });
 };
 
-const isAllowedSchoolEmail = (email) => email.toLowerCase().endsWith(allowedEmailDomain);
-
 const normalizeSchoolEmail = (email) => email.trim().toLowerCase();
+const isAllowedSchoolEmail = (email) => normalizeSchoolEmail(email).endsWith(allowedEmailDomain);
 
 const getFriendlyAuthError = (error) =>
   authErrorMessages[error.code] || "登入流程出了點問題，請稍後再試一次。";
@@ -171,6 +186,7 @@ const getModalElements = () => {
     statusCard: loginModal.querySelector("[data-auth-status]"),
     statusEmail: loginModal.querySelector("[data-auth-email]"),
     statusHint: loginModal.querySelector("[data-auth-status-hint]"),
+    adminLink: loginModal.querySelector("[data-auth-admin-link]"),
     signOutButton: loginModal.querySelector("[data-auth-signout]"),
     closeButtons: loginModal.querySelectorAll("[data-close-login]"),
   };
@@ -178,7 +194,6 @@ const getModalElements = () => {
 
 const setHint = (message, tone = "default") => {
   const { loginHint } = getModalElements();
-
   loginHint.textContent = message;
   loginHint.classList.remove("is-error", "is-success");
 
@@ -219,20 +234,24 @@ const setAuthMode = (mode) => {
 };
 
 const updateAuthView = () => {
-  const { loginForm, statusCard, statusEmail, statusHint, signOutButton } = getModalElements();
+  const { loginForm, statusCard, statusEmail, statusHint, adminLink, signOutButton } = getModalElements();
 
   if (currentUser) {
     loginForm.hidden = true;
     statusCard.hidden = false;
     signOutButton.hidden = false;
+    adminLink.hidden = !currentUserIsAdmin;
     statusEmail.textContent = currentUser.email || "";
-    statusHint.textContent = "你已登入社員入口，之後可在這裡延伸串接報名或內部資料功能。";
+    statusHint.textContent = currentUserIsAdmin
+      ? "你目前是管理員，可以查看會員名單。"
+      : "你已登入社員入口。";
     return;
   }
 
   loginForm.hidden = false;
   statusCard.hidden = true;
   signOutButton.hidden = true;
+  adminLink.hidden = true;
   statusEmail.textContent = "";
   statusHint.textContent = "";
   setAuthMode(authMode);
@@ -248,27 +267,51 @@ const updateLoginButtons = () => {
   });
 };
 
+const getAdminDocRef = (uid) => doc(db, "admins", uid);
+const getMemberDocRef = (uid) => doc(db, "members", uid);
+
+const loadAdminStatus = async (user) => {
+  if (!db || !user?.uid) {
+    currentUserIsAdmin = false;
+    return false;
+  }
+
+  const adminDoc = await getDoc(getAdminDocRef(user.uid));
+  currentUserIsAdmin = adminDoc.exists();
+  return currentUserIsAdmin;
+};
+
 const ensureAuthReady = async () => {
   if (authReadyPromise) {
     return authReadyPromise;
   }
 
   if (!firebaseConfigured) {
-    setHint("請先到 src/firebase-config.js 填入 Firebase 專案設定，並在 Firebase Console 開啟 Email/Password 登入。");
+    setHint("請先在 src/firebase-config.js 填入 Firebase 專案設定。");
     return null;
   }
 
   authReadyPromise = (async () => {
     const app = initializeApp(firebaseConfig);
     auth = getAuth(app);
+    db = getFirestore(app);
 
-    onAuthStateChanged(auth, (user) => {
+    onAuthStateChanged(auth, async (user) => {
       currentUser = user;
+      currentUserIsAdmin = false;
+
+      if (user) {
+        await loadAdminStatus(user);
+      }
+
       updateLoginButtons();
       updateAuthView();
+
+      if (pageName === "members") {
+        await renderMembersPage();
+      }
     });
 
-    authInitialized = true;
     return auth;
   })();
 
@@ -277,12 +320,11 @@ const ensureAuthReady = async () => {
 
 const openLoginModal = async (trigger) => {
   const { loginModal, emailInput } = getModalElements();
-
   lastTrigger = trigger || null;
   loginModal.hidden = false;
   body.classList.add("modal-open");
 
-  if (!authInitialized && firebaseConfigured) {
+  if (firebaseConfigured) {
     await ensureAuthReady();
   }
 
@@ -295,7 +337,6 @@ const openLoginModal = async (trigger) => {
 
 const closeLoginModal = () => {
   const { loginModal } = getModalElements();
-
   loginModal.hidden = true;
   body.classList.remove("modal-open");
 
@@ -315,6 +356,135 @@ const applyLanguage = (lang) => {
   window.localStorage.setItem("ntust-badminton-language", lang);
 };
 
+const syncMemberProfile = async (user, source) => {
+  if (!db || !user?.uid) {
+    return;
+  }
+
+  const memberRef = getMemberDocRef(user.uid);
+  const existingDoc = await getDoc(memberRef);
+  const payload = {
+    uid: user.uid,
+    email: user.email || "",
+    lastLoginAt: serverTimestamp(),
+    source,
+    updatedAt: serverTimestamp(),
+  };
+
+  if (!existingDoc.exists()) {
+    payload.createdAt = serverTimestamp();
+    payload.status = "active";
+  }
+
+  await setDoc(memberRef, payload, { merge: true });
+};
+
+const formatTimestamp = (value) => {
+  if (!value?.toDate) {
+    return "尚未記錄";
+  }
+
+  return value.toDate().toLocaleString("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const renderMembersPage = async () => {
+  if (pageName !== "members") {
+    return;
+  }
+
+  const gate = document.querySelector("[data-members-gate]");
+  const content = document.querySelector("[data-members-content]");
+  const summary = document.querySelector("[data-members-summary]");
+  const list = document.querySelector("[data-members-list]");
+
+  if (!gate || !content || !summary || !list) {
+    return;
+  }
+
+  if (!firebaseConfigured) {
+    gate.hidden = false;
+    content.hidden = true;
+    gate.innerHTML = `
+      <h2 class="content-title">尚未完成 Firebase 設定</h2>
+      <p class="content-copy">請先在 <code>src/firebase-config.js</code> 填入 Firebase 專案資訊。</p>
+    `;
+    return;
+  }
+
+  if (!currentUser) {
+    gate.hidden = false;
+    content.hidden = true;
+    gate.innerHTML = `
+      <h2 class="content-title">請先登入管理頁</h2>
+      <p class="content-copy">先用右上角 <code>Sign In</code> 登入，再回到這裡查看名單。</p>
+    `;
+    return;
+  }
+
+  if (!currentUserIsAdmin) {
+    gate.hidden = false;
+    content.hidden = true;
+    gate.innerHTML = `
+      <h2 class="content-title">這個帳號目前沒有管理權限</h2>
+      <p class="content-copy">請到 Firestore 建立 <code>admins/${currentUser.uid}</code> 文件，之後重新整理頁面。</p>
+    `;
+    return;
+  }
+
+  gate.hidden = true;
+  content.hidden = false;
+
+  const membersQuery = query(collection(db, "members"), orderBy("createdAt", "desc"));
+  const snapshot = await getDocs(membersQuery);
+  const members = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+
+  summary.innerHTML = `
+    <article class="member-stat">
+      <p class="member-stat-label">總註冊人數</p>
+      <p class="member-stat-value">${members.length}</p>
+    </article>
+    <article class="member-stat">
+      <p class="member-stat-label">目前登入管理者</p>
+      <p class="member-stat-value member-stat-value-small">${currentUser.email || "未登入"}</p>
+    </article>
+  `;
+
+  if (members.length === 0) {
+    list.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">目前還沒有註冊資料</h3>
+        <p class="content-copy">等第一位社員完成註冊後，這裡就會出現名單。</p>
+      </article>
+    `;
+    return;
+  }
+
+  list.innerHTML = members
+    .map(
+      (member, index) => `
+        <article class="member-row">
+          <div class="member-row-top">
+            <p class="member-row-index">#${String(index + 1).padStart(2, "0")}</p>
+            <p class="member-row-status">${member.status || "active"}</p>
+          </div>
+          <p class="member-row-email">${member.email || "未提供信箱"}</p>
+          <div class="member-row-meta">
+            <span>UID：${member.uid || member.id}</span>
+            <span>建立時間：${formatTimestamp(member.createdAt)}</span>
+            <span>最近登入：${formatTimestamp(member.lastLoginAt)}</span>
+          </div>
+        </article>
+      `,
+    )
+    .join("");
+};
+
 const handleAuthSubmit = async (event) => {
   event.preventDefault();
 
@@ -324,7 +494,7 @@ const handleAuthSubmit = async (event) => {
   const passwordConfirm = confirmInput.value;
 
   if (!firebaseConfigured) {
-    setHint("Firebase 尚未設定完成。請先填寫 src/firebase-config.js。", "error");
+    setHint("Firebase 尚未設定完成，請先填寫 src/firebase-config.js。", "error");
     return;
   }
 
@@ -347,16 +517,17 @@ const handleAuthSubmit = async (event) => {
 
   try {
     const readyAuth = await ensureAuthReady();
-
     if (!readyAuth) {
       return;
     }
 
     if (authMode === "signup") {
-      await createUserWithEmailAndPassword(readyAuth, email, password);
+      const credential = await createUserWithEmailAndPassword(readyAuth, email, password);
+      await syncMemberProfile(credential.user, "signup");
       setHint("帳號建立完成，已自動登入。", "success");
     } else {
-      await signInWithEmailAndPassword(readyAuth, email, password);
+      const credential = await signInWithEmailAndPassword(readyAuth, email, password);
+      await syncMemberProfile(credential.user, "signin");
       setHint("登入成功。", "success");
     }
 
@@ -491,6 +662,10 @@ const init = async () => {
     await ensureAuthReady();
   } else {
     setHint("這裡已經接好 Firebase 登入流程，下一步只要填入 Firebase 設定就能啟用。");
+  }
+
+  if (pageName === "members") {
+    await renderMembersPage();
   }
 };
 
