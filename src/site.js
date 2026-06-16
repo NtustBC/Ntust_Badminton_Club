@@ -457,7 +457,7 @@ const ensureAuthReady = async () => {
       updateAuthView();
 
       if (pageName === "members") {
-        await refreshMembersDashboard();
+        await refreshMembersDashboardSafe();
       }
     });
 
@@ -677,12 +677,12 @@ const initMembersFilters = () => {
 
   yearSelect.addEventListener("change", async (event) => {
     memberFilters.year = event.target.value;
-    await refreshMembersDashboard();
+    await refreshMembersDashboardSafe();
   });
 
   termSelect.addEventListener("change", async (event) => {
     memberFilters.term = event.target.value;
-    await refreshMembersDashboard();
+    await refreshMembersDashboardSafe();
   });
 
   yearSelect.dataset.initialized = "true";
@@ -763,7 +763,7 @@ const initCustomAcademicYearControls = () => {
       .join("");
     memberFilters.year = value;
     customYearInput.value = "";
-    await refreshMembersDashboard();
+    await refreshMembersDashboardSafe();
   });
 
   addAcademicYearButton.dataset.initialized = "true";
@@ -876,7 +876,7 @@ const renderApplications = async () => {
       const updatedDoc = await getDoc(applicationRef);
       await syncApprovalFromApplication(id, updatedDoc.data());
       await syncMemberRecordFromApplication(updatedDoc.data());
-      await refreshMembersDashboard();
+      await refreshMembersDashboardSafe();
     });
   });
 };
@@ -1085,7 +1085,7 @@ const renderApplicationReviewList = async (applications = []) => {
       await updateDoc(applicationRef, nextData);
       const updatedDoc = await getDoc(applicationRef);
       await syncApprovalFromApplication(id, updatedDoc.data());
-      await refreshMembersDashboard();
+      await refreshMembersDashboardSafe();
     });
   });
 };
@@ -1222,6 +1222,252 @@ const patchMembersFilterUI = () => {
         return `<option value="${value}"${selected}>${label}</option>`;
       })
       .join("");
+  }
+};
+
+const renderApplicationReviewListSafe = async (applications = []) => {
+  const applicationList = document.querySelector("[data-application-list]");
+  if (!applicationList) {
+    return;
+  }
+
+  const filteredApplications = applications.filter(matchesMemberFilter);
+
+  if (filteredApplications.length === 0) {
+    applicationList.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">目前沒有符合條件的申請</h3>
+        <p class="content-copy">請確認篩選條件，或先檢查 Firestore 的 applications 集合是否已有新資料。</p>
+      </article>
+    `;
+    return;
+  }
+
+  const yearOptions = buildAdminAcademicYearOptions()
+    .filter((value) => value !== "all")
+    .map((value) => `<option value="${value}">${getSafeAcademicYearLabel(value)}</option>`)
+    .join("");
+
+  const termOptions = [...adminAcademicTerms, "未設定"]
+    .map((value) => `<option value="${value}">${getSafeAcademicTermLabel(value)}</option>`)
+    .join("");
+
+  applicationList.innerHTML = filteredApplications
+    .map((application) => {
+      const approved = Boolean(application.approved);
+      const paid = Boolean(application.paid);
+      const academicYear = application.academicYear || String(Math.max(getRocAcademicYear(), minAcademicYear));
+      const term = application.term || "未設定";
+      const statusLabel = approved && paid ? "ready" : approved ? "awaiting payment" : "pending";
+
+      return `
+        <article class="member-row">
+          <div class="member-row-top">
+            <p class="member-row-index">加入申請</p>
+            <p class="member-row-status">${statusLabel}</p>
+          </div>
+          <p class="member-row-email">${application.name || "未填姓名"} / ${application.email || "未填信箱"}</p>
+          <div class="member-row-meta">
+            <span>學校 / 單位：${application.school || "未填寫"}</span>
+            <span>送出時間：${formatTimestamp(application.submittedAt)}</span>
+            <span>備註：${application.note || "無"}</span>
+          </div>
+          <div class="member-row-controls">
+            <div class="form-field">
+              <label for="safe-application-year-${application.id}">學年度</label>
+              <select id="safe-application-year-${application.id}" data-application-year data-application-id="${application.id}">
+                ${yearOptions.replace(`value="${academicYear}"`, `value="${academicYear}" selected`)}
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="safe-application-term-${application.id}">學期</label>
+              <select id="safe-application-term-${application.id}" data-application-term data-application-id="${application.id}">
+                ${termOptions.replace(`value="${term}"`, `value="${term}" selected`)}
+              </select>
+            </div>
+          </div>
+          <div class="application-actions">
+            <button class="button-secondary application-toggle ${approved ? "is-active" : ""}" data-application-action="approve" data-application-id="${application.id}">
+              ${approved ? "已同意" : "同意申請"}
+            </button>
+            <button class="button-secondary application-toggle ${paid ? "is-active" : ""}" data-application-action="paid" data-application-id="${application.id}">
+              ${paid ? "已付款" : "確認付款"}
+            </button>
+            <button class="button-secondary application-save" data-application-action="save-meta" data-application-id="${application.id}">
+              儲存學期資料
+            </button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  applicationList.querySelectorAll("[data-application-action]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const id = button.dataset.applicationId;
+      const action = button.dataset.applicationAction;
+      const applicationRef = doc(db, "applications", id);
+      const currentDoc = await getDoc(applicationRef);
+
+      if (!currentDoc.exists()) {
+        return;
+      }
+
+      const yearSelect = applicationList.querySelector(`[data-application-year][data-application-id="${id}"]`);
+      const termSelect = applicationList.querySelector(`[data-application-term][data-application-id="${id}"]`);
+      const academicYear = yearSelect?.value || "未設定";
+      const term = termSelect?.value || "未設定";
+      const data = currentDoc.data();
+      const nextData = {
+        academicYear,
+        term,
+        updatedAt: serverTimestamp(),
+      };
+
+      if (action === "approve") {
+        nextData.approved = !Boolean(data.approved);
+      } else if (action === "paid") {
+        nextData.paid = !Boolean(data.paid);
+      }
+
+      await updateDoc(applicationRef, nextData);
+      const updatedDoc = await getDoc(applicationRef);
+      await syncApprovalFromApplication(id, updatedDoc.data());
+      await syncMemberRecordFromApplication(updatedDoc.data());
+      await refreshMembersDashboardSafe();
+    });
+  });
+};
+
+const refreshMembersDashboardSafe = async () => {
+  if (pageName !== "members") {
+    return;
+  }
+
+  const gate = document.querySelector("[data-members-gate]");
+  const content = document.querySelector("[data-members-content]");
+  const summary = document.querySelector("[data-members-summary]");
+  const list = document.querySelector("[data-members-list]");
+  const applicationList = document.querySelector("[data-application-list]");
+
+  if (!gate || !content || !summary || !list || !applicationList) {
+    return;
+  }
+
+  if (!firebaseConfigured) {
+    gate.hidden = false;
+    content.hidden = true;
+    gate.innerHTML = `
+      <h2 class="content-title">請先完成 Firebase 設定</h2>
+      <p class="content-copy">請先在 <code>src/firebase-config.js</code> 填入正確的 Firebase 專案資訊。</p>
+    `;
+    return;
+  }
+
+  if (!currentUser) {
+    gate.hidden = false;
+    content.hidden = true;
+    gate.innerHTML = `
+      <h2 class="content-title">請先登入管理員帳號</h2>
+      <p class="content-copy">先按右上角 <code>Sign In</code>，登入後才可以查看審核後台與社員名單。</p>
+    `;
+    return;
+  }
+
+  if (!currentUserIsAdmin) {
+    gate.hidden = false;
+    content.hidden = true;
+    gate.innerHTML = `
+      <h2 class="content-title">這個帳號還不是管理員</h2>
+      <p class="content-copy">請確認 Firestore 裡存在 <code>admins/${currentUser.uid}</code> 這份文件。</p>
+    `;
+    return;
+  }
+
+  gate.hidden = true;
+  content.hidden = false;
+  initMembersFilters();
+  initCustomAcademicYearControls();
+  patchMembersFilterUI();
+
+  try {
+    const membersQuery = query(collection(db, "members"), orderBy("createdAt", "desc"));
+    const membersSnapshot = await getDocs(membersQuery);
+    const members = membersSnapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+
+    const applicationsQuery = query(collection(db, "applications"), orderBy("submittedAt", "desc"));
+    const applicationsSnapshot = await getDocs(applicationsQuery);
+    const applications = applicationsSnapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+
+    const filteredMembers = members.filter(matchesMemberFilter);
+    const pendingApplications = applications.filter((application) => !application.approved || !application.paid);
+
+    summary.innerHTML = `
+      <article class="member-stat">
+        <p class="member-stat-label">待審核申請</p>
+        <p class="member-stat-value">${pendingApplications.length}</p>
+      </article>
+      <article class="member-stat">
+        <p class="member-stat-label">目前篩選社員</p>
+        <p class="member-stat-value">${filteredMembers.length}</p>
+      </article>
+      <article class="member-stat">
+        <p class="member-stat-label">目前學期</p>
+        <p class="member-stat-value member-stat-value-small">${memberFilters.year === "all" ? "全部學年度" : getSafeAcademicYearLabel(memberFilters.year)}<br />${memberFilters.term === "all" ? "全部學期" : getSafeAcademicTermLabel(memberFilters.term)}</p>
+      </article>
+    `;
+
+    await renderApplicationReviewListSafe(applications);
+
+    const memberRows = filteredMembers
+      .map(
+        (member, index) => `
+          <article class="member-row">
+            <div class="member-row-top">
+              <p class="member-row-index">#${String(index + 1).padStart(2, "0")}</p>
+              <p class="member-row-status">${member.status || "active"}</p>
+            </div>
+            <p class="member-row-email">${member.email || "未填信箱"}</p>
+            <div class="member-row-meta">
+              <span>UID：${member.uid || member.id}</span>
+              <span>學年度：${getSafeAcademicYearLabel(member.academicYear || "未設定")}</span>
+              <span>學期：${getSafeAcademicTermLabel(member.term)}</span>
+              <span>學校 / 單位：${member.school || "未填寫"}</span>
+              <span>建立時間：${formatTimestamp(member.createdAt)}</span>
+              <span>最近登入：${formatTimestamp(member.lastLoginAt)}</span>
+            </div>
+          </article>
+        `,
+      )
+      .join("");
+
+    list.innerHTML =
+      memberRows ||
+      `
+        <article class="content-card is-tight">
+          <h3 class="content-title">這個篩選下還沒有社員</h3>
+          <p class="content-copy">可以先切換學年度或學期，或等社員完成審核、付款與註冊後再回來查看。</p>
+        </article>
+      `;
+  } catch (error) {
+    summary.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">後台讀取失敗</h3>
+        <p class="content-copy">請確認 Firestore rules 已發布，且目前管理員帳號有 applications 與 members 的讀取權限。</p>
+      </article>
+    `;
+    applicationList.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">無法載入申請資料</h3>
+        <p class="content-copy">${error?.message || "讀取 applications 時發生錯誤。"}</p>
+      </article>
+    `;
+    list.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">無法載入社員資料</h3>
+        <p class="content-copy">${error?.message || "讀取 members 時發生錯誤。"}</p>
+      </article>
+    `;
   }
 };
 
@@ -1497,7 +1743,7 @@ const init = async () => {
   }
 
   if (pageName === "members") {
-    await refreshMembersDashboard();
+    await refreshMembersDashboardSafe();
   }
 };
 
