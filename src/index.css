@@ -1458,6 +1458,15 @@ img {
   margin-top: 20px;
 }
 
+.member-filter-action {
+  align-self: end;
+}
+
+.member-filter-action .button-secondary {
+  width: 100%;
+  min-height: 52px;
+}
+
 .member-summary-grid {
   display: grid;
   gap: 18px;

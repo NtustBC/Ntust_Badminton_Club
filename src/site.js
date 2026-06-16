@@ -192,6 +192,10 @@ const memberFilters = {
   term: "all",
 };
 
+const adminAcademicTerms = ["上學期", "下學期"];
+const minAcademicYear = 115;
+const customAcademicYearsStorageKey = "ntust-badminton-custom-academic-years";
+
 const rememberLoginButtonLabels = () => {
   getLoginButtons().forEach((button) => {
     if (!button.dataset.defaultLabel) {
@@ -684,6 +688,87 @@ const initMembersFilters = () => {
   yearSelect.dataset.initialized = "true";
 };
 
+const getStoredAdminAcademicYears = () => {
+  try {
+    const raw = window.localStorage.getItem(customAcademicYearsStorageKey);
+    const parsed = raw ? JSON.parse(raw) : [];
+
+    return Array.from(
+      new Set(
+        parsed
+          .map((value) => String(value).trim())
+          .filter((value) => /^\d+$/.test(value) && Number(value) >= minAcademicYear),
+      ),
+    ).sort((left, right) => Number(right) - Number(left));
+  } catch {
+    return [];
+  }
+};
+
+const saveAdminAcademicYears = (years) => {
+  window.localStorage.setItem(customAcademicYearsStorageKey, JSON.stringify(years));
+};
+
+const buildAdminAcademicYearOptions = () => {
+  const currentYear = Math.max(getRocAcademicYear(), minAcademicYear);
+  const defaultYears = [];
+
+  for (let year = currentYear; year >= minAcademicYear; year -= 1) {
+    defaultYears.push(String(year));
+  }
+
+  return ["all", ...Array.from(new Set([...defaultYears, ...getStoredAdminAcademicYears()])).sort(
+    (left, right) => Number(right) - Number(left),
+  ), "未設定"];
+};
+
+const getSafeAcademicYearLabel = (value) => {
+  if (!value || value === "未設定") {
+    return "未設定";
+  }
+
+  return `${value} 學年度`;
+};
+
+const getSafeAcademicTermLabel = (value) => value || "未設定";
+
+const initCustomAcademicYearControls = () => {
+  const yearSelect = document.querySelector("[data-filter-year]");
+  const customYearInput = document.querySelector("[data-custom-year-input]");
+  const addAcademicYearButton = document.querySelector("[data-add-academic-year]");
+
+  if (!yearSelect || !customYearInput || !addAcademicYearButton || addAcademicYearButton.dataset.initialized === "true") {
+    return;
+  }
+
+  addAcademicYearButton.addEventListener("click", async () => {
+    const value = String(customYearInput.value || "").trim();
+
+    if (!/^\d+$/.test(value) || Number(value) < minAcademicYear) {
+      customYearInput.focus();
+      return;
+    }
+
+    const years = Array.from(new Set([...getStoredAdminAcademicYears(), value])).sort(
+      (left, right) => Number(right) - Number(left),
+    );
+
+    saveAdminAcademicYears(years);
+    yearSelect.innerHTML = buildAdminAcademicYearOptions()
+      .map((optionValue) => {
+        const label = optionValue === "all" ? "全部學年度" : getSafeAcademicYearLabel(optionValue);
+        const selected = optionValue === value ? " selected" : "";
+        return `<option value="${optionValue}"${selected}>${label}</option>`;
+      })
+      .join("");
+    memberFilters.year = value;
+    customYearInput.value = "";
+    await refreshMembersDashboard();
+  });
+
+  addAcademicYearButton.dataset.initialized = "true";
+};
+
 const syncMemberRecordFromApplication = async (application) => {
   if (!db || !application?.email) {
     return;
@@ -910,13 +995,13 @@ const renderApplicationReviewList = async (applications = []) => {
     return;
   }
 
-  const yearOptions = buildAcademicYearOptions()
+  const yearOptions = buildAdminAcademicYearOptions()
     .filter((value) => value !== "all")
-    .map((value) => `<option value="${value}">${getAcademicYearLabel(value)}</option>`)
+    .map((value) => `<option value="${value}">${getSafeAcademicYearLabel(value)}</option>`)
     .join("");
 
-  const termOptions = [...academicTerms, "未設定"]
-    .map((value) => `<option value="${value}">${getAcademicTermLabel(value)}</option>`)
+  const termOptions = [...adminAcademicTerms, "未設定"]
+    .map((value) => `<option value="${value}">${getSafeAcademicTermLabel(value)}</option>`)
     .join("");
 
   applicationList.innerHTML = filteredApplications
@@ -1052,6 +1137,8 @@ const refreshMembersDashboard = async () => {
   gate.hidden = true;
   content.hidden = false;
   initMembersFilters();
+  initCustomAcademicYearControls();
+  patchMembersFilterUI();
 
   const membersQuery = query(collection(db, "members"), orderBy("createdAt", "desc"));
   const membersSnapshot = await getDocs(membersQuery);
@@ -1075,7 +1162,7 @@ const refreshMembersDashboard = async () => {
     </article>
     <article class="member-stat">
       <p class="member-stat-label">目前學期</p>
-      <p class="member-stat-value member-stat-value-small">${memberFilters.year === "all" ? "全部學年度" : getAcademicYearLabel(memberFilters.year)}<br />${memberFilters.term === "all" ? "全部學期" : getAcademicTermLabel(memberFilters.term)}</p>
+      <p class="member-stat-value member-stat-value-small">${memberFilters.year === "all" ? "全部學年度" : getSafeAcademicYearLabel(memberFilters.year)}<br />${memberFilters.term === "all" ? "全部學期" : getSafeAcademicTermLabel(memberFilters.term)}</p>
     </article>
   `;
 
@@ -1092,8 +1179,8 @@ const refreshMembersDashboard = async () => {
           <p class="member-row-email">${member.email || "未填信箱"}</p>
           <div class="member-row-meta">
             <span>UID：${member.uid || member.id}</span>
-            <span>學年度：${getAcademicYearLabel(member.academicYear || "未設定")}</span>
-            <span>學期：${getAcademicTermLabel(member.term)}</span>
+            <span>學年度：${getSafeAcademicYearLabel(member.academicYear || "未設定")}</span>
+            <span>學期：${getSafeAcademicTermLabel(member.term)}</span>
             <span>學校 / 單位：${member.school || "未填寫"}</span>
             <span>建立時間：${formatTimestamp(member.createdAt)}</span>
             <span>最近登入：${formatTimestamp(member.lastLoginAt)}</span>
@@ -1111,6 +1198,31 @@ const refreshMembersDashboard = async () => {
         <p class="content-copy">可以先切換學年度或學期，或等社員完成審核、付款與註冊後再回來查看。</p>
       </article>
     `;
+};
+
+const patchMembersFilterUI = () => {
+  const yearSelect = document.querySelector("[data-filter-year]");
+  const termSelect = document.querySelector("[data-filter-term]");
+
+  if (yearSelect) {
+    yearSelect.innerHTML = buildAdminAcademicYearOptions()
+      .map((value) => {
+        const label = value === "all" ? "全部學年度" : getSafeAcademicYearLabel(value);
+        const selected = value === memberFilters.year ? " selected" : "";
+        return `<option value="${value}"${selected}>${label}</option>`;
+      })
+      .join("");
+  }
+
+  if (termSelect) {
+    termSelect.innerHTML = ["all", ...adminAcademicTerms, "未設定"]
+      .map((value) => {
+        const label = value === "all" ? "全部學期" : getSafeAcademicTermLabel(value);
+        const selected = value === memberFilters.term ? " selected" : "";
+        return `<option value="${value}"${selected}>${label}</option>`;
+      })
+      .join("");
+  }
 };
 
 const handleAuthSubmit = async (event) => {
@@ -1208,7 +1320,7 @@ const handleApplicationSubmit = async (event) => {
       school,
       note,
       applicationType,
-      academicYear: String(getRocAcademicYear()),
+      academicYear: String(Math.max(getRocAcademicYear(), minAcademicYear)),
       term: "未設定",
       approved: false,
       paid: false,
