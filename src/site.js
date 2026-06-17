@@ -14,7 +14,6 @@ import {
   getDoc,
   getDocs,
   getFirestore,
-  orderBy,
   query,
   serverTimestamp,
   setDoc,
@@ -35,8 +34,9 @@ const STORAGE_KEYS = {
 };
 
 const DEFAULT_TERMS = ["上學期", "下學期", "未設定"];
-const minAcademicYear = 115;
-const normalizedBootstrapAdminEmail = bootstrapAdminEmail.trim().toLowerCase();
+const MIN_ACADEMIC_YEAR = 115;
+const bootstrapAdminEmailNormalized = bootstrapAdminEmail.trim().toLowerCase();
+const firebaseConfigured = Object.values(firebaseConfig).every(Boolean);
 
 let auth = null;
 let db = null;
@@ -52,26 +52,24 @@ const memberFilters = {
   term: "all",
 };
 
-const firebaseConfigured = Object.values(firebaseConfig).every(Boolean);
-
 const authCopy = {
   signin: {
     title: "會員登入",
-    subtitle: "用你的社團帳號登入，就能查看個人狀態與管理功能。",
+    subtitle: "用社員帳號登入後，就能查看管理功能與個人狀態。",
     submitLabel: "Sign In",
     hint: "輸入已建立的帳號密碼即可登入。",
   },
   signup: {
     title: "建立帳號",
-    subtitle: "只有通過審核且已確認付款的社員，才能建立登入帳號。",
+    subtitle: "只有審核通過的社員，才能建立登入帳號。",
     submitLabel: "Create Account",
-    hint: "請使用審核時填寫的信箱建立帳號。",
+    hint: "請使用申請時填寫的同一個信箱建立帳號。",
   },
 };
 
 const signedInCopy = {
   title: "帳號資訊",
-  subtitle: "你目前已登入，可以在這裡查看帳號狀態或登出。",
+  subtitle: "你目前已登入，可以在這裡登出或前往管理頁。",
   buttonLabel: "Sign Out",
 };
 
@@ -161,7 +159,7 @@ const applicationModalMarkup = `
       <div class="modal-header">
         <div>
           <h2 class="modal-title" id="application-title">社員申請</h2>
-          <p class="modal-subtitle" data-application-subtitle>填完資料後送出，管理員審核並確認付款後，就能建立登入帳號。</p>
+          <p class="modal-subtitle" data-application-subtitle>填完資料後送出，管理員審核通過後就能建立登入帳號。</p>
         </div>
         <button class="modal-close" data-close-application type="button" aria-label="關閉申請視窗">
           <span aria-hidden="true">+</span>
@@ -180,7 +178,7 @@ const applicationModalMarkup = `
           </div>
           <div class="form-field">
             <label for="application-department">系別</label>
-            <input id="application-department" name="department" placeholder="資訊工程系" type="text" />
+            <input id="application-department" name="department" placeholder="機械系" type="text" />
           </div>
           <div class="form-field">
             <label for="application-phone">連絡電話</label>
@@ -194,7 +192,7 @@ const applicationModalMarkup = `
             <label for="application-note">備註</label>
             <textarea id="application-note" name="note" rows="4" placeholder="想補充的資訊可以寫在這裡"></textarea>
           </div>
-          <p class="login-note" data-application-hint>送出後我們會以信箱或社群聯繫你。</p>
+          <p class="login-note" data-application-hint>送出後管理員會再審核資料。</p>
         </form>
       </div>
       <div class="modal-footer">
@@ -215,8 +213,7 @@ const escapeHtml = (value) =>
 const getLoginButtons = () => document.querySelectorAll("[data-open-login]");
 const getApplicationButtons = () => document.querySelectorAll("[data-open-application]");
 const getApprovalDocId = (email) => email.trim().toLowerCase();
-
-const isBootstrapAdminEmail = (email) => email.trim().toLowerCase() === normalizedBootstrapAdminEmail;
+const isBootstrapAdminEmail = (email) => email.trim().toLowerCase() === bootstrapAdminEmailNormalized;
 
 const rememberLoginButtonLabels = () => {
   getLoginButtons().forEach((button) => {
@@ -233,7 +230,7 @@ const updateAdminNavigation = () => {
     return;
   }
 
-  const makeAdminLink = () => {
+  const makeLink = () => {
     const link = document.createElement("a");
     link.className = "nav-link";
     link.href = "./members.html";
@@ -244,13 +241,13 @@ const updateAdminNavigation = () => {
 
   const desktopNav = document.querySelector(".site-nav");
   if (desktopNav) {
-    desktopNav.append(makeAdminLink());
+    desktopNav.append(makeLink());
   }
 
   const mobileGrid = document.querySelector(".mobile-nav-grid");
   if (mobileGrid) {
     const loginButton = mobileGrid.querySelector(".login-button");
-    const link = makeAdminLink();
+    const link = makeLink();
     if (loginButton) {
       mobileGrid.insertBefore(link, loginButton);
     } else {
@@ -264,9 +261,7 @@ const updateLoginButtons = () => {
   updateAdminNavigation();
 
   getLoginButtons().forEach((button) => {
-    if (button.classList.contains("login-button")) {
-      button.textContent = currentUser ? "Account" : button.dataset.defaultLabel;
-    }
+    button.textContent = currentUser ? "Account" : button.dataset.defaultLabel;
   });
 };
 
@@ -350,13 +345,11 @@ const setMessageTone = (element, message, tone = "default") => {
 };
 
 const setHint = (message, tone = "default") => {
-  const { loginHint } = getLoginModalElements();
-  setMessageTone(loginHint, message, tone);
+  setMessageTone(getLoginModalElements().loginHint, message, tone);
 };
 
 const setApplicationHint = (message, tone = "default") => {
-  const { applicationHint } = getApplicationModalElements();
-  setMessageTone(applicationHint, message, tone);
+  setMessageTone(getApplicationModalElements().applicationHint, message, tone);
 };
 
 const setAuthMode = (mode) => {
@@ -369,8 +362,8 @@ const setAuthMode = (mode) => {
   authSubtitle.textContent = authCopy[mode].subtitle;
   authSubmit.textContent = authCopy[mode].submitLabel;
   confirmField.hidden = mode !== "signup";
-
   passwordInput.setAttribute("autocomplete", mode === "signup" ? "new-password" : "current-password");
+
   if (mode !== "signup") {
     confirmInput.value = "";
   }
@@ -397,7 +390,7 @@ const updateAuthView = () => {
     statusCard.hidden = false;
     authSwitch.hidden = true;
     statusEmail.textContent = currentUser.email || "";
-    statusHint.textContent = currentUserIsAdmin ? "你目前有管理員權限，可直接進入管理頁。" : "你已登入社員帳號。";
+    statusHint.textContent = currentUserIsAdmin ? "你目前有管理員權限。" : "你已登入社員帳號。";
     adminLink.hidden = !currentUserIsAdmin;
     authSubmit.textContent = signedInCopy.buttonLabel;
     authSubmit.dataset.authAction = "signout";
@@ -411,9 +404,9 @@ const updateAuthView = () => {
   loginForm.hidden = false;
   statusCard.hidden = true;
   authSwitch.hidden = false;
+  adminLink.hidden = true;
   statusEmail.textContent = "";
   statusHint.textContent = "";
-  adminLink.hidden = true;
   authSubmit.textContent = authCopy[authMode].submitLabel;
   authSubmit.dataset.authAction = "submit";
   authSubmit.setAttribute("form", "login-form");
@@ -516,8 +509,8 @@ const openApplicationModal = (trigger) => {
   applicationSubtitle.textContent =
     type === "class"
       ? "填完社課參與資料後送出，管理員會再和你確認後續安排。"
-      : "填完社員申請後送出，管理員審核並確認付款後，就能建立登入帳號。";
-  setApplicationHint("送出後我們會以信箱或社群聯繫你。");
+      : "填完社員申請後送出，管理員審核通過後就能建立登入帳號。";
+  setApplicationHint("送出後管理員會再審核資料。");
   applicationModal.hidden = false;
   body.classList.add("modal-open");
   closeMobileNav();
@@ -558,6 +551,7 @@ const syncMemberProfile = async (user, source) => {
   const existingDoc = await getDoc(memberRef);
   const approvalDoc = user.email ? await getDoc(getApprovalDocRef(user.email)) : null;
   const approvalData = approvalDoc?.exists() ? approvalDoc.data() : null;
+
   const payload = {
     uid: user.uid,
     email: user.email || "",
@@ -626,8 +620,9 @@ const syncApprovalFromApplication = async (applicationId, data) => {
   }
 
   const approvalRef = getApprovalDocRef(email);
+  const reviewStatus = data.reviewStatus || (data.approved ? "approved" : "pending");
 
-  if (data.approved && data.paid) {
+  if (reviewStatus === "approved") {
     await setDoc(
       approvalRef,
       {
@@ -680,6 +675,14 @@ const syncMemberRecordFromApplication = async (application) => {
   );
 };
 
+const getApplicationReviewStatus = (application) => {
+  if (application.reviewStatus) {
+    return application.reviewStatus;
+  }
+
+  return application.approved ? "approved" : "pending";
+};
+
 const getRocAcademicYear = (date = new Date()) => {
   const month = date.getMonth() + 1;
   const year = date.getFullYear() - 1911;
@@ -706,7 +709,7 @@ const saveAdminAcademicYears = (years) => {
 };
 
 const buildAcademicYearOptions = () => {
-  const baseYear = Math.max(getRocAcademicYear(), minAcademicYear);
+  const baseYear = Math.max(getRocAcademicYear(), MIN_ACADEMIC_YEAR);
   return ["all", ...Array.from({ length: 6 }, (_, index) => String(baseYear + 1 - index)), "未設定"];
 };
 
@@ -871,6 +874,20 @@ const bindApplicationActionButtons = (applicationList) => {
       const yearSelect = applicationList.querySelector(`[data-application-year][data-application-id="${id}"]`);
       const termSelect = applicationList.querySelector(`[data-application-term][data-application-id="${id}"]`);
       const data = currentDoc.data();
+      const reviewStatus = getApplicationReviewStatus(data);
+
+      if (action === "delete") {
+        const confirmed = window.confirm("Delete this application?");
+        if (!confirmed) {
+          return;
+        }
+
+        await syncApprovalFromApplication(id, { ...data, reviewStatus: "rejected", approved: false });
+        await deleteDoc(applicationRef);
+        await refreshMembersDashboardSafe();
+        return;
+      }
+
       const nextData = {
         academicYear: yearSelect?.value || "未設定",
         term: termSelect?.value || "未設定",
@@ -878,9 +895,14 @@ const bindApplicationActionButtons = (applicationList) => {
       };
 
       if (action === "approve") {
-        nextData.approved = !Boolean(data.approved);
-      } else if (action === "paid") {
-        nextData.paid = !Boolean(data.paid);
+        nextData.approved = true;
+        nextData.reviewStatus = "approved";
+      } else if (action === "reject") {
+        nextData.approved = false;
+        nextData.reviewStatus = "rejected";
+      } else if (action === "save-meta") {
+        nextData.approved = reviewStatus === "approved";
+        nextData.reviewStatus = reviewStatus;
       }
 
       await updateDoc(applicationRef, nextData);
@@ -913,11 +935,13 @@ const renderApplicationReviewList = async (applications = []) => {
 
   applicationList.innerHTML = filteredApplications
     .map((application) => {
-      const approved = Boolean(application.approved);
-      const paid = Boolean(application.paid);
-      const academicYear = application.academicYear || String(Math.max(getRocAcademicYear(), minAcademicYear));
+      const reviewStatus = getApplicationReviewStatus(application);
+      const approved = reviewStatus === "approved";
+      const rejected = reviewStatus === "rejected";
+      const academicYear = application.academicYear || String(Math.max(getRocAcademicYear(), MIN_ACADEMIC_YEAR));
       const term = application.term || "未設定";
-      const statusLabel = approved && paid ? "ready" : approved ? "awaiting payment" : "pending";
+      const statusLabel =
+        reviewStatus === "approved" ? "approved" : reviewStatus === "rejected" ? "rejected" : "pending";
 
       return `
         <article class="member-row">
@@ -949,13 +973,16 @@ const renderApplicationReviewList = async (applications = []) => {
           </div>
           <div class="application-actions">
             <button class="button-secondary application-toggle ${approved ? "is-active" : ""}" data-application-action="approve" data-application-id="${escapeHtml(application.id)}">
-              ${approved ? "已同意" : "同意申請"}
+              ${approved ? "已同意" : "同意"}
             </button>
-            <button class="button-secondary application-toggle ${paid ? "is-active" : ""}" data-application-action="paid" data-application-id="${escapeHtml(application.id)}">
-              ${paid ? "已付款" : "確認付款"}
+            <button class="button-secondary application-toggle ${rejected ? "is-active" : ""}" data-application-action="reject" data-application-id="${escapeHtml(application.id)}">
+              ${rejected ? "已不同意" : "不同意"}
             </button>
             <button class="button-secondary application-save" data-application-action="save-meta" data-application-id="${escapeHtml(application.id)}">
               儲存學期資料
+            </button>
+            <button class="button-secondary application-save" data-application-action="delete" data-application-id="${escapeHtml(application.id)}">
+              刪除資料
             </button>
           </div>
         </article>
@@ -1016,7 +1043,7 @@ const renderMembersSummary = (members = [], applications = []) => {
   }
 
   const filteredMembers = members.filter(matchesMemberFilter);
-  const pendingApplications = applications.filter((application) => !application.approved || !application.paid);
+  const pendingApplications = applications.filter((application) => getApplicationReviewStatus(application) === "pending");
 
   summary.innerHTML = `
     <article class="member-stat">
@@ -1036,16 +1063,32 @@ const renderMembersSummary = (members = [], applications = []) => {
   `;
 };
 
-const getCollectionEntries = async (collectionName, sortField) => {
-  const target = collection(db, collectionName);
+const showMembersDashboardError = (gate, error) => {
+  const details = {
+    code: error?.code || "unknown",
+    message: error?.message || String(error || "Unknown error"),
+    email: currentUser?.email || "not signed in",
+    uid: currentUser?.uid || "no uid",
+    frontEndAdmin: String(currentUserIsAdmin),
+  };
 
-  try {
-    const snapshot = await getDocs(query(target, orderBy(sortField, "desc")));
-    return snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
-  } catch {
-    const snapshot = await getDocs(target);
-    return snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
-  }
+  console.error("Members dashboard load failed", details);
+
+  gate.hidden = false;
+  gate.innerHTML = `
+    <h2 class="content-title">Dashboard load failed</h2>
+    <p class="content-copy">Firebase code: <code>${escapeHtml(details.code)}</code></p>
+    <p class="content-copy">${escapeHtml(details.message)}</p>
+    <p class="content-copy">Signed in as: <code>${escapeHtml(details.email)}</code></p>
+    <p class="content-copy">UID: <code>${escapeHtml(details.uid)}</code></p>
+    <p class="content-copy">Front-end admin: <code>${escapeHtml(details.frontEndAdmin)}</code></p>
+  `;
+};
+
+const getCollectionEntries = async (collectionName) => {
+  const target = collection(db, collectionName);
+  const snapshot = await getDocs(target);
+  return snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
 };
 
 const refreshMembersDashboardSafe = async () => {
@@ -1101,14 +1144,16 @@ const refreshMembersDashboardSafe = async () => {
 
   try {
     const [members, applications] = await Promise.all([
-      getCollectionEntries("members", "createdAt"),
-      getCollectionEntries("applications", "submittedAt"),
+      getCollectionEntries("members"),
+      getCollectionEntries("applications"),
     ]);
 
     renderMembersSummary(members, applications);
     await renderApplicationReviewList(applications);
     renderMembersList(members);
   } catch (error) {
+    showMembersDashboardError(gate, error);
+
     summary.innerHTML = `
       <article class="content-card is-tight">
         <h3 class="content-title">管理資料載入失敗</h3>
@@ -1169,7 +1214,7 @@ const handleAuthSubmit = async (event) => {
     if (authMode === "signup") {
       const approved = await ensureSignupApproved(email);
       if (!approved) {
-        setHint("這個信箱尚未通過審核或還沒確認付款，暫時不能建立帳號。", "error");
+        setHint("這個信箱尚未通過審核，暫時不能建立帳號。", "error");
         return;
       }
 
@@ -1230,16 +1275,16 @@ const handleApplicationSubmit = async (event) => {
       email,
       note,
       applicationType,
-      academicYear: String(Math.max(getRocAcademicYear(), minAcademicYear)),
+      academicYear: String(Math.max(getRocAcademicYear(), MIN_ACADEMIC_YEAR)),
       term: "未設定",
       approved: false,
-      paid: false,
+      reviewStatus: "pending",
       submittedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
 
     applicationForm.reset();
-    setApplicationHint("申請已送出。等管理員審核並確認付款後，你就能建立登入帳號。", "success");
+    setApplicationHint("申請已送出，等管理員審核通過後就能建立登入帳號。", "success");
   } catch {
     setMessageTone(applicationHint, "送出申請時發生問題，請稍後再試一次。", "error");
   } finally {
