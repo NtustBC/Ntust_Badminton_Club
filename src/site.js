@@ -549,6 +549,11 @@ const syncMemberProfile = async (user, source) => {
 
   const memberRef = getMemberDocRef(user.uid);
   const existingDoc = await getDoc(memberRef);
+  const existingByEmailSnapshot = user.email
+    ? await getDocs(query(collection(db, "members"), where("email", "==", user.email.trim().toLowerCase())))
+    : null;
+  const provisionalDoc = existingByEmailSnapshot?.docs.find((entry) => entry.id !== user.uid) || null;
+  const provisionalData = provisionalDoc ? provisionalDoc.data() : null;
   const approvalDoc = user.email ? await getDoc(getApprovalDocRef(user.email)) : null;
   const approvalData = approvalDoc?.exists() ? approvalDoc.data() : null;
 
@@ -565,6 +570,19 @@ const syncMemberProfile = async (user, source) => {
     payload.status = "active";
   }
 
+  if (provisionalData) {
+    payload.name = provisionalData.name || payload.name;
+    payload.applicationId = provisionalData.applicationId || payload.applicationId;
+    payload.applicationType = provisionalData.applicationType || payload.applicationType;
+    payload.studentId = provisionalData.studentId || payload.studentId;
+    payload.department = provisionalData.department || provisionalData.school || payload.department;
+    payload.phone = provisionalData.phone || payload.phone;
+    payload.school = provisionalData.school || provisionalData.department || payload.school;
+    payload.academicYear = provisionalData.academicYear || payload.academicYear;
+    payload.term = provisionalData.term || payload.term;
+    payload.approvedAt = provisionalData.approvedAt || payload.approvedAt;
+  }
+
   if (approvalData) {
     payload.name = approvalData.name || "";
     payload.applicationId = approvalData.applicationId || "";
@@ -579,6 +597,10 @@ const syncMemberProfile = async (user, source) => {
   }
 
   await setDoc(memberRef, payload, { merge: true });
+
+  if (provisionalDoc) {
+    await deleteDoc(provisionalDoc.ref);
+  }
 };
 
 const ensureBootstrapAdminDoc = async (user) => {
@@ -650,27 +672,60 @@ const syncApprovalFromApplication = async (applicationId, data) => {
   }
 };
 
-const syncMemberRecordFromApplication = async (application) => {
+const syncMemberRecordFromApplication = async (application, applicationId) => {
   if (!db || !application?.email) {
     return;
   }
 
+  const reviewStatus = getApplicationReviewStatus(application);
   const membersQuery = query(collection(db, "members"), where("email", "==", application.email.trim().toLowerCase()));
   const snapshot = await getDocs(membersQuery);
 
+  if (reviewStatus !== "approved") {
+    await Promise.all(
+      snapshot.docs
+        .filter((entry) => entry.data().source === "application-approval")
+        .map((entry) => deleteDoc(entry.ref)),
+    );
+    return;
+  }
+
+  const payload = {
+    name: application.name || "",
+    email: application.email.trim().toLowerCase(),
+    studentId: application.studentId || "",
+    department: application.department || application.school || "",
+    phone: application.phone || "",
+    school: application.school || application.department || "",
+    applicationType: application.applicationType || "club",
+    applicationId,
+    academicYear: application.academicYear || "未設定",
+    term: application.term || "未設定",
+    source: "application-approval",
+    status: "approved",
+    approvedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  if (snapshot.empty) {
+    await setDoc(doc(db, "members", `application-${applicationId}`), {
+      ...payload,
+      uid: `application-${applicationId}`,
+      createdAt: serverTimestamp(),
+    });
+    return;
+  }
+
   await Promise.all(
     snapshot.docs.map((entry) =>
-      updateDoc(entry.ref, {
-        name: application.name || "",
-        studentId: application.studentId || "",
-        department: application.department || application.school || "",
-        phone: application.phone || "",
-        school: application.school || application.department || "",
-        applicationType: application.applicationType || "club",
-        academicYear: application.academicYear || "未設定",
-        term: application.term || "未設定",
-        updatedAt: serverTimestamp(),
-      }),
+      setDoc(
+        entry.ref,
+        {
+          ...payload,
+          uid: entry.data().uid || entry.id,
+        },
+        { merge: true },
+      ),
     ),
   );
 };
@@ -909,10 +964,36 @@ const bindApplicationActionButtons = (applicationList) => {
       const updatedDoc = await getDoc(applicationRef);
       const updatedData = updatedDoc.data();
       await syncApprovalFromApplication(id, updatedData);
-      await syncMemberRecordFromApplication(updatedData);
+      await syncMemberRecordFromApplication(updatedData, id);
       await refreshMembersDashboardSafe();
+
+      if (action === "approve") {
+        focusApprovedMember(id, updatedData);
+      }
     });
   });
+};
+
+const focusApprovedMember = (applicationId, application) => {
+  const list = document.querySelector("[data-members-list]");
+  if (!list) {
+    return;
+  }
+
+  const normalizedEmail = application?.email?.trim().toLowerCase() || "";
+  const target =
+    (normalizedEmail
+      ? list.querySelector(`[data-member-email="${CSS.escape(normalizedEmail)}"]`)
+      : null) ||
+    list.querySelector(`[data-member-application-id="${CSS.escape(applicationId)}"]`);
+
+  if (target instanceof HTMLDetailsElement) {
+    target.open = true;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  list.scrollIntoView({ behavior: "smooth", block: "start" });
 };
 
 const renderApplicationReviewList = async (applications = []) => {
@@ -921,7 +1002,9 @@ const renderApplicationReviewList = async (applications = []) => {
     return;
   }
 
-  const filteredApplications = applications.filter(matchesMemberFilter);
+  const filteredApplications = applications.filter(
+    (application) => matchesMemberFilter(application) && getApplicationReviewStatus(application) !== "approved",
+  );
 
   if (filteredApplications.length === 0) {
     applicationList.innerHTML = `
@@ -1035,7 +1118,11 @@ const renderMembersList = (members = []) => {
   list.innerHTML = filteredMembers
     .map(
       (member, index) => `
-        <details class="member-row member-row-expandable">
+        <details
+          class="member-row member-row-expandable"
+          data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}"
+          data-member-application-id="${escapeHtml(member.applicationId || "")}"
+        >
           <summary class="member-row-summary">
             <div class="member-row-top">
               <div>
