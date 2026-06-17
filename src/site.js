@@ -993,6 +993,27 @@ const renderApplicationReviewList = async (applications = []) => {
   bindApplicationActionButtons(applicationList);
 };
 
+const bindMemberActionButtons = (memberList) => {
+  memberList.querySelectorAll("[data-member-action]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const memberId = button.dataset.memberId;
+      const action = button.dataset.memberAction;
+
+      if (action !== "delete" || !memberId) {
+        return;
+      }
+
+      const confirmed = window.confirm("Delete this member record?");
+      if (!confirmed) {
+        return;
+      }
+
+      await deleteDoc(doc(db, "members", memberId));
+      await refreshMembersDashboardSafe();
+    });
+  });
+};
+
 const renderMembersList = (members = []) => {
   const list = document.querySelector("[data-members-list]");
   if (!list) {
@@ -1014,26 +1035,42 @@ const renderMembersList = (members = []) => {
   list.innerHTML = filteredMembers
     .map(
       (member, index) => `
-        <article class="member-row">
-          <div class="member-row-top">
-            <p class="member-row-index">#${String(index + 1).padStart(2, "0")}</p>
-            <p class="member-row-status">${escapeHtml(member.status || "active")}</p>
+        <details class="member-row member-row-expandable">
+          <summary class="member-row-summary">
+            <div class="member-row-top">
+              <div>
+                <p class="member-row-index">#${String(index + 1).padStart(2, "0")}</p>
+                <p class="member-row-email">${escapeHtml(member.name || "未填姓名")} / ${escapeHtml(member.studentId || "未填學號")}</p>
+              </div>
+              <div class="member-row-summary-side">
+                <p class="member-row-status">${escapeHtml(member.status || "active")}</p>
+                <span class="member-row-toggle">展開</span>
+              </div>
+            </div>
+          </summary>
+          <div class="member-row-detail">
+            <div class="member-row-meta">
+              <span>UID：${escapeHtml(member.uid || member.id)}</span>
+              <span>學年度：${escapeHtml(getAcademicYearLabel(member.academicYear || "未設定"))}</span>
+              <span>學期：${escapeHtml(getAcademicTermLabel(member.term || "未設定"))}</span>
+              <span>系別：${escapeHtml(member.department || member.school || "未填寫")}</span>
+              <span>電話：${escapeHtml(member.phone || "未填寫")}</span>
+              <span>信箱：${escapeHtml(member.email || "未填寫")}</span>
+              <span>建立時間：${escapeHtml(formatTimestamp(member.createdAt))}</span>
+              <span>最近登入：${escapeHtml(formatTimestamp(member.lastLoginAt))}</span>
+            </div>
+            <div class="application-actions member-actions">
+              <button class="button-secondary application-save" data-member-action="delete" data-member-id="${escapeHtml(member.id)}" type="button">
+                刪除社員資料
+              </button>
+            </div>
           </div>
-          <p class="member-row-email">${escapeHtml(member.name || "未填姓名")} / ${escapeHtml(member.studentId || "未填學號")}</p>
-          <div class="member-row-meta">
-            <span>UID：${escapeHtml(member.uid || member.id)}</span>
-            <span>學年度：${escapeHtml(getAcademicYearLabel(member.academicYear || "未設定"))}</span>
-            <span>學期：${escapeHtml(getAcademicTermLabel(member.term || "未設定"))}</span>
-            <span>系別：${escapeHtml(member.department || member.school || "未填寫")}</span>
-            <span>電話：${escapeHtml(member.phone || "未填寫")}</span>
-            <span>信箱：${escapeHtml(member.email || "未填寫")}</span>
-            <span>建立時間：${escapeHtml(formatTimestamp(member.createdAt))}</span>
-            <span>最近登入：${escapeHtml(formatTimestamp(member.lastLoginAt))}</span>
-          </div>
-        </article>
+        </details>
       `,
     )
     .join("");
+
+  bindMemberActionButtons(list);
 };
 
 const renderMembersSummary = (members = [], applications = []) => {

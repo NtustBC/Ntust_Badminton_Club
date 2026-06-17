@@ -1588,6 +1588,22 @@ img {
   box-shadow: var(--shadow);
 }
 
+.member-row-expandable {
+  padding: 0;
+  overflow: hidden;
+}
+
+.member-row-summary {
+  display: block;
+  padding: 24px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.member-row-summary::-webkit-details-marker {
+  display: none;
+}
+
 .member-row-top {
   display: flex;
   flex-wrap: wrap;
@@ -1625,6 +1641,31 @@ img {
   font-weight: 700;
   line-height: 1.6;
   word-break: break-word;
+}
+
+.member-row-summary .member-row-email {
+  margin-bottom: 0;
+}
+
+.member-row-summary-side {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.member-row-toggle {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.member-row-expandable[open] .member-row-toggle {
+  color: var(--brand);
+}
+
+.member-row-detail {
+  padding: 0 24px 24px;
+  border-top: 1px solid rgba(15, 76, 129, 0.08);
 }
 
 .member-row-meta {
@@ -1681,6 +1722,10 @@ img {
 
 .application-save {
   min-width: 168px;
+}
+
+.member-actions {
+  justify-content: flex-start;
 }
 
 .visually-hidden {
