@@ -1335,6 +1335,26 @@ img {
   width: min(480px, calc(100% - 28px));
 }
 
+.success-modal-dialog {
+  width: min(560px, calc(100% - 28px));
+}
+
+.success-modal-copy {
+  display: grid;
+  gap: 14px;
+}
+
+.success-modal-copy p {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.9;
+}
+
+.success-modal-tip {
+  color: var(--brand);
+  font-weight: 700;
+}
+
 .auth-switch {
   display: inline-grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1731,7 +1751,7 @@ img {
 }
 
 .application-toggle {
-  min-width: 150px;
+  display: none;
 }
 
 .application-toggle.is-active {

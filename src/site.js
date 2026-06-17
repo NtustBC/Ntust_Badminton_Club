@@ -7,7 +7,6 @@ import {
   signOut,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
-  addDoc,
   collection,
   deleteDoc,
   doc,
@@ -31,10 +30,12 @@ const languageSelects = document.querySelectorAll("[data-language-select]");
 const STORAGE_KEYS = {
   language: "ntust-badminton-language",
   customAcademicYears: "ntust-badminton-custom-academic-years",
+  applicationCooldownPrefix: "ntust-badminton-application-cooldown",
 };
 
 const DEFAULT_TERMS = ["上學期", "下學期", "未設定"];
 const MIN_ACADEMIC_YEAR = 115;
+const APPLICATION_SUBMIT_COOLDOWN_MS = 10 * 60 * 1000;
 const bootstrapAdminEmailNormalized = bootstrapAdminEmail.trim().toLowerCase();
 const firebaseConfigured = Object.values(firebaseConfig).every(Boolean);
 
@@ -207,6 +208,32 @@ const applicationModalMarkup = `
   </div>
 `;
 
+const applicationSuccessModalMarkup = `
+  <div class="modal" data-application-success-modal hidden>
+    <div class="modal-backdrop" data-modal-backdrop></div>
+    <div class="modal-dialog success-modal-dialog">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">申請已送出！</h2>
+        </div>
+        <button class="modal-close" data-close-application-success type="button" aria-label="關閉送出成功視窗">
+          <span aria-hidden="true">+</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="success-modal-copy">
+          <p>感謝你申請加入臺科大羽球社！我們已收到你的資料。</p>
+          <p>接下來請至你的聯絡信箱查收「社費繳交與審核說明」信件。</p>
+          <p class="success-modal-tip">提示：若在收件匣沒看到，請點進垃圾信件匣找找看喔！</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="login-button modal-submit" data-confirm-application-success type="button">知道了</button>
+      </div>
+    </div>
+  </div>
+`;
+
 const escapeHtml = (value) =>
   String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -218,6 +245,10 @@ const escapeHtml = (value) =>
 const getLoginButtons = () => document.querySelectorAll("[data-open-login]");
 const getApplicationButtons = () => document.querySelectorAll("[data-open-application]");
 const getApprovalDocId = (email) => email.trim().toLowerCase();
+const getApplicationDocId = (email, applicationType = "club") =>
+  `${applicationType.trim().toLowerCase()}-${encodeURIComponent(email.trim().toLowerCase())}`;
+const getApplicationCooldownKey = (email, applicationType = "club") =>
+  `${STORAGE_KEYS.applicationCooldownPrefix}:${getApplicationDocId(email, applicationType)}`;
 const isBootstrapAdminEmail = (email) => email.trim().toLowerCase() === bootstrapAdminEmailNormalized;
 
 const rememberLoginButtonLabels = () => {
@@ -301,6 +332,16 @@ const ensureApplicationModal = () => {
   return document.querySelector("[data-application-modal]");
 };
 
+const ensureApplicationSuccessModal = () => {
+  const existing = document.querySelector("[data-application-success-modal]");
+  if (existing) {
+    return existing;
+  }
+
+  document.body.insertAdjacentHTML("beforeend", applicationSuccessModalMarkup);
+  return document.querySelector("[data-application-success-modal]");
+};
+
 const getLoginModalElements = () => {
   const loginModal = ensureLoginModal();
 
@@ -335,6 +376,16 @@ const getApplicationModalElements = () => {
     applicationSubtitle: applicationModal.querySelector("[data-application-subtitle]"),
     submitButton: applicationModal.querySelector("[data-application-submit]"),
     closeButtons: applicationModal.querySelectorAll("[data-close-application]"),
+  };
+};
+
+const getApplicationSuccessModalElements = () => {
+  const successModal = ensureApplicationSuccessModal();
+
+  return {
+    successModal,
+    confirmButton: successModal.querySelector("[data-confirm-application-success]"),
+    closeButtons: successModal.querySelectorAll("[data-close-application-success]"),
   };
 };
 
@@ -535,6 +586,20 @@ const closeApplicationModal = () => {
   if (lastApplicationTrigger) {
     lastApplicationTrigger.focus();
   }
+};
+
+const openApplicationSuccessModal = () => {
+  const { successModal, confirmButton } = getApplicationSuccessModalElements();
+  successModal.hidden = false;
+  body.classList.add("modal-open");
+
+  window.setTimeout(() => confirmButton.focus(), 50);
+};
+
+const closeApplicationSuccessModal = () => {
+  const { successModal } = getApplicationSuccessModalElements();
+  successModal.hidden = true;
+  body.classList.remove("modal-open");
 };
 
 const applyLanguage = (lang) => {
@@ -905,6 +970,24 @@ const formatTimestamp = (value) => {
   });
 };
 
+const getApplicationCooldownRemainingMs = (email, applicationType) => {
+  try {
+    const raw = window.localStorage.getItem(getApplicationCooldownKey(email, applicationType));
+    const savedAt = Number(raw || "0");
+    if (!Number.isFinite(savedAt) || savedAt <= 0) {
+      return 0;
+    }
+
+    return Math.max(0, APPLICATION_SUBMIT_COOLDOWN_MS - (Date.now() - savedAt));
+  } catch {
+    return 0;
+  }
+};
+
+const rememberApplicationSubmit = (email, applicationType) => {
+  window.localStorage.setItem(getApplicationCooldownKey(email, applicationType), String(Date.now()));
+};
+
 const getApplicationYearOptionsMarkup = (selectedValue) =>
   buildAdminAcademicYearOptions()
     .filter((value) => value !== "all")
@@ -935,7 +1018,6 @@ const bindApplicationActionButtons = (applicationList) => {
       const yearSelect = applicationList.querySelector(`[data-application-year][data-application-id="${id}"]`);
       const termSelect = applicationList.querySelector(`[data-application-term][data-application-id="${id}"]`);
       const data = currentDoc.data();
-      const reviewStatus = getApplicationReviewStatus(data);
       const controls = applicationList.querySelectorAll(`[data-application-id="${id}"]`);
 
       if (action === "delete") {
@@ -959,16 +1041,8 @@ const bindApplicationActionButtons = (applicationList) => {
         updatedAt: serverTimestamp(),
       };
 
-      if (action === "approve") {
-        nextData.approved = true;
-        nextData.reviewStatus = "approved";
-      } else if (action === "reject") {
-        nextData.approved = false;
-        nextData.reviewStatus = "rejected";
-      } else if (action === "save-meta") {
-        nextData.approved = reviewStatus === "approved";
-        nextData.reviewStatus = reviewStatus;
-      }
+      nextData.approved = true;
+      nextData.reviewStatus = "approved";
 
       controls.forEach((control) => {
         control.disabled = true;
@@ -982,9 +1056,7 @@ const bindApplicationActionButtons = (applicationList) => {
         await syncMemberRecordFromApplication(updatedData, id);
         await refreshMembersDashboardSafe({ force: true });
 
-        if (action === "approve") {
-          focusApprovedMember(id, updatedData);
-        }
+        focusApprovedMember(id, updatedData);
       } finally {
         controls.forEach((control) => {
           control.disabled = false;
@@ -1069,19 +1141,14 @@ const renderApplicationReviewList = async (applications = []) => {
 
   applicationList.innerHTML = filteredApplications
     .map((application) => {
-      const reviewStatus = getApplicationReviewStatus(application);
-      const approved = reviewStatus === "approved";
-      const rejected = reviewStatus === "rejected";
       const academicYear = application.academicYear || String(Math.max(getRocAcademicYear(), MIN_ACADEMIC_YEAR));
       const term = application.term || "未設定";
-      const statusLabel =
-        reviewStatus === "approved" ? "approved" : reviewStatus === "rejected" ? "rejected" : "pending";
 
       return `
         <article class="member-row">
           <div class="member-row-top">
             <p class="member-row-index">社員申請</p>
-            <p class="member-row-status">${escapeHtml(statusLabel)}</p>
+            <p class="member-row-status">pending</p>
           </div>
           <p class="member-row-email">${escapeHtml(application.name || "未填姓名")} / ${escapeHtml(application.email || "未填信箱")}</p>
           <div class="member-row-meta">
@@ -1453,12 +1520,26 @@ const handleApplicationSubmit = async (event) => {
     return;
   }
 
+  const cooldownRemainingMs = getApplicationCooldownRemainingMs(email, applicationType);
+  if (cooldownRemainingMs > 0) {
+    const remainingMinutes = Math.ceil(cooldownRemainingMs / 60000);
+    setApplicationHint(`同一信箱剛送出過申請，請約 ${remainingMinutes} 分鐘後再試。`, "error");
+    return;
+  }
+
   submitButton.disabled = true;
 
   try {
     await ensureAuthReady();
 
-    await addDoc(collection(db, "applications"), {
+    const applicationRef = doc(db, "applications", getApplicationDocId(email, applicationType));
+    const existingApplication = await getDoc(applicationRef);
+    if (existingApplication.exists()) {
+      setApplicationHint("這個信箱已經送出過申請，請等管理員處理或直接聯絡幹部。", "error");
+      return;
+    }
+
+    await setDoc(applicationRef, {
       name,
       studentId,
       department,
@@ -1475,7 +1556,10 @@ const handleApplicationSubmit = async (event) => {
       updatedAt: serverTimestamp(),
     });
 
+    rememberApplicationSubmit(email, applicationType);
     applicationForm.reset();
+    closeApplicationModal();
+    openApplicationSuccessModal();
     setApplicationHint("申請已送出，等管理員審核通過後就能建立登入帳號。", "success");
   } catch {
     setMessageTone(applicationHint, "送出申請時發生問題，請稍後再試一次。", "error");
@@ -1537,6 +1621,23 @@ const bindApplicationModalEvents = () => {
     const target = event.target;
     if (target === applicationModal || target.hasAttribute("data-modal-backdrop")) {
       closeApplicationModal();
+    }
+  });
+};
+
+const bindApplicationSuccessModalEvents = () => {
+  const { successModal, confirmButton, closeButtons } = getApplicationSuccessModalElements();
+
+  confirmButton.addEventListener("click", closeApplicationSuccessModal);
+
+  closeButtons.forEach((button) => {
+    button.addEventListener("click", closeApplicationSuccessModal);
+  });
+
+  successModal.addEventListener("click", (event) => {
+    const target = event.target;
+    if (target === successModal || target.hasAttribute("data-modal-backdrop")) {
+      closeApplicationSuccessModal();
     }
   });
 };
@@ -1614,6 +1715,7 @@ const initKeybindings = () => {
 
     const { loginModal } = getLoginModalElements();
     const { applicationModal } = getApplicationModalElements();
+    const { successModal } = getApplicationSuccessModalElements();
 
     if (!loginModal.hidden) {
       closeLoginModal();
@@ -1622,14 +1724,20 @@ const initKeybindings = () => {
     if (!applicationModal.hidden) {
       closeApplicationModal();
     }
+
+    if (!successModal.hidden) {
+      closeApplicationSuccessModal();
+    }
   });
 };
 
 const init = async () => {
   ensureLoginModal();
   ensureApplicationModal();
+  ensureApplicationSuccessModal();
   bindLoginModalEvents();
   bindApplicationModalEvents();
+  bindApplicationSuccessModalEvents();
   bindOpenButtons();
   initMenu();
   initLanguageSwitcher();
