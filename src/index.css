@@ -1595,9 +1595,18 @@ img {
 
 .member-row-summary {
   display: block;
+  width: 100%;
   padding: 24px;
+  border: 0;
+  background: transparent;
   cursor: pointer;
   list-style: none;
+  text-align: left;
+}
+
+.member-row-summary:focus-visible {
+  outline: 2px solid rgba(15, 76, 129, 0.22);
+  outline-offset: -2px;
 }
 
 .member-row-summary::-webkit-details-marker {
@@ -1612,8 +1621,13 @@ img {
   gap: 12px;
 }
 
+.member-row-heading {
+  display: block;
+}
+
 .member-row-index,
 .member-row-status {
+  display: block;
   margin: 0;
 }
 
@@ -1635,6 +1649,7 @@ img {
 }
 
 .member-row-email {
+  display: block;
   margin: 18px 0 0;
   color: var(--ink);
   font-size: 1.05rem;
@@ -1659,7 +1674,7 @@ img {
   font-weight: 700;
 }
 
-.member-row-expandable[open] .member-row-toggle {
+.member-row-expandable[data-expanded="true"] .member-row-toggle {
   color: var(--brand);
 }
 
@@ -1681,6 +1696,8 @@ img {
   display: grid;
   gap: 14px;
   margin-top: 18px;
+  position: relative;
+  z-index: 1;
 }
 
 .member-row-controls .form-field {
@@ -1709,6 +1726,8 @@ img {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 18px;
+  position: relative;
+  z-index: 1;
 }
 
 .application-toggle {

@@ -46,6 +46,11 @@ let authMode = "signin";
 let authReadyPromise = null;
 let lastLoginTrigger = null;
 let lastApplicationTrigger = null;
+let membersDashboardCache = {
+  members: [],
+  applications: [],
+  loaded: false,
+};
 
 const memberFilters = {
   year: "all",
@@ -452,6 +457,7 @@ const ensureAuthReady = async () => {
     onAuthStateChanged(auth, async (user) => {
       currentUser = user;
       currentUserIsAdmin = false;
+      membersDashboardCache.loaded = false;
 
       if (user) {
         await loadAdminStatus(user);
@@ -461,7 +467,7 @@ const ensureAuthReady = async () => {
       updateAuthView();
 
       if (pageName === "members") {
-        await refreshMembersDashboardSafe();
+        await refreshMembersDashboardSafe({ force: true });
       }
     });
 
@@ -930,6 +936,7 @@ const bindApplicationActionButtons = (applicationList) => {
       const termSelect = applicationList.querySelector(`[data-application-term][data-application-id="${id}"]`);
       const data = currentDoc.data();
       const reviewStatus = getApplicationReviewStatus(data);
+      const controls = applicationList.querySelectorAll(`[data-application-id="${id}"]`);
 
       if (action === "delete") {
         const confirmed = window.confirm("Delete this application?");
@@ -937,9 +944,12 @@ const bindApplicationActionButtons = (applicationList) => {
           return;
         }
 
+        controls.forEach((control) => {
+          control.disabled = true;
+        });
         await syncApprovalFromApplication(id, { ...data, reviewStatus: "rejected", approved: false });
         await deleteDoc(applicationRef);
-        await refreshMembersDashboardSafe();
+        await refreshMembersDashboardSafe({ force: true });
         return;
       }
 
@@ -960,15 +970,25 @@ const bindApplicationActionButtons = (applicationList) => {
         nextData.reviewStatus = reviewStatus;
       }
 
-      await updateDoc(applicationRef, nextData);
-      const updatedDoc = await getDoc(applicationRef);
-      const updatedData = updatedDoc.data();
-      await syncApprovalFromApplication(id, updatedData);
-      await syncMemberRecordFromApplication(updatedData, id);
-      await refreshMembersDashboardSafe();
+      controls.forEach((control) => {
+        control.disabled = true;
+      });
 
-      if (action === "approve") {
-        focusApprovedMember(id, updatedData);
+      try {
+        await updateDoc(applicationRef, nextData);
+        const updatedDoc = await getDoc(applicationRef);
+        const updatedData = updatedDoc.data();
+        await syncApprovalFromApplication(id, updatedData);
+        await syncMemberRecordFromApplication(updatedData, id);
+        await refreshMembersDashboardSafe({ force: true });
+
+        if (action === "approve") {
+          focusApprovedMember(id, updatedData);
+        }
+      } finally {
+        controls.forEach((control) => {
+          control.disabled = false;
+        });
       }
     });
   });
@@ -987,13 +1007,44 @@ const focusApprovedMember = (applicationId, application) => {
       : null) ||
     list.querySelector(`[data-member-application-id="${CSS.escape(applicationId)}"]`);
 
-  if (target instanceof HTMLDetailsElement) {
-    target.open = true;
+  if (target instanceof HTMLElement) {
+    setMemberRowExpanded(target, true);
     target.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
 
   list.scrollIntoView({ behavior: "smooth", block: "start" });
+};
+
+const setMemberRowExpanded = (row, expanded) => {
+  const summaryButton = row.querySelector("[data-member-toggle]");
+  const detail = row.querySelector("[data-member-detail]");
+  if (!summaryButton || !detail) {
+    return;
+  }
+
+  row.dataset.expanded = expanded ? "true" : "false";
+  summaryButton.setAttribute("aria-expanded", String(expanded));
+  detail.hidden = !expanded;
+
+  const toggleLabel = summaryButton.querySelector(".member-row-toggle");
+  if (toggleLabel) {
+    toggleLabel.textContent = expanded ? "收合" : "展開";
+  }
+};
+
+const bindMemberToggleButtons = (memberList) => {
+  memberList.querySelectorAll("[data-member-toggle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const row = button.closest("[data-member-row]");
+      if (!row) {
+        return;
+      }
+
+      const expanded = row.dataset.expanded === "true";
+      setMemberRowExpanded(row, !expanded);
+    });
+  });
 };
 
 const renderApplicationReviewList = async (applications = []) => {
@@ -1055,16 +1106,16 @@ const renderApplicationReviewList = async (applications = []) => {
             </div>
           </div>
           <div class="application-actions">
-            <button class="button-secondary application-toggle ${approved ? "is-active" : ""}" data-application-action="approve" data-application-id="${escapeHtml(application.id)}">
+            <button class="button-secondary application-toggle ${approved ? "is-active" : ""}" data-application-action="approve" data-application-id="${escapeHtml(application.id)}" type="button">
               ${approved ? "已同意" : "同意"}
             </button>
-            <button class="button-secondary application-toggle ${rejected ? "is-active" : ""}" data-application-action="reject" data-application-id="${escapeHtml(application.id)}">
+            <button class="button-secondary application-toggle ${rejected ? "is-active" : ""}" data-application-action="reject" data-application-id="${escapeHtml(application.id)}" type="button">
               ${rejected ? "已不同意" : "不同意"}
             </button>
-            <button class="button-secondary application-save" data-application-action="save-meta" data-application-id="${escapeHtml(application.id)}">
+            <button class="button-secondary application-save" data-application-action="save-meta" data-application-id="${escapeHtml(application.id)}" type="button">
               儲存學期資料
             </button>
-            <button class="button-secondary application-save" data-application-action="delete" data-application-id="${escapeHtml(application.id)}">
+            <button class="button-secondary application-save" data-application-action="delete" data-application-id="${escapeHtml(application.id)}" type="button">
               刪除資料
             </button>
           </div>
@@ -1092,7 +1143,7 @@ const bindMemberActionButtons = (memberList) => {
       }
 
       await deleteDoc(doc(db, "members", memberId));
-      await refreshMembersDashboardSafe();
+      await refreshMembersDashboardSafe({ force: true });
     });
   });
 };
@@ -1118,24 +1169,32 @@ const renderMembersList = (members = []) => {
   list.innerHTML = filteredMembers
     .map(
       (member, index) => `
-        <details
+        <article
           class="member-row member-row-expandable"
+          data-member-row
+          data-expanded="false"
           data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}"
           data-member-application-id="${escapeHtml(member.applicationId || "")}"
         >
-          <summary class="member-row-summary">
-            <div class="member-row-top">
-              <div>
-                <p class="member-row-index">#${String(index + 1).padStart(2, "0")}</p>
-                <p class="member-row-email">${escapeHtml(member.name || "未填姓名")} / ${escapeHtml(member.studentId || "未填學號")}</p>
-              </div>
-              <div class="member-row-summary-side">
-                <p class="member-row-status">${escapeHtml(member.status || "active")}</p>
+          <button
+            class="member-row-summary"
+            data-member-toggle
+            type="button"
+            aria-expanded="false"
+            aria-controls="member-detail-${escapeHtml(member.id)}"
+          >
+            <span class="member-row-top">
+              <span class="member-row-heading">
+                <span class="member-row-index">#${String(index + 1).padStart(2, "0")}</span>
+                <span class="member-row-email">${escapeHtml(member.name || "未填姓名")} / ${escapeHtml(member.studentId || "未填學號")}</span>
+              </span>
+              <span class="member-row-summary-side">
+                <span class="member-row-status">${escapeHtml(member.status || "active")}</span>
                 <span class="member-row-toggle">展開</span>
-              </div>
-            </div>
-          </summary>
-          <div class="member-row-detail">
+              </span>
+            </span>
+          </button>
+          <div class="member-row-detail" data-member-detail id="member-detail-${escapeHtml(member.id)}" hidden>
             <div class="member-row-meta">
               <span>UID：${escapeHtml(member.uid || member.id)}</span>
               <span>學年度：${escapeHtml(getAcademicYearLabel(member.academicYear || "未設定"))}</span>
@@ -1152,11 +1211,12 @@ const renderMembersList = (members = []) => {
               </button>
             </div>
           </div>
-        </details>
+        </article>
       `,
     )
     .join("");
 
+  bindMemberToggleButtons(list);
   bindMemberActionButtons(list);
 };
 
@@ -1215,7 +1275,7 @@ const getCollectionEntries = async (collectionName) => {
   return snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
 };
 
-const refreshMembersDashboardSafe = async () => {
+const refreshMembersDashboardSafe = async ({ force = false } = {}) => {
   if (pageName !== "members") {
     return;
   }
@@ -1267,14 +1327,22 @@ const refreshMembersDashboardSafe = async () => {
   patchMembersFilterUI();
 
   try {
-    const [members, applications] = await Promise.all([
-      getCollectionEntries("members"),
-      getCollectionEntries("applications"),
-    ]);
+    if (force || !membersDashboardCache.loaded) {
+      const [members, applications] = await Promise.all([
+        getCollectionEntries("members"),
+        getCollectionEntries("applications"),
+      ]);
 
-    renderMembersSummary(members, applications);
-    await renderApplicationReviewList(applications);
-    renderMembersList(members);
+      membersDashboardCache = {
+        members,
+        applications,
+        loaded: true,
+      };
+    }
+
+    renderMembersSummary(membersDashboardCache.members, membersDashboardCache.applications);
+    await renderApplicationReviewList(membersDashboardCache.applications);
+    renderMembersList(membersDashboardCache.members);
   } catch (error) {
     showMembersDashboardError(gate, error);
 
