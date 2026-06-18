@@ -1050,6 +1050,10 @@ const bindApplicationActionButtons = (applicationList) => {
           }
 
           await refreshMembersDashboardSafe({ force: true });
+          window.alert("學年度與學期已儲存。");
+        } catch (error) {
+          console.error("Save application meta failed:", error);
+          window.alert(`儲存失敗：${error?.message || "請稍後再試一次。"}`);
         } finally {
           controls.forEach((control) => {
             control.disabled = false;
