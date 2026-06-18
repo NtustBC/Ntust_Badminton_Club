@@ -42,6 +42,7 @@ const CLASS_SIGNUP_WINDOW_DAYS = 7;
 const CLASS_SESSION_COLLECTION = "classSessions";
 const CLASS_SIGNUP_COLLECTION = "classSessionSignups";
 const CLASS_ANNOUNCEMENT_COLLECTION = "classAnnouncements";
+const FAQ_COLLECTION = "faqEntries";
 const CLASS_WEEKDAY_LABELS = {
   mon: "星期一",
   tue: "星期二",
@@ -73,6 +74,7 @@ let membersDashboardCache = {
   classSessions: [],
   classSessionSignups: [],
   announcements: [],
+  faqs: [],
   loaded: false,
 };
 let classSignupPageState = {
@@ -81,16 +83,20 @@ let classSignupPageState = {
   ownSignups: [],
   approval: null,
   monthOffset: 0,
-  loginRecent: false,
 };
 let announcementPageState = {
   loaded: false,
   announcements: [],
 };
+let faqPageState = {
+  loaded: false,
+  faqs: [],
+};
 let adminClassCalendarMonthOffset = 0;
 let adminClassSessionEditingId = "";
 let lastAdminClassCalendarTrigger = null;
 let adminAnnouncementListResizeBound = false;
+let adminFaqListResizeBound = false;
 
 const memberFilters = {
   year: "all",
@@ -373,8 +379,10 @@ const getClassSessionId = (session = {}) => {
 const getClassSessionDocRef = (sessionId) => doc(db, CLASS_SESSION_COLLECTION, sessionId);
 const getClassSignupDocRef = (sessionId, userId) => doc(db, CLASS_SIGNUP_COLLECTION, `${sessionId}-${userId}`);
 const getClassAnnouncementDocRef = (announcementId) => doc(db, CLASS_ANNOUNCEMENT_COLLECTION, announcementId);
+const getFaqDocRef = (faqId) => doc(db, FAQ_COLLECTION, faqId);
 const getClassSessionSortMs = (session) => getDateKeyMs(session.date || session.sessionDate);
 const getAnnouncementSortMs = (announcement) => getTimestampMs(announcement.createdAt || announcement.updatedAt || announcement.date);
+const getFaqSortMs = (faq) => getTimestampMs(faq.createdAt || faq.updatedAt || faq.date);
 const getCurrentUserLoginTimeMs = () => {
   const value = currentUser?.metadata?.lastSignInTime;
   const time = value ? new Date(value).getTime() : Number.NaN;
@@ -694,6 +702,7 @@ const ensureAuthReady = async () => {
       membersDashboardCache.loaded = false;
       classSignupPageState.loaded = false;
       announcementPageState.loaded = false;
+      faqPageState.loaded = false;
 
       if (user) {
         await loadAdminStatus(user);
@@ -1804,12 +1813,13 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
 
   try {
     if (force || !membersDashboardCache.loaded) {
-      const [members, applications, classSessions, classSessionSignups, announcements] = await Promise.all([
+      const [members, applications, classSessions, classSessionSignups, announcements, faqs] = await Promise.all([
         getCollectionEntries("members"),
         getCollectionEntries("applications"),
         getCollectionEntries(CLASS_SESSION_COLLECTION),
         getCollectionEntries(CLASS_SIGNUP_COLLECTION),
         getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION),
+        getCollectionEntries(FAQ_COLLECTION),
       ]);
 
       membersDashboardCache = {
@@ -1818,6 +1828,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
         classSessions,
         classSessionSignups,
         announcements,
+        faqs,
         loaded: true,
       };
     }
@@ -1832,6 +1843,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
     renderMembersList(displayMembers);
     renderAdminClassCalendarCompact(membersDashboardCache.classSessions, membersDashboardCache.classSessionSignups);
     renderAdminAnnouncements(membersDashboardCache.announcements);
+    renderAdminFaqs(membersDashboardCache.faqs);
     bindAdminClassCreationForms();
     if (preserveExpandedRows) {
       restoreExpandedMemberKeys(expandedMemberKeys);
@@ -1871,7 +1883,17 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
     if (announcementAdminList) {
       announcementAdminList.innerHTML = `
         <article class="content-card is-tight">
-          <h3 class="content-title">公告管理讀取失敗</h3>
+          <h3 class="content-title">?砍?蝞∠?霈?仃??/h3>
+          <p class="content-copy">${escapeHtml(error?.message || "隢?敺?閰虫?甈～?")}</p>
+        </article>
+      `;
+    }
+
+    const faqAdminList = document.querySelector("[data-faq-admin-list]");
+    if (faqAdminList) {
+      faqAdminList.innerHTML = `
+        <article class="content-card is-tight">
+          <h3 class="content-title">FAQ 載入失敗</h3>
           <p class="content-copy">${escapeHtml(error?.message || "請稍後再試一次。")}</p>
         </article>
       `;
@@ -1899,24 +1921,6 @@ function groupClassSignupsBySession(signups = []) {
   }, {});
 }
 
-function getClassLoginStatusCopy() {
-  const loginTimeMs = getCurrentUserLoginTimeMs();
-  if (!Number.isFinite(loginTimeMs) || loginTimeMs < 0) {
-    return "請先登入會員帳號，且需在前一週內登入過才可以報名。";
-  }
-
-  const loginTime = new Date(loginTimeMs);
-  const loginLabel = loginTime.toLocaleString("zh-TW", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  return `你最近一次登入時間是 ${loginLabel}，若未超過 7 天即可報名。`;
-}
-
 function isClassSignupWindowOpen(session) {
   const sessionDateMs = getClassSessionSortMs(session);
   if (!Number.isFinite(sessionDateMs) || sessionDateMs === Number.POSITIVE_INFINITY) {
@@ -1925,48 +1929,6 @@ function isClassSignupWindowOpen(session) {
 
   const diffMs = sessionDateMs - Date.now();
   return diffMs >= 0 && diffMs <= CLASS_SIGNUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-}
-
-function renderClassSignupStatusCard() {
-  const container = document.querySelector("[data-class-status]");
-  if (!container) {
-    return;
-  }
-
-  const loginTimeMs = getCurrentUserLoginTimeMs();
-  const loginLabel =
-    Number.isFinite(loginTimeMs) && loginTimeMs > 0
-      ? new Date(loginTimeMs).toLocaleString("zh-TW", {
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : "尚未登入";
-
-  const approvalLabel = classSignupPageState.approval
-    ? `${classSignupPageState.approval.name || "社員"} / ${classSignupPageState.approval.studentId || "未填學號"}`
-    : currentUserIsAdmin
-      ? "管理員可直接測試報名流程"
-      : "尚未找到你的審核資料";
-
-  container.innerHTML = `
-    <article class="content-card is-tight class-status-card">
-      <h3 class="content-title">社課報名狀態</h3>
-      <p class="content-copy">${escapeHtml(getClassLoginStatusCopy())}</p>
-      <div class="class-status-grid">
-        <div>
-          <p class="class-status-label">登入時間</p>
-          <p class="class-status-value">${escapeHtml(loginLabel)}</p>
-        </div>
-        <div>
-          <p class="class-status-label">社員資料</p>
-          <p class="class-status-value">${escapeHtml(approvalLabel)}</p>
-        </div>
-      </div>
-    </article>
-  `;
 }
 
 function renderClassCalendarBoard(sessions = []) {
@@ -2078,22 +2040,29 @@ function renderClassCalendarBoard(sessions = []) {
   });
 }
 
-function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup) {
+function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup, signupOpen) {
   const nameValue = approvalData?.name || currentUser?.displayName || currentUser?.email || "";
   const studentIdValue = approvalData?.studentId || "";
   const firstChoice = ownSignup?.firstChoice || "";
   const secondChoice = ownSignup?.secondChoice || "";
   const noteValue = ownSignup?.note || "";
   const sessionId = getClassSessionId(session);
-  const canEdit = canSignup;
   const deleteButton = ownSignup
     ? `<button class="button-secondary" data-class-signup-delete type="button" data-session-id="${escapeHtml(sessionId)}">刪除報名</button>`
     : "";
 
-  if (!canEdit) {
+  if (!canSignup) {
     return `
       <div class="class-session-locked">
-        <p class="content-copy">目前尚未開放報名。你需要是已登入且前一週內登入過的社員，並且在報名期間內才能填寫。</p>
+        <p class="content-copy">你目前尚未通過正式申請，暫時無法報名社課。若已送出申請，請先等待管理員審核。</p>
+      </div>
+    `;
+  }
+
+  if (!signupOpen) {
+    return `
+      <div class="class-session-locked">
+        <p class="content-copy">這場社課尚未開放報名，請等到公布前一週再來填寫志願。</p>
       </div>
     `;
   }
@@ -2127,9 +2096,8 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup)
       </div>
       <div class="form-field">
         <label for="class-note-${escapeHtml(sessionId)}">備註</label>
-        <textarea id="class-note-${escapeHtml(sessionId)}" name="note" rows="3" placeholder="如果有特殊需求可以寫在這裡">${escapeHtml(noteValue)}</textarea>
+        <textarea id="class-note-${escapeHtml(sessionId)}" name="note" rows="3" placeholder="如果有需要補充的資訊可以寫在這裡">${escapeHtml(noteValue)}</textarea>
       </div>
-      <p class="login-note" data-class-signup-status>${escapeHtml(getClassLoginStatusCopy())}</p>
       <div class="class-signup-actions">
         <button class="button-primary" data-class-signup-submit type="submit">${ownSignup ? "更新報名" : "送出報名"}</button>
         ${deleteButton}
@@ -2147,7 +2115,7 @@ function renderClassSessionBoard(sessions = []) {
   const sortedSessions = [...sessions].sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
   const ownedBySession = Object.fromEntries(classSignupPageState.ownSignups.map((signup) => [signup.sessionId, signup]));
   const approvalData = classSignupPageState.approval;
-  const canSignup = Boolean(currentUser && classSignupPageState.loginRecent && (approvalData || currentUserIsAdmin));
+  const canSignup = Boolean(currentUser && (approvalData || currentUserIsAdmin));
 
   if (sortedSessions.length === 0) {
     container.innerHTML = `
@@ -2208,7 +2176,7 @@ function renderClassSessionBoard(sessions = []) {
           ${session.reminder ? `<p class="class-session-reminder">提醒：${escapeHtml(session.reminder)}</p>` : ""}
           ${
             isSundaySignup
-              ? buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup && openForSignup)
+              ? buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup, openForSignup)
               : `<div class="class-session-note"><p class="content-copy">此場次不需要填寫志願，請直接依行事曆出席即可。</p></div>`
           }
           ${rosterMarkup}
@@ -2322,9 +2290,9 @@ function bindClassSignupBoardEvents() {
 }
 
 async function handleClassSignupSubmit(event) {
+  event.preventDefault();
   const form = event.currentTarget;
   const submitButton = form.querySelector("[data-class-signup-submit]");
-  const statusNode = form.querySelector("[data-class-signup-status]");
   const sessionId = String(form.dataset.sessionId || form.querySelector("[name='sessionId']")?.value || "").trim();
   const firstChoice = String(form.querySelector("[name='firstChoice']")?.value || "").trim();
   const secondChoice = String(form.querySelector("[name='secondChoice']")?.value || "").trim();
@@ -2333,69 +2301,34 @@ async function handleClassSignupSubmit(event) {
   const studentId = String(form.querySelector("[name='studentId']")?.value || "").trim();
 
   if (!currentUser?.uid || !sessionId) {
-    if (statusNode) {
-      setMessageTone(statusNode, "請先登入後再報名。", "error");
-    }
-    return;
-  }
-
-  if (!classSignupPageState.loginRecent) {
-    if (statusNode) {
-      setMessageTone(statusNode, "你需要在前一週內登入過才可以報名。", "error");
-    }
     return;
   }
 
   if (!classSignupPageState.approval && !currentUserIsAdmin) {
-    if (statusNode) {
-      setMessageTone(statusNode, "找不到你的審核資料，請先完成社員審核。", "error");
-    }
     return;
   }
 
   if (!firstChoice || !secondChoice) {
-    if (statusNode) {
-      setMessageTone(statusNode, "請先填寫第一志願與第二志願。", "error");
-    }
     return;
   }
 
-  if (firstChoice === secondChoice && firstChoice !== "不方便參加") {
-    if (statusNode) {
-      setMessageTone(statusNode, "第一志願與第二志願不能填成相同時段。", "error");
-    }
+  if (firstChoice === secondChoice) {
     return;
   }
 
   const session = classSignupPageState.sessions.find((item) => getClassSessionId(item) === sessionId);
   if (!session) {
-    if (statusNode) {
-      setMessageTone(statusNode, "找不到這個社課場次。", "error");
-    }
-    return;
-  }
-
-  if (!isClassSignupWindowOpen(session) && !currentUserIsAdmin) {
-    if (statusNode) {
-      setMessageTone(statusNode, "這個場次目前還沒有開放報名。", "error");
-    }
     return;
   }
 
   submitButton.disabled = true;
 
   try {
-    await ensureAuthReady();
     const signupRef = getClassSignupDocRef(sessionId, currentUser.uid);
-    const existing = await getDoc(signupRef);
-
     await setDoc(
       signupRef,
       {
         sessionId,
-        sessionDate: session.date || session.sessionDate || "",
-        sessionTitle: session.title || "",
-        sessionWeekday: session.weekday || "",
         userId: currentUser.uid,
         email: currentUser.email || "",
         name: name || classSignupPageState.approval?.name || currentUser.email || "",
@@ -2403,23 +2336,20 @@ async function handleClassSignupSubmit(event) {
         firstChoice,
         secondChoice,
         note,
-        status: "submitted",
+        sessionDate: session.date || "",
+        sessionWeekday: session.weekday || "",
+        sessionTitle: session.title || "",
+        sessionTimeLabel: session.timeLabel || "",
+        sessionReminder: session.reminder || "",
+        createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        submittedAt: existing.exists() ? existing.data()?.submittedAt || serverTimestamp() : serverTimestamp(),
       },
       { merge: true },
     );
 
-    if (statusNode) {
-      setMessageTone(statusNode, "報名已送出，星期五公布名單後請回來查看。", "success");
-    }
-
     await refreshClassSignupPageSafe({ force: true });
   } catch (error) {
     console.error("Class signup submit failed:", error);
-    if (statusNode) {
-      setMessageTone(statusNode, `報名失敗：${error?.message || "請稍後再試一次。"}`, "error");
-    }
   } finally {
     submitButton.disabled = false;
   }
@@ -2433,19 +2363,21 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
   const calendar = document.querySelector("[data-class-calendar]");
   const sessionBoard = document.querySelector("[data-class-session-board]");
   const rosterBoard = document.querySelector("[data-class-roster-board]");
-  const statusCard = document.querySelector("[data-class-status]");
 
-  if (!calendar || !sessionBoard || !rosterBoard || !statusCard) {
+  if (!calendar || !sessionBoard || !rosterBoard) {
     return;
   }
 
   if (!firebaseConfigured) {
-    statusCard.innerHTML = `
+    const message = `
       <article class="content-card is-tight">
         <h3 class="content-title">Firebase 尚未設定</h3>
-        <p class="content-copy">請先確認 <code>src/firebase-config.js</code> 與 Firestore 規則。</p>
+        <p class="content-copy">請先確認 <code>src/firebase-config.js</code> 與 Firestore 連線設定。</p>
       </article>
     `;
+    calendar.innerHTML = message;
+    sessionBoard.innerHTML = message;
+    rosterBoard.innerHTML = message;
     return;
   }
 
@@ -2463,24 +2395,23 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
       classSignupPageState.ownSignups = ownSignups.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
       classSignupPageState.approval =
         approvalDoc && typeof approvalDoc.exists === "function" && approvalDoc.exists() ? approvalDoc.data() : null;
-      classSignupPageState.loginRecent = isRecentLoginWithinWindow();
       classSignupPageState.loaded = true;
-    } else {
-      classSignupPageState.loginRecent = isRecentLoginWithinWindow();
     }
 
-    renderClassSignupStatusCard();
     renderClassCalendarBoard(classSignupPageState.sessions);
     renderClassSessionBoard(classSignupPageState.sessions);
     renderClassRosterBoard(classSignupPageState.sessions);
   } catch (error) {
     console.error("Class signup board load failed:", error);
-    statusCard.innerHTML = `
+    const message = `
       <article class="content-card is-tight">
-        <h3 class="content-title">社課頁面載入失敗</h3>
-        <p class="content-copy">${escapeHtml(error?.message || "請確認 Firestore 規則與集合是否存在。")}</p>
+        <h3 class="content-title">社課資料載入失敗</h3>
+        <p class="content-copy">${escapeHtml(error?.message || "請稍後再試一次。")}</p>
       </article>
     `;
+    calendar.innerHTML = message;
+    sessionBoard.innerHTML = message;
+    rosterBoard.innerHTML = message;
   }
 }
 
@@ -2551,6 +2482,85 @@ async function refreshAnnouncementsPageSafe({ force = false } = {}) {
     board.innerHTML = `
       <article class="content-card is-tight">
         <h3 class="content-title">公告載入失敗</h3>
+        <p class="content-copy">${escapeHtml(error?.message || "請稍後再試一次。")}</p>
+      </article>
+    `;
+  }
+}
+
+function renderFaqBoard(faqEntries = []) {
+  const container = document.querySelector("[data-faq-board]");
+  if (!container) {
+    return;
+  }
+
+  const sortedFaqs = [...faqEntries].sort((a, b) => getFaqSortMs(b) - getFaqSortMs(a));
+
+  if (sortedFaqs.length === 0) {
+    container.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">目前沒有 FAQ</h3>
+        <p class="content-copy">管理員可以先在後台新增問題與回答，這一頁就會自動顯示。</p>
+      </article>
+    `;
+    return;
+  }
+
+  container.innerHTML = sortedFaqs
+    .map(
+      (faq) => `
+        <details class="faq-item">
+          <summary class="faq-trigger">
+            <span class="faq-question">${escapeHtml(faq.question || "問題")}</span>
+            <span class="faq-icon" aria-hidden="true">
+              <span class="faq-icon-line faq-icon-line-horizontal"></span>
+              <span class="faq-icon-line faq-icon-line-vertical"></span>
+            </span>
+          </summary>
+          <div class="faq-panel">
+            <p class="faq-answer">${escapeHtml(faq.answer || faq.body || "")}</p>
+          </div>
+        </details>
+      `,
+    )
+    .join("");
+
+  initFaqAccordion();
+}
+
+async function refreshFaqPageSafe({ force = false } = {}) {
+  if (pageName !== "faq") {
+    return;
+  }
+
+  const board = document.querySelector("[data-faq-board]");
+  if (!board) {
+    return;
+  }
+
+  if (!firebaseConfigured) {
+    board.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">Firebase 尚未設定</h3>
+        <p class="content-copy">請先確認 <code>src/firebase-config.js</code> 與 Firestore 連線設定。</p>
+      </article>
+    `;
+    return;
+  }
+
+  try {
+    if (force || !faqPageState.loaded) {
+      const faqs = await getCollectionEntries(FAQ_COLLECTION);
+      faqPageState.faqs = faqs;
+      faqPageState.loaded = true;
+    }
+
+    renderFaqBoard(faqPageState.faqs);
+  } catch (error) {
+    console.error("FAQ board load failed:", error);
+    board.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">FAQ 載入失敗</h3>
         <p class="content-copy">${escapeHtml(error?.message || "請稍後再試一次。")}</p>
       </article>
     `;
@@ -2680,6 +2690,54 @@ function renderAdminAnnouncements(announcements = []) {
   syncAdminAnnouncementListHeight();
 }
 
+function renderAdminFaqs(faqEntries = []) {
+  const container = document.querySelector("[data-faq-admin-list]");
+  if (!container) {
+    return;
+  }
+
+  const sortedFaqs = [...faqEntries].sort((a, b) => getFaqSortMs(b) - getFaqSortMs(a));
+
+  if (sortedFaqs.length === 0) {
+    container.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">目前沒有 FAQ</h3>
+        <p class="content-copy">你可以先用左邊表單新增第一則問答。</p>
+      </article>
+    `;
+    bindAdminFaqListResize();
+    syncAdminFaqListHeight();
+    return;
+  }
+
+  container.innerHTML = sortedFaqs
+    .map(
+      (faq) => `
+        <details class="faq-item class-faq-card">
+          <summary class="faq-trigger">
+            <span class="faq-question">${escapeHtml(faq.question || "問題")}</span>
+            <span class="faq-icon" aria-hidden="true">
+              <span class="faq-icon-line faq-icon-line-horizontal"></span>
+              <span class="faq-icon-line faq-icon-line-vertical"></span>
+            </span>
+          </summary>
+          <div class="faq-panel">
+            <p class="faq-answer">${escapeHtml(faq.answer || faq.body || "")}</p>
+            <div class="application-actions class-admin-actions">
+              <button class="button-secondary application-save" data-faq-delete type="button" data-faq-id="${escapeHtml(faq.id)}">刪除 FAQ</button>
+            </div>
+          </div>
+        </details>
+      `,
+    )
+    .join("");
+
+  bindAdminFaqActions();
+  bindAdminFaqListResize();
+  syncAdminFaqListHeight();
+  initFaqAccordion();
+}
+
 function bindAdminClassSessionActions() {
   document.querySelectorAll("[data-class-session-publish]").forEach((button) => {
     if (button.dataset.initialized === "true") {
@@ -2796,6 +2854,35 @@ function bindAdminAnnouncementActions() {
   });
 }
 
+function bindAdminFaqActions() {
+  document.querySelectorAll("[data-faq-delete]").forEach((button) => {
+    if (button.dataset.initialized === "true") {
+      return;
+    }
+
+    button.dataset.initialized = "true";
+    button.addEventListener("click", async () => {
+      const faqId = button.dataset.faqId || "";
+      if (!faqId) {
+        return;
+      }
+
+      const confirmed = window.confirm("要刪除這則 FAQ 嗎？");
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await deleteDoc(getFaqDocRef(faqId));
+        await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+      } catch (error) {
+        console.error("Delete FAQ failed:", error);
+        window.alert(`刪除 FAQ 失敗：${error?.message || "請稍後再試一次。"}`);
+      }
+    });
+  });
+}
+
 async function handleClassSessionFormSubmit(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -2884,6 +2971,39 @@ async function handleAnnouncementFormSubmit(event) {
   }
 }
 
+async function handleFaqFormSubmit(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submitButton = form.querySelector("[data-faq-submit]");
+  const question = String(form.querySelector("[name='question']")?.value || "").trim();
+  const answer = String(form.querySelector("[name='answer']")?.value || "").trim();
+
+  if (!question || !answer) {
+    window.alert("請填寫 FAQ 問題與回答。");
+    return;
+  }
+
+  submitButton.disabled = true;
+
+  try {
+    const faqRef = doc(collection(db, FAQ_COLLECTION));
+    await setDoc(faqRef, {
+      question,
+      answer,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    form.reset();
+    await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+  } catch (error) {
+    console.error("Save FAQ failed:", error);
+    window.alert(`儲存 FAQ 失敗：${error?.message || "請稍後再試一次。"}`);
+  } finally {
+    submitButton.disabled = false;
+  }
+}
+
 function bindAdminCreationForms() {
   const sessionForm = document.querySelector("[data-class-session-form]");
   if (sessionForm && sessionForm.dataset.initialized !== "true") {
@@ -2895,6 +3015,12 @@ function bindAdminCreationForms() {
   if (announcementForm && announcementForm.dataset.initialized !== "true") {
     announcementForm.dataset.initialized = "true";
     announcementForm.addEventListener("submit", handleAnnouncementFormSubmit);
+  }
+
+  const faqForm = document.querySelector("[data-faq-form]");
+  if (faqForm && faqForm.dataset.initialized !== "true") {
+    faqForm.dataset.initialized = "true";
+    faqForm.addEventListener("submit", handleFaqFormSubmit);
   }
 }
 
@@ -2928,6 +3054,40 @@ function bindAdminAnnouncementListResize() {
   window.addEventListener("resize", () => {
     if (pageName === "members") {
       syncAdminAnnouncementListHeight();
+    }
+  });
+}
+
+function syncAdminFaqListHeight() {
+  const container = document.querySelector("[data-faq-admin-list]");
+  if (!container) {
+    return;
+  }
+
+  if (!window.matchMedia("(min-width: 760px)").matches) {
+    container.style.removeProperty("--faq-list-max-height");
+    return;
+  }
+
+  const sourceCard = document.querySelector("[data-faq-form]")?.closest(".content-card");
+  if (!(sourceCard instanceof HTMLElement)) {
+    container.style.removeProperty("--faq-list-max-height");
+    return;
+  }
+
+  const height = Math.max(320, Math.round(sourceCard.getBoundingClientRect().height));
+  container.style.setProperty("--faq-list-max-height", `${height}px`);
+}
+
+function bindAdminFaqListResize() {
+  if (adminFaqListResizeBound) {
+    return;
+  }
+
+  adminFaqListResizeBound = true;
+  window.addEventListener("resize", () => {
+    if (pageName === "members") {
+      syncAdminFaqListHeight();
     }
   });
 }
@@ -3534,6 +3694,8 @@ function bindAdminClassCreationForms() {
     announcementForm.dataset.initialized = "true";
     announcementForm.addEventListener("submit", handleAnnouncementFormSubmit);
   }
+
+  bindAdminCreationForms();
 }
 
 const handleAuthSubmit = async (event) => {
@@ -3845,7 +4007,7 @@ const initMembersAutoRefresh = () => {
 };
 
 const shouldAutoRefreshPublicBoard = () => {
-  if ((pageName !== "class-signup" && pageName !== "notices") || document.hidden || body.classList.contains("modal-open")) {
+  if ((pageName !== "class-signup" && pageName !== "notices" && pageName !== "faq") || document.hidden || body.classList.contains("modal-open")) {
     return false;
   }
 
@@ -3854,6 +4016,7 @@ const shouldAutoRefreshPublicBoard = () => {
     activeElement &&
     (activeElement.closest("[data-class-signup-form]") ||
       activeElement.closest("[data-announcement-board]") ||
+      activeElement.closest("[data-faq-board]") ||
       activeElement.tagName === "SELECT" ||
       activeElement.tagName === "INPUT" ||
       activeElement.tagName === "TEXTAREA")
@@ -3865,7 +4028,7 @@ const shouldAutoRefreshPublicBoard = () => {
 };
 
 const initPublicBoardAutoRefresh = () => {
-  if (pageName !== "class-signup" && pageName !== "notices") {
+  if (pageName !== "class-signup" && pageName !== "notices" && pageName !== "faq") {
     return;
   }
 
@@ -3885,6 +4048,11 @@ const initPublicBoardAutoRefresh = () => {
 
     if (pageName === "notices") {
       await refreshAnnouncementsPageSafe({ force: true });
+      return;
+    }
+
+    if (pageName === "faq") {
+      await refreshFaqPageSafe({ force: true });
     }
   }, PUBLIC_PAGE_REFRESH_MS);
 
@@ -3897,6 +4065,8 @@ const initPublicBoardAutoRefresh = () => {
       void refreshClassSignupPageSafe({ force: true });
     } else if (pageName === "notices") {
       void refreshAnnouncementsPageSafe({ force: true });
+    } else if (pageName === "faq") {
+      void refreshFaqPageSafe({ force: true });
     }
   });
 };
@@ -3928,6 +4098,8 @@ const init = async () => {
     await refreshClassSignupPageSafe();
   } else if (pageName === "notices") {
     await refreshAnnouncementsPageSafe();
+  } else if (pageName === "faq") {
+    await refreshFaqPageSafe();
   }
 };
 

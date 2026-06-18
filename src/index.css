@@ -2313,7 +2313,8 @@ button.admin-calendar-day:focus-visible {
 }
 
 .class-admin-list,
-.class-announcement-list {
+.class-announcement-list,
+.class-faq-admin-list {
   margin-top: 0;
 }
 
@@ -2328,10 +2329,25 @@ button.admin-calendar-day:focus-visible {
   padding-right: 6px;
 }
 
+.class-faq-admin-list {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+  max-height: var(--faq-list-max-height, none);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-right: 6px;
+}
+
 .class-announcement-card {
   padding: 0;
   overflow: hidden;
   gap: 0;
+}
+
+.class-faq-card {
+  overflow: hidden;
 }
 
 .class-announcement-summary {

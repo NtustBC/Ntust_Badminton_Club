@@ -9,7 +9,7 @@
       content="臺科大羽球社 Firebase 註冊名單管理頁，查看目前註冊社員與最近登入狀態。"
     />
     <link rel="stylesheet" href="./src/index.css" />
-    <script defer type="module" src="./src/site.js?v=20260618-10"></script>
+    <script defer type="module" src="./src/site.js?v=20260619-1"></script>
   </head>
   <body data-page="members">
     <div id="page-top"></div>
@@ -255,6 +255,31 @@
                     </form>
                   </article>
                   <div class="notice-grid class-announcement-list" data-announcement-admin-list></div>
+                </div>
+              </section>
+
+              <section class="member-section">
+                <div class="section-header is-compact">
+                  <div class="section-kicker">FAQ</div>
+                  <h3 class="content-title">FAQ 管理</h3>
+                  <p class="section-description">管理員可以直接新增問題與回答，FAQ 頁會自動按照時間顯示最新內容。</p>
+                </div>
+                <div class="content-grid class-admin-grid">
+                  <article class="content-card is-tight">
+                    <h3 class="content-title">新增 FAQ</h3>
+                    <form class="form-grid faq-form" data-faq-form>
+                      <div class="form-field">
+                        <label for="faq-question">問題</label>
+                        <input id="faq-question" name="question" type="text" placeholder="例如：社課需要先報名嗎？" />
+                      </div>
+                      <div class="form-field">
+                        <label for="faq-answer">回答</label>
+                        <textarea id="faq-answer" name="answer" rows="5" placeholder="請輸入 FAQ 回答內容"></textarea>
+                      </div>
+                      <button class="button-primary" data-faq-submit type="submit">儲存 FAQ</button>
+                    </form>
+                  </article>
+                  <div class="notice-grid class-announcement-list class-faq-admin-list" data-faq-admin-list data-faq-accordion></div>
                 </div>
               </section>
             </div>
