@@ -52,6 +52,7 @@ const CLASS_WEEKDAY_LABELS = {
   sun: "星期日",
 };
 const CLASS_WEEKDAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const DATE_WEEKDAY_ORDER = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const CLASS_SUNDAY_SLOTS = ["13:00~14:30", "14:30~16:00"];
 const bootstrapAdminEmailNormalized = bootstrapAdminEmail.trim().toLowerCase();
 const firebaseConfigured = Object.values(firebaseConfig).every(Boolean);
@@ -88,6 +89,7 @@ let announcementPageState = {
 };
 let adminClassCalendarMonthOffset = 0;
 let adminClassSessionEditingId = "";
+let lastAdminClassCalendarTrigger = null;
 
 const memberFilters = {
   year: "all",
@@ -277,6 +279,26 @@ const applicationSuccessModalMarkup = `
   </div>
 `;
 
+const adminClassCalendarModalMarkup = `
+  <div class="modal" data-admin-class-calendar-modal hidden>
+    <div class="modal-backdrop" data-modal-backdrop></div>
+    <div class="modal-dialog admin-calendar-modal-dialog">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title" data-admin-calendar-modal-title>社課日期</h2>
+          <p class="modal-subtitle" data-admin-calendar-modal-subtitle></p>
+        </div>
+        <button class="modal-close" data-close-admin-calendar-modal type="button" aria-label="關閉社課細節視窗">
+          <span aria-hidden="true">+</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="admin-calendar-modal-list" data-admin-calendar-modal-list></div>
+      </div>
+    </div>
+  </div>
+`;
+
 const escapeHtml = (value) =>
   String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -364,6 +386,14 @@ const isRecentLoginWithinWindow = (days = CLASS_SIGNUP_WINDOW_DAYS) => {
   }
 
   return Date.now() - loginTime <= days * 24 * 60 * 60 * 1000;
+};
+const getWeekdayKeyFromDateValue = (value) => {
+  const date = parseDateKey(value);
+  if (!date) {
+    return "";
+  }
+
+  return DATE_WEEKDAY_ORDER[date.getDay()] || "";
 };
 const getWeekdayLabel = (weekday) => CLASS_WEEKDAY_LABELS[String(weekday || "").trim().toLowerCase()] || String(weekday || "");
 const getClassSessionDateLabel = (session) => {
@@ -472,6 +502,16 @@ const ensureApplicationSuccessModal = () => {
   return document.querySelector("[data-application-success-modal]");
 };
 
+const ensureAdminClassCalendarModal = () => {
+  const existing = document.querySelector("[data-admin-class-calendar-modal]");
+  if (existing) {
+    return existing;
+  }
+
+  document.body.insertAdjacentHTML("beforeend", adminClassCalendarModalMarkup);
+  return document.querySelector("[data-admin-class-calendar-modal]");
+};
+
 const getLoginModalElements = () => {
   const loginModal = ensureLoginModal();
 
@@ -516,6 +556,18 @@ const getApplicationSuccessModalElements = () => {
     successModal,
     confirmButton: successModal.querySelector("[data-confirm-application-success]"),
     closeButtons: successModal.querySelectorAll("[data-close-application-success]"),
+  };
+};
+
+const getAdminClassCalendarModalElements = () => {
+  const calendarModal = ensureAdminClassCalendarModal();
+
+  return {
+    calendarModal,
+    title: calendarModal.querySelector("[data-admin-calendar-modal-title]"),
+    subtitle: calendarModal.querySelector("[data-admin-calendar-modal-subtitle]"),
+    list: calendarModal.querySelector("[data-admin-calendar-modal-list]"),
+    closeButtons: calendarModal.querySelectorAll("[data-close-admin-calendar-modal]"),
   };
 };
 
@@ -738,6 +790,88 @@ const closeApplicationSuccessModal = () => {
   body.classList.remove("modal-open");
 };
 
+const openAdminClassCalendarModal = (dateKey, sessions = [], trigger = null) => {
+  const { calendarModal, title, subtitle, list } = getAdminClassCalendarModalElements();
+  lastAdminClassCalendarTrigger = trigger || null;
+
+  const parsedDate = parseDateKey(dateKey);
+  const dateLabel = parsedDate
+    ? parsedDate.toLocaleDateString("zh-TW", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    : String(dateKey || "");
+  const weekdayLabel = parsedDate ? getWeekdayLabel(DATE_WEEKDAY_ORDER[parsedDate.getDay()] || "") : "";
+  const sortedSessions = [...sessions].sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
+
+  title.textContent = dateLabel || "社課日期";
+  subtitle.textContent = weekdayLabel ? `${weekdayLabel} · ${sortedSessions.length} 場` : `${sortedSessions.length} 場`;
+
+  if (sortedSessions.length === 0) {
+    list.innerHTML = `
+      <article class="content-card is-tight admin-calendar-modal-empty">
+        <h3 class="content-title">這一天沒有社課</h3>
+        <p class="content-copy">你可以切換到其他日期，或回到左側新增社課。</p>
+      </article>
+    `;
+  } else {
+    list.innerHTML = sortedSessions
+      .map((session) => {
+        const sessionId = getClassSessionId(session);
+        const sessionSignups = membersDashboardCache.classSessionSignups.filter(
+          (signup) => String(signup.sessionId || "") === sessionId,
+        );
+        const rosterCount = Array.isArray(session.publishedRoster) ? session.publishedRoster.length : 0;
+        const rosterLabel = session.rosterPublished
+          ? `已公布名單${rosterCount > 0 ? ` · ${rosterCount} 人` : ""}`
+          : "尚未公布名單";
+
+        return `
+          <article class="admin-calendar-modal-session${session.rosterPublished ? " is-published" : ""}">
+            <div class="admin-calendar-modal-session-head">
+              <div>
+                <p class="admin-calendar-modal-session-weekday">${escapeHtml(getWeekdayLabel(session.weekday) || "社課")}</p>
+                <h3 class="admin-calendar-modal-session-title">${escapeHtml(session.title || "未命名社課")}</h3>
+                <p class="admin-calendar-modal-session-meta">
+                  ${escapeHtml(getClassSessionDateLabel(session))} · ${escapeHtml(getClassSessionTimeLabel(session) || "未填時間")}
+                </p>
+              </div>
+              <span class="member-row-status">${escapeHtml(rosterLabel)}</span>
+            </div>
+            <p class="admin-calendar-modal-session-copy">${escapeHtml(session.reminder || session.description || "請依行事曆安排社課。")}</p>
+            <p class="admin-calendar-modal-session-copy">報名 ${sessionSignups.length} 人</p>
+            <div class="admin-calendar-modal-session-actions">
+              <button class="button-secondary admin-mini-button" data-class-session-edit type="button" data-session-id="${escapeHtml(sessionId)}">編輯</button>
+              <button class="button-secondary admin-mini-button" data-class-session-publish type="button" data-session-id="${escapeHtml(sessionId)}">
+                ${session.rosterPublished ? "重新公布" : "公布名單"}
+              </button>
+              <button class="button-secondary admin-mini-button" data-class-session-delete type="button" data-session-id="${escapeHtml(sessionId)}">刪除</button>
+            </div>
+          </article>
+        `;
+      })
+      .join("");
+  }
+
+  calendarModal.hidden = false;
+  body.classList.add("modal-open");
+
+  window.setTimeout(() => {
+    calendarModal.querySelector("[data-close-admin-calendar-modal]")?.focus();
+  }, 50);
+};
+
+const closeAdminClassCalendarModal = () => {
+  const { calendarModal } = getAdminClassCalendarModalElements();
+  calendarModal.hidden = true;
+  body.classList.remove("modal-open");
+
+  if (lastAdminClassCalendarTrigger instanceof HTMLElement) {
+    lastAdminClassCalendarTrigger.focus();
+  }
+};
+
 const applyLanguage = (lang) => {
   document.documentElement.lang = lang;
   body.dataset.language = lang;
@@ -756,11 +890,6 @@ const syncMemberProfile = async (user, source) => {
 
   const memberRef = getMemberDocRef(user.uid);
   const existingDoc = await getDoc(memberRef);
-  const existingByEmailSnapshot = user.email
-    ? await getDocs(query(collection(db, "members"), where("email", "==", user.email.trim().toLowerCase())))
-    : null;
-  const provisionalDoc = existingByEmailSnapshot?.docs.find((entry) => entry.id !== user.uid) || null;
-  const provisionalData = provisionalDoc ? provisionalDoc.data() : null;
   const approvalDoc = user.email ? await getDoc(getApprovalDocRef(user.email)) : null;
   const approvalData = approvalDoc?.exists() ? approvalDoc.data() : null;
 
@@ -777,19 +906,6 @@ const syncMemberProfile = async (user, source) => {
     payload.status = "active";
   }
 
-  if (provisionalData) {
-    payload.name = provisionalData.name || payload.name;
-    payload.applicationId = provisionalData.applicationId || payload.applicationId;
-    payload.applicationType = provisionalData.applicationType || payload.applicationType;
-    payload.studentId = provisionalData.studentId || payload.studentId;
-    payload.department = provisionalData.department || provisionalData.school || payload.department;
-    payload.phone = provisionalData.phone || payload.phone;
-    payload.school = provisionalData.school || provisionalData.department || payload.school;
-    payload.academicYear = provisionalData.academicYear || payload.academicYear;
-    payload.term = provisionalData.term || payload.term;
-    payload.approvedAt = provisionalData.approvedAt || payload.approvedAt;
-  }
-
   if (approvalData) {
     payload.name = approvalData.name || "";
     payload.applicationId = approvalData.applicationId || "";
@@ -804,10 +920,6 @@ const syncMemberProfile = async (user, source) => {
   }
 
   await setDoc(memberRef, payload, { merge: true });
-
-  if (provisionalDoc) {
-    await deleteDoc(provisionalDoc.ref);
-  }
 };
 
 const ensureBootstrapAdminDoc = async (user) => {
@@ -888,6 +1000,10 @@ const syncMemberRecordFromApplication = async (application, applicationId) => {
   if (reviewStatus !== "approved") {
     return;
   }
+
+  // Member documents are created on first login from the approval record.
+  // The admin dashboard already shows approved applications directly.
+  return;
 
   const memberRef = doc(db, "members", `application-${applicationId}`);
   const payload = {
@@ -1713,7 +1829,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
     renderMembersSummary(displayMembers, membersDashboardCache.applications);
     await renderApplicationReviewList(membersDashboardCache.applications);
     renderMembersList(displayMembers);
-    renderAdminClassCalendar(membersDashboardCache.classSessions, membersDashboardCache.classSessionSignups);
+    renderAdminClassCalendarCompact(membersDashboardCache.classSessions, membersDashboardCache.classSessionSignups);
     renderAdminAnnouncements(membersDashboardCache.announcements);
     bindAdminClassCreationForms();
     if (preserveExpandedRows) {
@@ -2564,6 +2680,10 @@ function bindAdminClassSessionActions() {
       if (!session) {
         return;
       }
+      closeAdminClassCalendarModal();
+      closeAdminClassCalendarModal();
+      closeAdminClassCalendarModal();
+      closeAdminClassCalendarModal();
 
       const confirmed = window.confirm("要公布這個社課的名單嗎？");
       if (!confirmed) {
@@ -2617,6 +2737,10 @@ function bindAdminClassSessionActions() {
       if (!sessionId) {
         return;
       }
+      closeAdminClassCalendarModal();
+      closeAdminClassCalendarModal();
+      closeAdminClassCalendarModal();
+      closeAdminClassCalendarModal();
 
       const confirmed = window.confirm("要刪除這個社課設定嗎？相關報名資料也會一併刪除。");
       if (!confirmed) {
@@ -2670,7 +2794,7 @@ async function handleClassSessionFormSubmit(event) {
   const form = event.currentTarget;
   const submitButton = form.querySelector("[data-class-session-submit]");
   const date = String(form.querySelector("[name='date']")?.value || "").trim();
-  const weekday = String(form.querySelector("[name='weekday']")?.value || "").trim().toLowerCase();
+  const weekday = getWeekdayKeyFromDateValue(date);
   const title = String(form.querySelector("[name='title']")?.value || "").trim();
   const timeLabel = String(form.querySelector("[name='timeLabel']")?.value || "").trim();
   const description = String(form.querySelector("[name='description']")?.value || "").trim();
@@ -2772,6 +2896,31 @@ const getAdminClassCalendarContainer = () => document.querySelector("[data-class
 const getAdminClassSessionState = () => document.querySelector("[data-class-session-edit-state]");
 const getAdminClassSessionSubmitButton = () => document.querySelector("[data-class-session-submit]");
 const getAdminClassSessionResetButton = () => document.querySelector("[data-class-session-reset]");
+const getAdminClassSessionWeekdayPreview = () => document.querySelector("[data-class-session-weekday-preview]");
+const getAdminClassSessionWeekdayInput = () => document.querySelector("[data-class-session-weekday]");
+const syncAdminClassSessionWeekdayPreview = (form = getAdminClassSessionForm()) => {
+  if (!form) {
+    return "";
+  }
+
+  const dateInput = form.querySelector("[name='date']");
+  const weekdayInput = form.querySelector("[name='weekday']");
+  const preview = form.querySelector("[data-class-session-weekday-preview]");
+  const weekdayKey = getWeekdayKeyFromDateValue(dateInput instanceof HTMLInputElement ? dateInput.value : "");
+  const weekdayLabel = weekdayKey ? getWeekdayLabel(weekdayKey) : "";
+
+  if (weekdayInput instanceof HTMLInputElement) {
+    weekdayInput.value = weekdayKey;
+  }
+
+  if (preview) {
+    preview.textContent = weekdayLabel
+      ? `系統已自動判定為 ${weekdayLabel}`
+      : "請先選擇日期，系統會自動判定星期。";
+  }
+
+  return weekdayKey;
+};
 const getAdminCalendarMonthOffset = (referenceDate) => {
   const today = new Date();
   today.setDate(1);
@@ -2799,10 +2948,11 @@ const setAdminClassSessionFormMode = (session = null) => {
   if (!session) {
     adminClassSessionEditingId = "";
     form.reset();
-    if (sessionIdInput instanceof HTMLInputElement) {
-      sessionIdInput.value = "";
-    }
-    if (submitButton) {
+      if (sessionIdInput instanceof HTMLInputElement) {
+        sessionIdInput.value = "";
+      }
+      syncAdminClassSessionWeekdayPreview(form);
+      if (submitButton) {
       submitButton.textContent = "儲存社課";
     }
     if (stateNode) {
@@ -2813,10 +2963,9 @@ const setAdminClassSessionFormMode = (session = null) => {
 
   adminClassSessionEditingId = getClassSessionId(session);
 
-  const fieldValueMap = {
-    date: session.date || session.sessionDate || "",
-    weekday: String(session.weekday || "").trim().toLowerCase(),
-    title: session.title || "",
+    const fieldValueMap = {
+      date: session.date || session.sessionDate || "",
+      title: session.title || "",
     timeLabel: session.timeLabel || session.time || "",
     reminder: session.reminder || "",
     description: session.description || "",
@@ -2830,12 +2979,14 @@ const setAdminClassSessionFormMode = (session = null) => {
   });
 
   const signupRequiredField = form.querySelector("[name='signupRequired']");
-  if (signupRequiredField instanceof HTMLInputElement) {
-    signupRequiredField.checked = Boolean(session.signupRequired);
-  }
+    if (signupRequiredField instanceof HTMLInputElement) {
+      signupRequiredField.checked = Boolean(session.signupRequired);
+    }
 
-  if (sessionIdInput instanceof HTMLInputElement) {
-    sessionIdInput.value = adminClassSessionEditingId;
+    syncAdminClassSessionWeekdayPreview(form);
+
+    if (sessionIdInput instanceof HTMLInputElement) {
+      sessionIdInput.value = adminClassSessionEditingId;
   }
   if (submitButton) {
     submitButton.textContent = "更新社課";
@@ -2852,7 +3003,7 @@ const setAdminClassSessionFormMode = (session = null) => {
 
 const clearAdminClassSessionFormMode = () => {
   setAdminClassSessionFormMode(null);
-  renderAdminClassCalendar(membersDashboardCache.classSessions, membersDashboardCache.classSessionSignups);
+  renderAdminClassCalendarCompact(membersDashboardCache.classSessions, membersDashboardCache.classSessionSignups);
 };
 
 const renderAdminClassCalendar = (sessions = [], signups = []) => {
@@ -2979,18 +3130,171 @@ const renderAdminClassCalendar = (sessions = [], signups = []) => {
 
   container.querySelector("[data-admin-calendar-prev]")?.addEventListener("click", () => {
     adminClassCalendarMonthOffset -= 1;
-    renderAdminClassCalendar(sessions, signups);
+    renderAdminClassCalendarCompact(sessions, signups);
   });
 
   container.querySelector("[data-admin-calendar-next]")?.addEventListener("click", () => {
     adminClassCalendarMonthOffset += 1;
-    renderAdminClassCalendar(sessions, signups);
+    renderAdminClassCalendarCompact(sessions, signups);
+  });
+
+  bindAdminClassCalendarActions();
+};
+
+const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
+  const container = getAdminClassCalendarContainer();
+  if (!container) {
+    return;
+  }
+
+  const referenceDate = getAdminCalendarReferenceDate();
+  const year = referenceDate.getFullYear();
+  const month = referenceDate.getMonth();
+  const monthLabel = referenceDate.toLocaleDateString("zh-TW", {
+    year: "numeric",
+    month: "long",
+  });
+
+  const monthSessions = sessions.filter((session) => {
+    const sessionDate = parseDateKey(session.date || session.sessionDate || "");
+    return sessionDate && sessionDate.getFullYear() === year && sessionDate.getMonth() === month;
+  });
+
+  const sessionsByDate = monthSessions.reduce((acc, session) => {
+    const dateKey = String(session.date || session.sessionDate || "").trim();
+    if (!dateKey) {
+      return acc;
+    }
+
+    if (!acc[dateKey]) {
+      acc[dateKey] = [];
+    }
+
+    acc[dateKey].push(session);
+    return acc;
+  }, {});
+
+  const firstDay = new Date(year, month, 1);
+  const offset = firstDay.getDay();
+  const totalDays = new Date(year, month + 1, 0).getDate();
+  const dayLabels = ["日", "一", "二", "三", "四", "五", "六"];
+  const todayKey = formatDateInputValue(new Date());
+  const cells = [];
+
+  for (let index = 0; index < offset; index += 1) {
+    cells.push(`<div class="admin-calendar-day is-empty" aria-hidden="true"></div>`);
+  }
+
+  for (let day = 1; day <= totalDays; day += 1) {
+    const date = new Date(year, month, day);
+    const dateKey = formatDateInputValue(date);
+    const daySessions = (sessionsByDate[dateKey] || []).sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
+    const sessionCount = daySessions.length;
+    const isToday = dateKey === todayKey;
+
+    if (sessionCount > 0) {
+      cells.push(`
+        <button
+          class="admin-calendar-day is-session${isToday ? " is-today" : ""}"
+          type="button"
+          data-admin-calendar-day
+          data-date-key="${escapeHtml(dateKey)}"
+        >
+          <span class="admin-calendar-day-number">${escapeHtml(String(day))}</span>
+          <span class="admin-calendar-day-label">${escapeHtml(`${month + 1}/${day}`)}</span>
+          <span class="admin-calendar-day-marker" aria-hidden="true"></span>
+          <span class="admin-calendar-day-badge">${escapeHtml(`${sessionCount} 場`)}</span>
+        </button>
+      `);
+      continue;
+    }
+
+    cells.push(`
+      <div class="admin-calendar-day${isToday ? " is-today" : ""}" aria-hidden="true">
+        <span class="admin-calendar-day-number">${escapeHtml(String(day))}</span>
+        <span class="admin-calendar-day-label">${escapeHtml(`${month + 1}/${day}`)}</span>
+      </div>
+    `);
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push(`<div class="admin-calendar-day is-empty" aria-hidden="true"></div>`);
+  }
+
+  container.innerHTML = `
+    <div class="admin-calendar-shell">
+      <div class="admin-calendar-header">
+        <div>
+          <p class="section-kicker">Calendar</p>
+          <h3 class="content-title">${escapeHtml(monthLabel)}</h3>
+          <p class="section-description">藍色日期代表當天有社課，點一下就會看到詳細內容。</p>
+        </div>
+        <div class="admin-calendar-nav">
+          <button class="button-secondary" data-admin-calendar-prev type="button">上個月</button>
+          <button class="button-secondary" data-admin-calendar-next type="button">下個月</button>
+        </div>
+      </div>
+      ${monthSessions.length === 0 ? `<p class="admin-calendar-empty-board">這個月份目前沒有社課，可以先從左側新增。</p>` : ""}
+      <div class="admin-calendar-weekdays">
+        ${dayLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
+      </div>
+      <div class="admin-calendar-grid">
+        ${cells.join("")}
+      </div>
+    </div>
+  `;
+
+  container.querySelector("[data-admin-calendar-prev]")?.addEventListener("click", () => {
+    adminClassCalendarMonthOffset -= 1;
+    renderAdminClassCalendarCompact(sessions, signups);
+  });
+
+  container.querySelector("[data-admin-calendar-next]")?.addEventListener("click", () => {
+    adminClassCalendarMonthOffset += 1;
+    renderAdminClassCalendarCompact(sessions, signups);
   });
 
   bindAdminClassCalendarActions();
 };
 
 function bindAdminClassCalendarActions() {
+  document.querySelectorAll("[data-admin-calendar-day]").forEach((button) => {
+    if (button.dataset.initialized === "true") {
+      return;
+    }
+
+    button.dataset.initialized = "true";
+    button.addEventListener("click", () => {
+      const dateKey = button.dataset.dateKey || "";
+      const daySessions = membersDashboardCache.classSessions.filter((session) => {
+        const sessionDate = String(session.date || session.sessionDate || "").trim();
+        return sessionDate === dateKey;
+      });
+
+      openAdminClassCalendarModal(dateKey, daySessions, button);
+    });
+  });
+
+  const { calendarModal, closeButtons } = getAdminClassCalendarModalElements();
+  closeButtons.forEach((button) => {
+    if (button.dataset.initialized === "true") {
+      return;
+    }
+
+    button.dataset.initialized = "true";
+    button.addEventListener("click", closeAdminClassCalendarModal);
+  });
+
+  if (calendarModal.dataset.initialized !== "true") {
+    calendarModal.dataset.initialized = "true";
+    calendarModal.addEventListener("click", (event) => {
+      const target = event.target;
+      if (target === calendarModal || target.hasAttribute("data-modal-backdrop")) {
+        closeAdminClassCalendarModal();
+      }
+    });
+  }
+
   document.querySelectorAll("[data-class-session-edit]").forEach((button) => {
     if (button.dataset.initialized === "true") {
       return;
@@ -3004,8 +3308,9 @@ function bindAdminClassCalendarActions() {
         return;
       }
 
+      closeAdminClassCalendarModal();
       setAdminClassSessionFormMode(session);
-      renderAdminClassCalendar(membersDashboardCache.classSessions, membersDashboardCache.classSessionSignups);
+      renderAdminClassCalendarCompact(membersDashboardCache.classSessions, membersDashboardCache.classSessionSignups);
       getAdminClassSessionForm()?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   });
@@ -3165,6 +3470,14 @@ function bindAdminClassCreationForms() {
   if (sessionForm && sessionForm.dataset.initialized !== "true") {
     sessionForm.dataset.initialized = "true";
     sessionForm.addEventListener("submit", handleAdminClassSessionSubmit);
+
+    const dateInput = sessionForm.querySelector("[name='date']");
+    if (dateInput instanceof HTMLInputElement) {
+      const syncWeekday = () => syncAdminClassSessionWeekdayPreview(sessionForm);
+      dateInput.addEventListener("change", syncWeekday);
+      dateInput.addEventListener("input", syncWeekday);
+      syncWeekday();
+    }
   }
 
   const resetButton = getAdminClassSessionResetButton();

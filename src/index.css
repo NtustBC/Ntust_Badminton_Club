@@ -2049,6 +2049,12 @@ img {
   line-height: 1.75;
 }
 
+.class-session-weekday-copy {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
 .class-session-form .form-field input::placeholder,
 .class-session-form .form-field textarea::placeholder {
   color: rgba(91, 116, 146, 0.78);
@@ -2103,15 +2109,35 @@ img {
 }
 
 .admin-calendar-day {
-  min-height: 170px;
-  padding: 14px;
+  position: relative;
+  min-height: 120px;
+  padding: 14px 14px 12px;
   border: 1px solid rgba(15, 76, 129, 0.08);
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.96);
   box-shadow: var(--shadow);
   display: grid;
-  gap: 10px;
-  align-content: start;
+  gap: 8px;
+  align-content: space-between;
+  text-align: left;
+}
+
+button.admin-calendar-day {
+  color: inherit;
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease;
+}
+
+button.admin-calendar-day:hover,
+button.admin-calendar-day:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(15, 76, 129, 0.24);
+  box-shadow: 0 18px 32px rgba(15, 76, 129, 0.12);
+  outline: none;
 }
 
 .admin-calendar-day.is-empty {
@@ -2122,25 +2148,18 @@ img {
 }
 
 .admin-calendar-day.is-session {
+  background: linear-gradient(180deg, rgba(234, 242, 251, 0.94), rgba(245, 249, 253, 0.98));
   border-color: rgba(15, 76, 129, 0.18);
-  background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(240, 246, 252, 0.94));
 }
 
 .admin-calendar-day.is-today {
-  border-color: rgba(15, 76, 129, 0.26);
+  border-color: rgba(15, 76, 129, 0.28);
   box-shadow: 0 0 0 3px rgba(15, 76, 129, 0.08), var(--shadow);
-}
-
-.admin-calendar-day-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
 }
 
 .admin-calendar-day-number {
   color: var(--ink);
-  font-size: 1rem;
+  font-size: 1.02rem;
   font-weight: 800;
 }
 
@@ -2150,30 +2169,67 @@ img {
   font-weight: 700;
 }
 
-.admin-calendar-session-list {
-  display: grid;
-  gap: 10px;
+.admin-calendar-day-marker {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--brand);
+  box-shadow: 0 0 0 6px rgba(15, 76, 129, 0.12);
 }
 
-.admin-calendar-event {
-  display: grid;
-  gap: 10px;
-  padding: 12px;
+.admin-calendar-day-badge {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.admin-calendar-empty-board {
+  margin: 0;
+  padding: 16px 18px;
   border: 1px solid rgba(15, 76, 129, 0.08);
-  border-radius: 16px;
-  background: rgba(15, 76, 129, 0.04);
+  border-radius: 18px;
+  background: rgba(234, 242, 251, 0.62);
+  color: var(--muted);
+  line-height: 1.7;
 }
 
-.admin-calendar-event.is-editing {
-  border-color: rgba(15, 76, 129, 0.34);
-  box-shadow: 0 0 0 3px rgba(15, 76, 129, 0.08);
+.admin-calendar-modal-dialog {
+  width: min(780px, calc(100% - 28px));
 }
 
-.admin-calendar-event.is-published {
-  background: linear-gradient(180deg, rgba(235, 245, 255, 0.98), rgba(241, 248, 255, 0.94));
+.admin-calendar-modal-list {
+  display: grid;
+  gap: 14px;
 }
 
-.admin-calendar-event-weekday {
+.admin-calendar-modal-session {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid rgba(15, 76, 129, 0.1);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(241, 247, 253, 0.96));
+}
+
+.admin-calendar-modal-session.is-published {
+  border-color: rgba(15, 76, 129, 0.18);
+}
+
+.admin-calendar-modal-session-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-calendar-modal-session-weekday {
   margin: 0;
   color: var(--brand);
   font-size: 0.76rem;
@@ -2182,31 +2238,32 @@ img {
   text-transform: uppercase;
 }
 
-.admin-calendar-event-title {
+.admin-calendar-modal-session-title {
   margin: 4px 0 0;
-  color: var(--ink);
-  font-weight: 800;
-  line-height: 1.5;
+  font-family: var(--font-serif);
+  font-size: 1.3rem;
+  line-height: 1.4;
 }
 
-.admin-calendar-event-meta,
-.admin-calendar-event-note,
-.admin-calendar-event-status {
+.admin-calendar-modal-session-meta,
+.admin-calendar-modal-session-copy {
   margin: 0;
   color: var(--muted);
-  font-size: 0.86rem;
-  line-height: 1.65;
+  line-height: 1.7;
 }
 
-.admin-calendar-event-status {
-  color: var(--brand);
-  font-weight: 700;
+.admin-calendar-modal-session-copy {
+  font-size: 0.92rem;
 }
 
-.admin-calendar-event-actions {
+.admin-calendar-modal-session-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.admin-calendar-modal-empty {
+  box-shadow: none;
 }
 
 .admin-mini-button {
@@ -2214,13 +2271,6 @@ img {
   padding: 0 12px;
   border-radius: 999px;
   font-size: 0.78rem;
-}
-
-.admin-calendar-empty-board,
-.admin-calendar-empty-note {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.7;
 }
 
 .class-admin-list,
