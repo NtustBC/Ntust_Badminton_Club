@@ -36,6 +36,7 @@ const STORAGE_KEYS = {
 const DEFAULT_TERMS = ["上學期", "下學期", "未設定"];
 const MIN_ACADEMIC_YEAR = 115;
 const APPLICATION_SUBMIT_COOLDOWN_MS = 10 * 60 * 1000;
+const MEMBERS_DASHBOARD_REFRESH_MS = 60 * 1000;
 const bootstrapAdminEmailNormalized = bootstrapAdminEmail.trim().toLowerCase();
 const firebaseConfigured = Object.values(firebaseConfig).every(Boolean);
 
@@ -47,6 +48,7 @@ let authMode = "signin";
 let authReadyPromise = null;
 let lastLoginTrigger = null;
 let lastApplicationTrigger = null;
+let membersAutoRefreshTimer = null;
 let membersDashboardCache = {
   members: [],
   applications: [],
@@ -1119,6 +1121,64 @@ const bindMemberToggleButtons = (memberList) => {
   });
 };
 
+const getExpandedMemberKeys = () =>
+  Array.from(document.querySelectorAll("[data-member-row][data-expanded='true']"))
+    .map((row) => row.dataset.memberEmail || row.dataset.memberApplicationId || "")
+    .filter(Boolean);
+
+const restoreExpandedMemberKeys = (keys = []) => {
+  keys.forEach((key) => {
+    const escapedKey = CSS.escape(key);
+    const row =
+      document.querySelector(`[data-member-email="${escapedKey}"]`) ||
+      document.querySelector(`[data-member-application-id="${escapedKey}"]`);
+
+    if (row instanceof HTMLElement) {
+      setMemberRowExpanded(row, true);
+    }
+  });
+};
+
+const shouldAutoRefreshMembersDashboard = () => {
+  if (pageName !== "members" || document.hidden || body.classList.contains("modal-open")) {
+    return false;
+  }
+
+  if (!currentUser || !currentUserIsAdmin) {
+    return false;
+  }
+
+  const activeElement = document.activeElement;
+  if (
+    activeElement &&
+    (activeElement.closest("[data-application-list]") ||
+      activeElement.closest("[data-members-list]") ||
+      activeElement.closest("[data-members-content] select") ||
+      activeElement.closest("[data-members-content] input") ||
+      activeElement.tagName === "SELECT" ||
+      activeElement.tagName === "INPUT" ||
+      activeElement.tagName === "TEXTAREA")
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
+const startMembersDashboardAutoRefresh = () => {
+  if (pageName !== "members" || membersAutoRefreshTimer) {
+    return;
+  }
+
+  membersAutoRefreshTimer = window.setInterval(async () => {
+    if (!shouldAutoRefreshMembersDashboard()) {
+      return;
+    }
+
+    await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+  }, MEMBERS_DASHBOARD_REFRESH_MS);
+};
+
 const renderApplicationReviewList = async (applications = []) => {
   const applicationList = document.querySelector("[data-application-list]");
   if (!applicationList) {
@@ -1342,7 +1402,7 @@ const getCollectionEntries = async (collectionName) => {
   return snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
 };
 
-const refreshMembersDashboardSafe = async ({ force = false } = {}) => {
+const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows = false } = {}) => {
   if (pageName !== "members") {
     return;
   }
@@ -1392,6 +1452,7 @@ const refreshMembersDashboardSafe = async ({ force = false } = {}) => {
   initMembersFilters();
   initCustomAcademicYearControls();
   patchMembersFilterUI();
+  const expandedMemberKeys = preserveExpandedRows ? getExpandedMemberKeys() : [];
 
   try {
     if (force || !membersDashboardCache.loaded) {
@@ -1410,6 +1471,9 @@ const refreshMembersDashboardSafe = async ({ force = false } = {}) => {
     renderMembersSummary(membersDashboardCache.members, membersDashboardCache.applications);
     await renderApplicationReviewList(membersDashboardCache.applications);
     renderMembersList(membersDashboardCache.members);
+    if (preserveExpandedRows) {
+      restoreExpandedMemberKeys(expandedMemberKeys);
+    }
   } catch (error) {
     showMembersDashboardError(gate, error);
 
@@ -1731,6 +1795,22 @@ const initKeybindings = () => {
   });
 };
 
+const initMembersAutoRefresh = () => {
+  if (pageName !== "members") {
+    return;
+  }
+
+  startMembersDashboardAutoRefresh();
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden || !shouldAutoRefreshMembersDashboard()) {
+      return;
+    }
+
+    void refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+  });
+};
+
 const init = async () => {
   ensureLoginModal();
   ensureApplicationModal();
@@ -1743,6 +1823,7 @@ const init = async () => {
   initLanguageSwitcher();
   initFaqAccordion();
   initKeybindings();
+  initMembersAutoRefresh();
   setAuthMode("signin");
   updateLoginButtons();
 
