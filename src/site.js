@@ -94,7 +94,7 @@ const authErrorMessages = {
 };
 
 const applicationErrorMessages = {
-  "permission-denied": "你已經送出過申請了，請等待管理員審核。",
+  "permission-denied": "這個 Email 已經有申請資料了，請直接修改原申請或聯絡管理員。",
   "unavailable": "Firebase 目前暫時無法連線，請稍後再試一次。",
   "deadline-exceeded": "送出逾時，請檢查網路後再試一次。",
   "failed-precondition": "目前資料尚未準備好，請重新整理頁面後再試一次。",
@@ -760,18 +760,11 @@ const syncMemberRecordFromApplication = async (application, applicationId) => {
   }
 
   const reviewStatus = getApplicationReviewStatus(application);
-  const membersQuery = query(collection(db, "members"), where("email", "==", application.email.trim().toLowerCase()));
-  const snapshot = await getDocs(membersQuery);
-
   if (reviewStatus !== "approved") {
-    await Promise.all(
-      snapshot.docs
-        .filter((entry) => entry.data().source === "application-approval")
-        .map((entry) => deleteDoc(entry.ref)),
-    );
     return;
   }
 
+  const memberRef = doc(db, "members", `application-${applicationId}`);
   const payload = {
     name: application.name || "",
     email: application.email.trim().toLowerCase(),
@@ -789,26 +782,14 @@ const syncMemberRecordFromApplication = async (application, applicationId) => {
     updatedAt: serverTimestamp(),
   };
 
-  if (snapshot.empty) {
-    await setDoc(doc(db, "members", `application-${applicationId}`), {
+  await setDoc(
+    memberRef,
+    {
       ...payload,
       uid: `application-${applicationId}`,
       createdAt: serverTimestamp(),
-    });
-    return;
-  }
-
-  await Promise.all(
-    snapshot.docs.map((entry) =>
-      setDoc(
-        entry.ref,
-        {
-          ...payload,
-          uid: entry.data().uid || entry.id,
-        },
-        { merge: true },
-      ),
-    ),
+    },
+    { merge: true },
   );
 };
 
@@ -1085,10 +1066,12 @@ const focusApprovedMember = (applicationId, application) => {
 
   const normalizedEmail = application?.email?.trim().toLowerCase() || "";
   const target =
+    (applicationId
+      ? list.querySelector(`[data-member-application-id="${CSS.escape(`application-${applicationId}`)}"]`)
+      : null) ||
     (normalizedEmail
       ? list.querySelector(`[data-member-email="${CSS.escape(normalizedEmail)}"]`)
-      : null) ||
-    list.querySelector(`[data-member-application-id="${CSS.escape(applicationId)}"]`);
+      : null);
 
   if (target instanceof HTMLElement) {
     setMemberRowExpanded(target, true);
@@ -1315,7 +1298,7 @@ const renderMembersList = (members = []) => {
           data-member-row
           data-expanded="false"
           data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}"
-          data-member-application-id="${escapeHtml(member.applicationId || "")}"
+          data-member-application-id="${escapeHtml(member.id)}"
         >
           <button
             class="member-row-summary"
@@ -1337,7 +1320,6 @@ const renderMembersList = (members = []) => {
           </button>
           <div class="member-row-detail" data-member-detail id="member-detail-${escapeHtml(member.id)}" hidden>
             <div class="member-row-meta">
-              <span>UID：${escapeHtml(member.uid || member.id)}</span>
               <span>學年度：${escapeHtml(getAcademicYearLabel(member.academicYear || "未設定"))}</span>
               <span>學期：${escapeHtml(getAcademicTermLabel(member.term || "未設定"))}</span>
               <span>系別：${escapeHtml(member.department || member.school || "未填寫")}</span>
@@ -1405,7 +1387,6 @@ const showMembersDashboardError = (gate, error) => {
     <p class="content-copy">Firebase code: <code>${escapeHtml(details.code)}</code></p>
     <p class="content-copy">${escapeHtml(details.message)}</p>
     <p class="content-copy">Signed in as: <code>${escapeHtml(details.email)}</code></p>
-    <p class="content-copy">UID: <code>${escapeHtml(details.uid)}</code></p>
     <p class="content-copy">Front-end admin: <code>${escapeHtml(details.frontEndAdmin)}</code></p>
   `;
 };
