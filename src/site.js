@@ -1037,6 +1037,8 @@ const bindApplicationActionButtons = (applicationList) => {
           const nextData = {
             academicYear: yearSelect?.value || "未設定",
             term: termSelect?.value || "未設定",
+            approved: true,
+            reviewStatus: "approved",
             updatedAt: serverTimestamp(),
           };
 
@@ -1044,13 +1046,11 @@ const bindApplicationActionButtons = (applicationList) => {
           const updatedDoc = await getDoc(applicationRef);
           const updatedData = updatedDoc.data();
 
-          if (getApplicationReviewStatus(updatedData) === "approved") {
-            await syncApprovalFromApplication(id, updatedData);
-            await syncMemberRecordFromApplication(updatedData, id);
-          }
-
+          await syncApprovalFromApplication(id, updatedData);
+          await syncMemberRecordFromApplication(updatedData, id);
           await refreshMembersDashboardSafe({ force: true });
-          window.alert("學年度與學期已儲存。");
+          focusApprovedMember(id, updatedData);
+          window.alert("學年度與學期已儲存，並已加入社員名單。");
         } catch (error) {
           console.error("Save application meta failed:", error);
           window.alert(`儲存失敗：${error?.message || "請稍後再試一次。"}`);
