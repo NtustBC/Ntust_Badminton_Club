@@ -9,7 +9,7 @@
       content="臺科大羽球社 Firebase 註冊名單管理頁，查看目前註冊社員與最近登入狀態。"
     />
     <link rel="stylesheet" href="./src/index.css" />
-    <script defer type="module" src="./src/site.js?v=20260618-8"></script>
+    <script defer type="module" src="./src/site.js?v=20260618-9"></script>
   </head>
   <body data-page="members">
     <div id="page-top"></div>
@@ -170,6 +170,10 @@
                   <article class="content-card is-tight">
                     <h3 class="content-title">新增社課日期</h3>
                     <form class="form-grid class-session-form" data-class-session-form>
+                      <input name="sessionId" type="hidden" value="" />
+                      <div class="class-session-edit-state" data-class-session-edit-state>
+                        目前為 <strong>新增模式</strong>，可從右側月曆點選社課進行編輯。
+                      </div>
                       <div class="form-field">
                         <label for="class-session-date">日期</label>
                         <input id="class-session-date" name="date" type="date" />
@@ -208,10 +212,15 @@
                           需要報名
                         </label>
                       </div>
-                      <button class="button-primary" data-class-session-submit type="submit">儲存社課</button>
+                      <div class="class-session-form-actions">
+                        <button class="button-primary" data-class-session-submit type="submit">儲存社課</button>
+                        <button class="button-secondary" data-class-session-reset type="button">清空表單</button>
+                      </div>
                     </form>
                   </article>
-                  <div class="member-list class-admin-list" data-class-session-admin-list></div>
+                  <article class="content-card is-tight class-session-calendar-card">
+                    <div data-class-session-calendar></div>
+                  </article>
                 </div>
               </section>
 

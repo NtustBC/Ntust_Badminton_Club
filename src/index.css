@@ -1961,6 +1961,268 @@ img {
   align-items: start;
 }
 
+.class-session-editor-card,
+.class-session-calendar-card {
+  display: grid;
+  gap: 18px;
+}
+
+.class-session-form {
+  gap: 18px;
+}
+
+.class-session-edit-state {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(234, 242, 251, 0.96), rgba(245, 248, 252, 0.96));
+  color: var(--ink);
+  line-height: 1.7;
+}
+
+.class-session-edit-state strong {
+  color: var(--brand);
+}
+
+.class-session-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.class-session-form-actions .button-primary,
+.class-session-form-actions .button-secondary {
+  min-width: 168px;
+}
+
+.class-session-form .form-field label {
+  color: var(--brand);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.class-session-form .form-field input,
+.class-session-form .form-field select,
+.class-session-form .form-field textarea {
+  width: 100%;
+  min-height: 62px;
+  padding: 0 18px;
+  border: 1px solid rgba(15, 76, 129, 0.14);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(240, 246, 252, 0.96));
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 700;
+  box-shadow: 0 12px 26px rgba(15, 76, 129, 0.08);
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.class-session-form .form-field select,
+.class-session-form .form-field textarea {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+.class-session-form .form-field select {
+  cursor: pointer;
+  padding-right: 56px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--brand) 50%),
+    linear-gradient(135deg, var(--brand) 50%, transparent 50%);
+  background-position:
+    calc(100% - 28px) calc(50% - 4px),
+    calc(100% - 20px) calc(50% - 4px);
+  background-size: 8px 8px, 8px 8px;
+  background-repeat: no-repeat;
+}
+
+.class-session-form .form-field textarea {
+  min-height: 120px;
+  padding-top: 16px;
+  padding-bottom: 16px;
+  resize: vertical;
+  line-height: 1.75;
+}
+
+.class-session-form .form-field input::placeholder,
+.class-session-form .form-field textarea::placeholder {
+  color: rgba(91, 116, 146, 0.78);
+  font-weight: 600;
+}
+
+.class-session-form .form-field select:hover,
+.class-session-form .form-field input:hover,
+.class-session-form .form-field textarea:hover,
+.class-session-form .form-field select:focus,
+.class-session-form .form-field input:focus,
+.class-session-form .form-field textarea:focus {
+  outline: none;
+  border-color: rgba(15, 76, 129, 0.3);
+  box-shadow: 0 16px 32px rgba(15, 76, 129, 0.12);
+  transform: translateY(-1px);
+}
+
+.admin-calendar-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.admin-calendar-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.admin-calendar-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.admin-calendar-weekdays,
+.admin-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-calendar-weekdays span {
+  color: var(--brand);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.admin-calendar-day {
+  min-height: 170px;
+  padding: 14px;
+  border: 1px solid rgba(15, 76, 129, 0.08);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.admin-calendar-day.is-empty {
+  background: transparent;
+  box-shadow: none;
+  border-style: dashed;
+  border-color: rgba(15, 76, 129, 0.06);
+}
+
+.admin-calendar-day.is-session {
+  border-color: rgba(15, 76, 129, 0.18);
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(240, 246, 252, 0.94));
+}
+
+.admin-calendar-day.is-today {
+  border-color: rgba(15, 76, 129, 0.26);
+  box-shadow: 0 0 0 3px rgba(15, 76, 129, 0.08), var(--shadow);
+}
+
+.admin-calendar-day-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-calendar-day-number {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.admin-calendar-day-label {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.admin-calendar-session-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-calendar-event {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(15, 76, 129, 0.08);
+  border-radius: 16px;
+  background: rgba(15, 76, 129, 0.04);
+}
+
+.admin-calendar-event.is-editing {
+  border-color: rgba(15, 76, 129, 0.34);
+  box-shadow: 0 0 0 3px rgba(15, 76, 129, 0.08);
+}
+
+.admin-calendar-event.is-published {
+  background: linear-gradient(180deg, rgba(235, 245, 255, 0.98), rgba(241, 248, 255, 0.94));
+}
+
+.admin-calendar-event-weekday {
+  margin: 0;
+  color: var(--brand);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.admin-calendar-event-title {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.admin-calendar-event-meta,
+.admin-calendar-event-note,
+.admin-calendar-event-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.65;
+}
+
+.admin-calendar-event-status {
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.admin-calendar-event-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-mini-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.admin-calendar-empty-board,
+.admin-calendar-empty-note {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
 .class-admin-list,
 .class-announcement-list {
   margin-top: 0;
@@ -2026,7 +2288,7 @@ img {
   }
 
   .class-admin-grid {
-    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
   }
 
   .class-announcement-list {
