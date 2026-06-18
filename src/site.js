@@ -90,6 +90,7 @@ let announcementPageState = {
 let adminClassCalendarMonthOffset = 0;
 let adminClassSessionEditingId = "";
 let lastAdminClassCalendarTrigger = null;
+let adminAnnouncementListResizeBound = false;
 
 const memberFilters = {
   year: "all",
@@ -2640,31 +2641,43 @@ function renderAdminAnnouncements(announcements = []) {
     container.innerHTML = `
       <article class="content-card is-tight">
         <h3 class="content-title">目前沒有公告</h3>
-        <p class="content-copy">你可以先用上方表單發佈第一則公告。</p>
+        <p class="content-copy">你可以先用左邊表單發佈第一則公告。</p>
       </article>
     `;
+    bindAdminAnnouncementListResize();
+    syncAdminAnnouncementListHeight();
     return;
   }
 
   container.innerHTML = sortedAnnouncements
     .map(
       (announcement) => `
-        <article class="notice-card class-announcement-card">
-          <div class="notice-meta">
-            <span>${escapeHtml(announcement.date || formatTimestamp(announcement.createdAt))}</span>
-            <span>${escapeHtml(announcement.reminder || "公告")}</span>
+        <details class="notice-card class-announcement-card">
+          <summary class="class-announcement-summary">
+            <div class="class-announcement-summary-main">
+              <div class="notice-meta">
+                <span>${escapeHtml(announcement.date || formatTimestamp(announcement.createdAt))}</span>
+                <span>${escapeHtml(announcement.reminder || "公告")}</span>
+              </div>
+              <h3 class="notice-title">${escapeHtml(announcement.title || "公告")}</h3>
+            </div>
+            <span class="class-announcement-toggle class-announcement-toggle-open">展開</span>
+            <span class="class-announcement-toggle class-announcement-toggle-close">收合</span>
+          </summary>
+          <div class="class-announcement-body">
+            <p class="notice-copy">${escapeHtml(announcement.body || announcement.message || "")}</p>
+            <div class="application-actions class-admin-actions">
+              <button class="button-secondary application-save" data-announcement-delete type="button" data-announcement-id="${escapeHtml(announcement.id)}">刪除公告</button>
+            </div>
           </div>
-          <h3 class="notice-title">${escapeHtml(announcement.title || "公告")}</h3>
-          <p class="notice-copy">${escapeHtml(announcement.body || announcement.message || "")}</p>
-          <div class="application-actions class-admin-actions">
-            <button class="button-secondary application-save" data-announcement-delete type="button" data-announcement-id="${escapeHtml(announcement.id)}">刪除公告</button>
-          </div>
-        </article>
+        </details>
       `,
     )
     .join("");
 
   bindAdminAnnouncementActions();
+  bindAdminAnnouncementListResize();
+  syncAdminAnnouncementListHeight();
 }
 
 function bindAdminClassSessionActions() {
@@ -2680,9 +2693,6 @@ function bindAdminClassSessionActions() {
       if (!session) {
         return;
       }
-      closeAdminClassCalendarModal();
-      closeAdminClassCalendarModal();
-      closeAdminClassCalendarModal();
       closeAdminClassCalendarModal();
 
       const confirmed = window.confirm("要公布這個社課的名單嗎？");
@@ -2737,9 +2747,6 @@ function bindAdminClassSessionActions() {
       if (!sessionId) {
         return;
       }
-      closeAdminClassCalendarModal();
-      closeAdminClassCalendarModal();
-      closeAdminClassCalendarModal();
       closeAdminClassCalendarModal();
 
       const confirmed = window.confirm("要刪除這個社課設定嗎？相關報名資料也會一併刪除。");
@@ -2889,6 +2896,40 @@ function bindAdminCreationForms() {
     announcementForm.dataset.initialized = "true";
     announcementForm.addEventListener("submit", handleAnnouncementFormSubmit);
   }
+}
+
+function syncAdminAnnouncementListHeight() {
+  const container = document.querySelector("[data-announcement-admin-list]");
+  if (!container) {
+    return;
+  }
+
+  if (!window.matchMedia("(min-width: 760px)").matches) {
+    container.style.removeProperty("--announcement-list-max-height");
+    return;
+  }
+
+  const sourceCard = document.querySelector("[data-announcement-form]")?.closest(".content-card");
+  if (!(sourceCard instanceof HTMLElement)) {
+    container.style.removeProperty("--announcement-list-max-height");
+    return;
+  }
+
+  const height = Math.max(320, Math.round(sourceCard.getBoundingClientRect().height));
+  container.style.setProperty("--announcement-list-max-height", `${height}px`);
+}
+
+function bindAdminAnnouncementListResize() {
+  if (adminAnnouncementListResizeBound) {
+    return;
+  }
+
+  adminAnnouncementListResizeBound = true;
+  window.addEventListener("resize", () => {
+    if (pageName === "members") {
+      syncAdminAnnouncementListHeight();
+    }
+  });
 }
 
 const getAdminClassSessionForm = () => document.querySelector("[data-class-session-form]");

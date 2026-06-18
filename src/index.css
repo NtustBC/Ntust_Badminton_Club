@@ -2049,6 +2049,45 @@ img {
   line-height: 1.75;
 }
 
+.class-session-form .form-field:has(> label > input[type="checkbox"]) {
+  display: block;
+}
+
+.class-session-form .form-field label:has(> input[type="checkbox"]) {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: auto;
+  min-height: auto;
+  padding: 0;
+  color: var(--ink);
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.class-session-form .form-field input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(15, 76, 129, 0.18);
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: none;
+  accent-color: var(--brand);
+  transform: none;
+  flex: 0 0 auto;
+}
+
+.class-session-form .form-field input[type="checkbox"]:hover,
+.class-session-form .form-field input[type="checkbox"]:focus-visible {
+  transform: none;
+  box-shadow: none;
+}
+
 .class-session-weekday-copy {
   margin: 10px 0 0;
   color: var(--muted);
@@ -2276,6 +2315,77 @@ button.admin-calendar-day:focus-visible {
 .class-admin-list,
 .class-announcement-list {
   margin-top: 0;
+}
+
+.class-announcement-list {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+  max-height: var(--announcement-list-max-height, none);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-right: 6px;
+}
+
+.class-announcement-card {
+  padding: 0;
+  overflow: hidden;
+  gap: 0;
+}
+
+.class-announcement-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 18px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.class-announcement-summary::-webkit-details-marker {
+  display: none;
+}
+
+.class-announcement-summary-main {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.class-announcement-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.class-announcement-toggle-close {
+  display: none;
+}
+
+.class-announcement-card[open] .class-announcement-toggle-open {
+  display: none;
+}
+
+.class-announcement-card[open] .class-announcement-toggle-close {
+  display: inline-flex;
+}
+
+.class-announcement-body {
+  display: grid;
+  gap: 14px;
+  padding: 0 18px 18px;
 }
 
 .class-admin-meta {
