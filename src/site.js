@@ -1027,6 +1027,37 @@ const bindApplicationActionButtons = (applicationList) => {
         return;
       }
 
+      if (action === "save-meta") {
+        const controls = applicationList.querySelectorAll(`[data-application-id="${id}"]`);
+        controls.forEach((control) => {
+          control.disabled = true;
+        });
+
+        try {
+          const nextData = {
+            academicYear: yearSelect?.value || "未設定",
+            term: termSelect?.value || "未設定",
+            updatedAt: serverTimestamp(),
+          };
+
+          await updateDoc(applicationRef, nextData);
+          const updatedDoc = await getDoc(applicationRef);
+          const updatedData = updatedDoc.data();
+
+          if (getApplicationReviewStatus(updatedData) === "approved") {
+            await syncApprovalFromApplication(id, updatedData);
+            await syncMemberRecordFromApplication(updatedData, id);
+          }
+
+          await refreshMembersDashboardSafe({ force: true });
+        } finally {
+          controls.forEach((control) => {
+            control.disabled = false;
+          });
+        }
+        return;
+      }
+
       const nextData = {
         academicYear: yearSelect?.value || "未設定",
         term: termSelect?.value || "未設定",
