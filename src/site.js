@@ -1047,7 +1047,11 @@ const bindApplicationActionButtons = (applicationList) => {
           const updatedData = updatedDoc.data();
 
           await syncApprovalFromApplication(id, updatedData);
-          await syncMemberRecordFromApplication(updatedData, id);
+          try {
+            await syncMemberRecordFromApplication(updatedData, id);
+          } catch (memberSyncError) {
+            console.warn("Approved application saved, but member collection sync failed.", memberSyncError);
+          }
           await refreshMembersDashboardSafe({ force: true });
           focusApprovedMember(id, updatedData);
           window.alert("學年度與學期已儲存，並已加入社員名單。");
@@ -1080,7 +1084,11 @@ const bindApplicationActionButtons = (applicationList) => {
         const updatedDoc = await getDoc(applicationRef);
         const updatedData = updatedDoc.data();
         await syncApprovalFromApplication(id, updatedData);
-        await syncMemberRecordFromApplication(updatedData, id);
+        try {
+          await syncMemberRecordFromApplication(updatedData, id);
+        } catch (memberSyncError) {
+          console.warn("Approved application saved, but member collection sync failed.", memberSyncError);
+        }
         await refreshMembersDashboardSafe({ force: true });
 
         focusApprovedMember(id, updatedData);
@@ -1291,6 +1299,7 @@ const bindMemberActionButtons = (memberList) => {
     button.addEventListener("click", async () => {
       const memberId = button.dataset.memberId;
       const action = button.dataset.memberAction;
+      const origin = button.dataset.memberOrigin || "members";
 
       if (action !== "delete" || !memberId) {
         return;
@@ -1301,10 +1310,53 @@ const bindMemberActionButtons = (memberList) => {
         return;
       }
 
-      await deleteDoc(doc(db, "members", memberId));
+      const collectionName = origin === "applications" ? "applications" : "members";
+      await deleteDoc(doc(db, collectionName, memberId));
       await refreshMembersDashboardSafe({ force: true });
     });
   });
+};
+
+const getMemberIdFromApplication = (applicationId) => `application-${applicationId}`;
+
+const createMemberFromApprovedApplication = (application) => ({
+  id: getMemberIdFromApplication(application.id),
+  applicationId: application.id,
+  applicationType: application.applicationType || "club",
+  name: application.name || "",
+  email: String(application.email || "").trim().toLowerCase(),
+  studentId: application.studentId || "",
+  department: application.department || application.school || "",
+  school: application.school || application.department || "",
+  phone: application.phone || "",
+  academicYear: application.academicYear || "未設定",
+  term: application.term || "未設定",
+  source: "application-approval",
+  status: "approved",
+  createdAt: application.submittedAt,
+  approvedAt: application.updatedAt || application.submittedAt,
+  lastLoginAt: null,
+  origin: "applications",
+});
+
+const mergeMembersWithApprovedApplications = (members = [], applications = []) => {
+  const existingKeys = new Set(
+    members.flatMap((member) => [
+      member.id,
+      member.applicationId ? getMemberIdFromApplication(member.applicationId) : "",
+      String(member.email || "").trim().toLowerCase(),
+    ]),
+  );
+
+  const approvedApplicationMembers = applications
+    .filter((application) => getApplicationReviewStatus(application) === "approved")
+    .map(createMemberFromApprovedApplication)
+    .filter((member) => {
+      const emailKey = String(member.email || "").trim().toLowerCase();
+      return !existingKeys.has(member.id) && !existingKeys.has(emailKey);
+    });
+
+  return [...members.map((member) => ({ ...member, origin: "members" })), ...approvedApplicationMembers];
 };
 
 const renderMembersList = (members = []) => {
@@ -1364,7 +1416,7 @@ const renderMembersList = (members = []) => {
               <span>最近登入：${escapeHtml(formatTimestamp(member.lastLoginAt))}</span>
             </div>
             <div class="application-actions member-actions">
-              <button class="button-secondary application-save" data-member-action="delete" data-member-id="${escapeHtml(member.id)}" type="button">
+              <button class="button-secondary application-save" data-member-action="delete" data-member-origin="${escapeHtml(member.origin || "members")}" data-member-id="${escapeHtml(member.origin === "applications" ? member.applicationId : member.id)}" type="button">
                 刪除社員資料
               </button>
             </div>
@@ -1498,9 +1550,14 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
       };
     }
 
-    renderMembersSummary(membersDashboardCache.members, membersDashboardCache.applications);
+    const displayMembers = mergeMembersWithApprovedApplications(
+      membersDashboardCache.members,
+      membersDashboardCache.applications,
+    );
+
+    renderMembersSummary(displayMembers, membersDashboardCache.applications);
     await renderApplicationReviewList(membersDashboardCache.applications);
-    renderMembersList(membersDashboardCache.members);
+    renderMembersList(displayMembers);
     if (preserveExpandedRows) {
       restoreExpandedMemberKeys(expandedMemberKeys);
     }
