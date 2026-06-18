@@ -962,6 +962,22 @@ const formatTimestamp = (value) => {
   });
 };
 
+const getTimestampMs = (value) => {
+  if (!value) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const date =
+    typeof value?.toDate === "function"
+      ? value.toDate()
+      : typeof value?.seconds === "number"
+        ? new Date(value.seconds * 1000)
+        : new Date(value);
+
+  const time = date.getTime();
+  return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
+};
+
 const getApplicationCooldownRemainingMs = (email, applicationType) => {
   try {
     const raw = window.localStorage.getItem(getApplicationCooldownKey(email, applicationType));
@@ -1333,6 +1349,7 @@ const createMemberFromApprovedApplication = (application) => ({
   term: application.term || "未設定",
   source: "application-approval",
   status: "approved",
+  submittedAt: application.submittedAt,
   createdAt: application.submittedAt,
   approvedAt: application.updatedAt || application.submittedAt,
   lastLoginAt: null,
@@ -1356,7 +1373,9 @@ const mergeMembersWithApprovedApplications = (members = [], applications = []) =
       return !existingKeys.has(member.id) && !existingKeys.has(emailKey);
     });
 
-  return [...members.map((member) => ({ ...member, origin: "members" })), ...approvedApplicationMembers];
+  return [...members.map((member) => ({ ...member, origin: "members" })), ...approvedApplicationMembers].sort(
+    (a, b) => getTimestampMs(a.submittedAt || a.createdAt || a.approvedAt) - getTimestampMs(b.submittedAt || b.createdAt || b.approvedAt),
+  );
 };
 
 const renderMembersList = (members = []) => {
