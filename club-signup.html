@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>社團報名 | 臺科大羽球社</title>
-    <meta name="description" content="臺科大羽球社社團報名頁面，提供加入方式與報名流程。" />
+    <meta name="description" content="臺科大羽球社社團報名頁面，提供加入方式與目前的申請流程。" />
     <link rel="stylesheet" href="./src/index.css" />
     <script defer type="module" src="./src/site.js?v=20260618-2"></script>
   </head>
@@ -22,6 +22,7 @@
               <p class="brand-subtitle">NTUST BADMINTON CLUB</p>
             </span>
           </a>
+
           <nav class="site-nav" aria-label="主要導覽">
             <a class="nav-link" href="./about.html">關於我們</a>
             <a class="nav-link" href="./club-signup.html" aria-current="page">社團報名</a>
@@ -29,11 +30,21 @@
             <a class="nav-link" href="./notices.html">公告</a>
             <a class="nav-link" href="./faq.html">FAQ</a>
           </nav>
+
           <div class="header-actions">
             <button class="login-button header-login" data-open-login type="button">Sign In</button>
-            <button class="menu-button" data-menu-toggle type="button" aria-expanded="false" aria-label="開啟選單">MENU</button>
+            <button
+              class="menu-button"
+              data-menu-toggle
+              type="button"
+              aria-expanded="false"
+              aria-label="開啟選單"
+            >
+              MENU
+            </button>
           </div>
         </div>
+
         <div class="mobile-nav" data-mobile-nav>
           <div class="container mobile-nav-grid">
             <a class="nav-link" href="./about.html">關於我們</a>
@@ -50,19 +61,15 @@
         <div class="container">
           <section class="page-hero">
             <div class="hero-card">
-              <div class="eyebrow">Join the Club</div>
-              <h1 class="page-title">
-                想加入羽球社，
-                <br />
-                從這頁開始
-              </h1>
+              <div class="eyebrow">Club Signup</div>
+              <h1 class="page-title">社團報名</h1>
               <p class="page-copy">
-                這一頁專門留給社團報名資訊。之後你可以把這裡接到 Google 表單、校內系統，或改成正式的會員申請流程。
+                這一頁整理目前實際使用的報名流程：先送出資料、接著收信等待通知，最後由管理員審核通過後再登入網站。
               </p>
               <div class="page-actions">
                 <button class="button-primary" data-open-application data-application-type="club" type="button">
-                  送出社團申請
-                  <span aria-hidden="true">-></span>
+                  立即申請
+                  <span aria-hidden="true">→</span>
                 </button>
                 <a class="button-secondary" href="https://mail.google.com/mail/?view=cm&fs=1&to=ntustbc@gmail.com" target="_blank" rel="noreferrer">先用信箱詢問</a>
               </div>
@@ -70,9 +77,9 @@
 
             <div class="side-card">
               <div>
-                <p class="side-title">現在先放清楚流程，之後再接正式系統</p>
+                <p class="side-title">報名前先看</p>
                 <p class="side-copy">
-                  目前頁面以資訊架構為主，讓報名流程不會混在首頁裡。等你準備好資料來源，我們可以直接把按鈕接出去。
+                  如果你已經大致確認要加入，直接送出申請會最快。填完之後，系統會先寄出申請收到通知，之後管理員也會再寄審核結果。
                 </p>
               </div>
               <div class="logo-frame">
@@ -85,23 +92,51 @@
             <div class="section-header">
               <div class="section-kicker">Signup Flow</div>
               <h2 class="page-title">報名流程</h2>
-              <p class="section-description">如果你之後要補正式表單連結，建議就沿用這三段流程，內容會很好維護。</p>
+              <p class="section-description">
+                目前這套流程以線上申請、Email 通知與管理員審核為主，這樣最容易維護，也最適合接下來的正式報名作業。
+              </p>
             </div>
             <div class="timeline-grid">
               <article class="timeline-card">
                 <div class="timeline-index">01</div>
                 <h3 class="timeline-title">填寫基本資料</h3>
-                <p class="timeline-copy">先收集學號、姓名、系級與聯絡方式。若要外連 Google 表單，這一步最適合直接放連結。</p>
+                <p class="timeline-copy">
+                  先填姓名、學號、系級、聯絡方式與 Email，送出後會先建立申請資料，方便管理員後續審核。
+                </p>
               </article>
               <article class="timeline-card">
                 <div class="timeline-index">02</div>
-                <h3 class="timeline-title">加入聯絡管道</h3>
-                <p class="timeline-copy">建議統一加入社團 IG 或社群，方便後續公告迎新資訊、社課通知與場地更新。</p>
+                <h3 class="timeline-title">收信等候通知</h3>
+                <p class="timeline-copy">
+                  申請送出後，系統會先寄出「已收到申請」與繳費說明信件，請留意收件匣與垃圾信件匣。
+                </p>
               </article>
               <article class="timeline-card">
                 <div class="timeline-index">03</div>
-                <h3 class="timeline-title">等待後續通知</h3>
-                <p class="timeline-copy">等你未來補上正式審核流程後，這裡可以改成顯示審核狀態、報名成功訊息或後續注意事項。</p>
+                <h3 class="timeline-title">審核通過後登入</h3>
+                <p class="timeline-copy">
+                  管理員確認資料與審核通過後，系統會再寄出通知信，你就可以前往網站註冊或登入社員帳號。
+                </p>
+              </article>
+            </div>
+          </section>
+
+          <section class="section-shell">
+            <div class="section-header">
+              <div class="section-kicker">What You Get</div>
+              <h2 class="page-title">加入後可以做什麼</h2>
+              <p class="section-description">
+                成為社員後，你可以更快收到練球與活動資訊，也能在網站上查看後續安排與公告。
+              </p>
+            </div>
+            <div class="feature-grid">
+              <article class="feature-card">
+                <h3 class="content-title">即時通知</h3>
+                <p class="feature-copy">社團活動、練球資訊與重要公告，都會優先透過 Email 通知。</p>
+              </article>
+              <article class="feature-card">
+                <h3 class="content-title">網站登入</h3>
+                <p class="feature-copy">審核通過後，就能使用社員帳號登入網站，查看專屬內容。</p>
               </article>
             </div>
           </section>
@@ -134,16 +169,29 @@
                 <p class="footer-heading">Contact</p>
                 <p class="footer-note">報名、社課或公告相關問題，都可以從這裡聯繫。</p>
               </div>
+
               <p class="footer-copyright">© 2026 臺科大羽球社 NTUST Badminton Club. All Rights Reserved.</p>
+
               <ul class="footer-policy">
                 <li><a href="./privacy.html">隱私權政策</a></li>
-                <li><a href="https://mail.google.com/mail/?view=cm&fs=1&to=ntustbc@gmail.com" target="_blank" rel="noreferrer">聯絡信箱</a></li>
-                <li><a href="https://www.instagram.com/ntust_badminton/" target="_blank" rel="noreferrer">IG</a></li>
+                <li>
+                  <a href="https://mail.google.com/mail/?view=cm&fs=1&to=ntustbc@gmail.com" target="_blank" rel="noreferrer"
+                    >聯絡信箱</a
+                  >
+                </li>
+                <li>
+                  <a href="https://www.instagram.com/ntust_badminton/" target="_blank" rel="noreferrer">IG</a>
+                </li>
               </ul>
             </div>
           </div>
         </div>
-        <a class="back-to-top" data-back-to-top href="#page-top" aria-label="回到頂部"><svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M6 14 12 8 18 14" /></svg></a>
+
+        <a class="back-to-top" data-back-to-top href="#page-top" aria-label="回到頁首">
+          <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+            <path d="M6 14 12 8 18 14" />
+          </svg>
+        </a>
       </footer>
     </div>
   </body>

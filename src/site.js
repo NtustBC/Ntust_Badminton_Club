@@ -93,6 +93,13 @@ const authErrorMessages = {
   "auth/weak-password": "密碼至少需要 8 個字元。",
 };
 
+const applicationErrorMessages = {
+  "permission-denied": "你已經送出過申請了，請等待管理員審核。",
+  "unavailable": "Firebase 目前暫時無法連線，請稍後再試一次。",
+  "deadline-exceeded": "送出逾時，請檢查網路後再試一次。",
+  "failed-precondition": "目前資料尚未準備好，請重新整理頁面後再試一次。",
+};
+
 const loginModalMarkup = `
   <div class="modal" data-login-modal hidden>
     <div class="modal-backdrop" data-modal-backdrop></div>
@@ -304,6 +311,8 @@ const updateLoginButtons = () => {
 };
 
 const getFriendlyAuthError = (error) => authErrorMessages[error?.code] || "登入發生問題，請稍後再試一次。";
+const getFriendlyApplicationError = (error) =>
+  applicationErrorMessages[error?.code] || "送出申請時發生問題，請稍後再試一次。";
 
 const closeMobileNav = () => {
   if (!menuButton || !mobileNav) {
@@ -1597,12 +1606,6 @@ const handleApplicationSubmit = async (event) => {
     await ensureAuthReady();
 
     const applicationRef = doc(db, "applications", getApplicationDocId(email, applicationType));
-    const existingApplication = await getDoc(applicationRef);
-    if (existingApplication.exists()) {
-      setApplicationHint("這個信箱已經送出過申請，請等管理員處理或直接聯絡幹部。", "error");
-      return;
-    }
-
     await setDoc(applicationRef, {
       name,
       studentId,
@@ -1625,8 +1628,9 @@ const handleApplicationSubmit = async (event) => {
     closeApplicationModal();
     openApplicationSuccessModal();
     setApplicationHint("申請已送出，等管理員審核通過後就能建立登入帳號。", "success");
-  } catch {
-    setMessageTone(applicationHint, "送出申請時發生問題，請稍後再試一次。", "error");
+  } catch (error) {
+    console.error("Application submit failed:", error);
+    setMessageTone(applicationHint, getFriendlyApplicationError(error), "error");
   } finally {
     submitButton.disabled = false;
   }
