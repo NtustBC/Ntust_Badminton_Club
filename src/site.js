@@ -1212,12 +1212,17 @@ const renderApplicationReviewList = async (applications = []) => {
     .map((application) => {
       const academicYear = application.academicYear || String(Math.max(getRocAcademicYear(), MIN_ACADEMIC_YEAR));
       const term = application.term || "未設定";
+      const reviewStatus = getApplicationReviewStatus(application);
+      const approved = reviewStatus === "approved";
+      const rejected = reviewStatus === "rejected";
+      const statusLabel =
+        reviewStatus === "approved" ? "已同意" : reviewStatus === "rejected" ? "已不同意" : "pending";
 
       return `
         <article class="member-row">
           <div class="member-row-top">
             <p class="member-row-index">社員申請</p>
-            <p class="member-row-status">pending</p>
+            <p class="member-row-status">${statusLabel}</p>
           </div>
           <p class="member-row-email">${escapeHtml(application.name || "未填姓名")} / ${escapeHtml(application.email || "未填信箱")}</p>
           <div class="member-row-meta">
