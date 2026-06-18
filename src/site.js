@@ -37,6 +37,22 @@ const DEFAULT_TERMS = ["上學期", "下學期", "未設定"];
 const MIN_ACADEMIC_YEAR = 115;
 const APPLICATION_SUBMIT_COOLDOWN_MS = 10 * 60 * 1000;
 const MEMBERS_DASHBOARD_REFRESH_MS = 60 * 1000;
+const PUBLIC_PAGE_REFRESH_MS = 60 * 1000;
+const CLASS_SIGNUP_WINDOW_DAYS = 7;
+const CLASS_SESSION_COLLECTION = "classSessions";
+const CLASS_SIGNUP_COLLECTION = "classSessionSignups";
+const CLASS_ANNOUNCEMENT_COLLECTION = "classAnnouncements";
+const CLASS_WEEKDAY_LABELS = {
+  mon: "星期一",
+  tue: "星期二",
+  wed: "星期三",
+  thu: "星期四",
+  fri: "星期五",
+  sat: "星期六",
+  sun: "星期日",
+};
+const CLASS_WEEKDAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const CLASS_SUNDAY_SLOTS = ["13:00~14:30", "14:30~16:00"];
 const bootstrapAdminEmailNormalized = bootstrapAdminEmail.trim().toLowerCase();
 const firebaseConfigured = Object.values(firebaseConfig).every(Boolean);
 
@@ -49,10 +65,26 @@ let authReadyPromise = null;
 let lastLoginTrigger = null;
 let lastApplicationTrigger = null;
 let membersAutoRefreshTimer = null;
+let publicPageAutoRefreshTimer = null;
 let membersDashboardCache = {
   members: [],
   applications: [],
+  classSessions: [],
+  classSessionSignups: [],
+  announcements: [],
   loaded: false,
+};
+let classSignupPageState = {
+  loaded: false,
+  sessions: [],
+  ownSignups: [],
+  approval: null,
+  monthOffset: 0,
+  loginRecent: false,
+};
+let announcementPageState = {
+  loaded: false,
+  announcements: [],
 };
 
 const memberFilters = {
@@ -258,6 +290,86 @@ const getApplicationDocId = (email, applicationType = "club") =>
   `${applicationType.trim().toLowerCase()}-${encodeURIComponent(email.trim().toLowerCase())}`;
 const getApplicationCooldownKey = (email, applicationType = "club") =>
   `${STORAGE_KEYS.applicationCooldownPrefix}:${getApplicationDocId(email, applicationType)}`;
+const parseDateKey = (value) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || "").trim());
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+const formatDateInputValue = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+const getDateKeyMs = (value) => {
+  const date = parseDateKey(value);
+  return date ? date.getTime() : Number.POSITIVE_INFINITY;
+};
+const formatDateKey = (value, options = {}) => {
+  const date = parseDateKey(value);
+  if (!date) {
+    return String(value || "");
+  }
+
+  return date.toLocaleDateString("zh-TW", {
+    year: options.year ?? "numeric",
+    month: options.month ?? "2-digit",
+    day: options.day ?? "2-digit",
+    weekday: options.weekday,
+  });
+};
+const buildSelectOptionsMarkup = (options = [], selectedValue = "") =>
+  options
+    .map((option) => {
+      const value = typeof option === "string" ? option : String(option.value ?? "");
+      const label = typeof option === "string" ? option : String(option.label ?? option.value ?? "");
+      const selected = value === selectedValue ? " selected" : "";
+      return `<option value="${escapeHtml(value)}"${selected}>${escapeHtml(label)}</option>`;
+    })
+    .join("");
+const getClassSessionId = (session = {}) => {
+  const date = String(session.date || session.sessionDate || "").trim();
+  const weekday = String(session.weekday || "").trim().toLowerCase();
+  return [date, weekday].filter(Boolean).join("-");
+};
+const getClassSessionDocRef = (sessionId) => doc(db, CLASS_SESSION_COLLECTION, sessionId);
+const getClassSignupDocRef = (sessionId, userId) => doc(db, CLASS_SIGNUP_COLLECTION, `${sessionId}-${userId}`);
+const getClassAnnouncementDocRef = (announcementId) => doc(db, CLASS_ANNOUNCEMENT_COLLECTION, announcementId);
+const getClassSessionSortMs = (session) => getDateKeyMs(session.date || session.sessionDate);
+const getAnnouncementSortMs = (announcement) => getTimestampMs(announcement.createdAt || announcement.updatedAt || announcement.date);
+const getCurrentUserLoginTimeMs = () => {
+  const value = currentUser?.metadata?.lastSignInTime;
+  const time = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isFinite(time) ? time : Number.NEGATIVE_INFINITY;
+};
+const isRecentLoginWithinWindow = (days = CLASS_SIGNUP_WINDOW_DAYS) => {
+  const loginTime = getCurrentUserLoginTimeMs();
+  if (!Number.isFinite(loginTime) || loginTime < 0) {
+    return false;
+  }
+
+  return Date.now() - loginTime <= days * 24 * 60 * 60 * 1000;
+};
+const getWeekdayLabel = (weekday) => CLASS_WEEKDAY_LABELS[String(weekday || "").trim().toLowerCase()] || String(weekday || "");
+const getClassSessionDateLabel = (session) => {
+  const dateLabel = formatDateKey(session.date || session.sessionDate || "", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const weekdayLabel = getWeekdayLabel(session.weekday);
+  return [dateLabel, weekdayLabel].filter(Boolean).join(" / ");
+};
+const getClassSessionTimeLabel = (session) => String(session.timeLabel || session.time || "").trim();
+const getClassSessionReminder = (session) => String(session.reminder || session.note || "").trim();
 const isBootstrapAdminEmail = (email) => email.trim().toLowerCase() === bootstrapAdminEmailNormalized;
 
 const rememberLoginButtonLabels = () => {
@@ -520,6 +632,8 @@ const ensureAuthReady = async () => {
       currentUser = user;
       currentUserIsAdmin = false;
       membersDashboardCache.loaded = false;
+      classSignupPageState.loaded = false;
+      announcementPageState.loaded = false;
 
       if (user) {
         await loadAdminStatus(user);
@@ -530,6 +644,10 @@ const ensureAuthReady = async () => {
 
       if (pageName === "members") {
         await refreshMembersDashboardSafe({ force: true });
+      } else if (pageName === "class-signup") {
+        await refreshClassSignupPageSafe({ force: true });
+      } else if (pageName === "notices") {
+        await refreshAnnouncementsPageSafe({ force: true });
       }
     });
 
@@ -1204,8 +1322,13 @@ const shouldAutoRefreshMembersDashboard = () => {
     activeElement &&
     (activeElement.closest("[data-application-list]") ||
       activeElement.closest("[data-members-list]") ||
+      activeElement.closest("[data-class-session-admin-list]") ||
+      activeElement.closest("[data-announcement-admin-list]") ||
+      activeElement.closest("[data-class-session-form]") ||
+      activeElement.closest("[data-announcement-form]") ||
       activeElement.closest("[data-members-content] select") ||
       activeElement.closest("[data-members-content] input") ||
+      activeElement.closest("[data-members-content] textarea") ||
       activeElement.tagName === "SELECT" ||
       activeElement.tagName === "INPUT" ||
       activeElement.tagName === "TEXTAREA")
@@ -1557,14 +1680,20 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
 
   try {
     if (force || !membersDashboardCache.loaded) {
-      const [members, applications] = await Promise.all([
+      const [members, applications, classSessions, classSessionSignups, announcements] = await Promise.all([
         getCollectionEntries("members"),
         getCollectionEntries("applications"),
+        getCollectionEntries(CLASS_SESSION_COLLECTION),
+        getCollectionEntries(CLASS_SIGNUP_COLLECTION),
+        getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION),
       ]);
 
       membersDashboardCache = {
         members,
         applications,
+        classSessions,
+        classSessionSignups,
+        announcements,
         loaded: true,
       };
     }
@@ -1577,6 +1706,9 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
     renderMembersSummary(displayMembers, membersDashboardCache.applications);
     await renderApplicationReviewList(membersDashboardCache.applications);
     renderMembersList(displayMembers);
+    renderAdminClassSessions(membersDashboardCache.classSessions, membersDashboardCache.classSessionSignups);
+    renderAdminAnnouncements(membersDashboardCache.announcements);
+    bindAdminCreationForms();
     if (preserveExpandedRows) {
       restoreExpandedMemberKeys(expandedMemberKeys);
     }
@@ -1603,6 +1735,1011 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
     `;
   }
 };
+
+function getClassSignupOptionMarkup(selectedValue = "") {
+  return buildSelectOptionsMarkup([...CLASS_SUNDAY_SLOTS, "不方便參加"], selectedValue);
+}
+
+function groupClassSignupsBySession(signups = []) {
+  return signups.reduce((acc, signup) => {
+    const sessionId = String(signup.sessionId || "").trim();
+    if (!sessionId) {
+      return acc;
+    }
+
+    if (!acc[sessionId]) {
+      acc[sessionId] = [];
+    }
+
+    acc[sessionId].push(signup);
+    return acc;
+  }, {});
+}
+
+function getClassLoginStatusCopy() {
+  const loginTimeMs = getCurrentUserLoginTimeMs();
+  if (!Number.isFinite(loginTimeMs) || loginTimeMs < 0) {
+    return "請先登入會員帳號，且需在前一週內登入過才可以報名。";
+  }
+
+  const loginTime = new Date(loginTimeMs);
+  const loginLabel = loginTime.toLocaleString("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return `你最近一次登入時間是 ${loginLabel}，若未超過 7 天即可報名。`;
+}
+
+function isClassSignupWindowOpen(session) {
+  const sessionDateMs = getClassSessionSortMs(session);
+  if (!Number.isFinite(sessionDateMs) || sessionDateMs === Number.POSITIVE_INFINITY) {
+    return false;
+  }
+
+  const diffMs = sessionDateMs - Date.now();
+  return diffMs >= 0 && diffMs <= CLASS_SIGNUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+}
+
+function renderClassSignupStatusCard() {
+  const container = document.querySelector("[data-class-status]");
+  if (!container) {
+    return;
+  }
+
+  const loginTimeMs = getCurrentUserLoginTimeMs();
+  const loginLabel =
+    Number.isFinite(loginTimeMs) && loginTimeMs > 0
+      ? new Date(loginTimeMs).toLocaleString("zh-TW", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "尚未登入";
+
+  const approvalLabel = classSignupPageState.approval
+    ? `${classSignupPageState.approval.name || "社員"} / ${classSignupPageState.approval.studentId || "未填學號"}`
+    : currentUserIsAdmin
+      ? "管理員可直接測試報名流程"
+      : "尚未找到你的審核資料";
+
+  container.innerHTML = `
+    <article class="content-card is-tight class-status-card">
+      <h3 class="content-title">社課報名狀態</h3>
+      <p class="content-copy">${escapeHtml(getClassLoginStatusCopy())}</p>
+      <div class="class-status-grid">
+        <div>
+          <p class="class-status-label">登入時間</p>
+          <p class="class-status-value">${escapeHtml(loginLabel)}</p>
+        </div>
+        <div>
+          <p class="class-status-label">社員資料</p>
+          <p class="class-status-value">${escapeHtml(approvalLabel)}</p>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function renderClassCalendarBoard(sessions = []) {
+  const container = document.querySelector("[data-class-calendar]");
+  if (!container) {
+    return;
+  }
+
+  const referenceDate = new Date();
+  referenceDate.setDate(1);
+  referenceDate.setMonth(referenceDate.getMonth() + classSignupPageState.monthOffset);
+
+  const year = referenceDate.getFullYear();
+  const month = referenceDate.getMonth();
+  const monthLabel = referenceDate.toLocaleDateString("zh-TW", {
+    year: "numeric",
+    month: "long",
+  });
+
+  const monthSessions = sessions.filter((session) => {
+    const sessionDate = parseDateKey(session.date || session.sessionDate || "");
+    return sessionDate && sessionDate.getFullYear() === year && sessionDate.getMonth() === month;
+  });
+
+  const sessionMap = monthSessions.reduce((acc, session) => {
+    const dateKey = String(session.date || session.sessionDate || "").trim();
+    if (!dateKey) {
+      return acc;
+    }
+
+    if (!acc[dateKey]) {
+      acc[dateKey] = [];
+    }
+
+    acc[dateKey].push(session);
+    return acc;
+  }, {});
+
+  const firstDay = new Date(year, month, 1);
+  const offset = (firstDay.getDay() + 6) % 7;
+  const totalDays = new Date(year, month + 1, 0).getDate();
+  const dayLabels = ["一", "二", "三", "四", "五", "六", "日"];
+  const cells = [];
+
+  for (let index = 0; index < offset; index += 1) {
+    cells.push(`<div class="calendar-day is-empty" aria-hidden="true"></div>`);
+  }
+
+  for (let day = 1; day <= totalDays; day += 1) {
+    const date = new Date(year, month, day);
+    const dateKey = formatDateInputValue(date);
+    const daySessions = sessionMap[dateKey] || [];
+    const sessionMarkup = daySessions
+      .map((session) => {
+        const badge = session.signupRequired ? "需報名" : "免報名";
+        return `
+          <span class="calendar-session-pill">
+            <span>${escapeHtml(getWeekdayLabel(session.weekday) || session.weekday || "")}</span>
+            <span>${escapeHtml(getClassSessionTimeLabel(session) || "時間未設定")}</span>
+            <span>${escapeHtml(badge)}</span>
+          </span>
+        `;
+      })
+      .join("");
+
+    cells.push(`
+      <div class="calendar-day${daySessions.length > 0 ? " is-session" : ""}">
+        <span class="calendar-day-number">${escapeHtml(daySessions.length > 0 ? `${day} / ${daySessions.length} 場` : String(day))}</span>
+        <span class="calendar-day-date">${escapeHtml(`${month + 1}/${day}`)}</span>
+        <div class="calendar-session-list">${sessionMarkup || ""}</div>
+      </div>
+    `);
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push(`<div class="calendar-day is-empty" aria-hidden="true"></div>`);
+  }
+
+  container.innerHTML = `
+    <div class="calendar-shell">
+      <div class="calendar-header">
+        <div>
+          <p class="section-kicker">Calendar</p>
+          <h3 class="content-title">${escapeHtml(monthLabel)}</h3>
+          <p class="section-description">有社課的日期會在日曆上標記，週日會另外顯示可報名的時段。</p>
+        </div>
+        <div class="calendar-nav">
+          <button class="button-secondary" data-class-calendar-prev type="button">上個月</button>
+          <button class="button-secondary" data-class-calendar-next type="button">下個月</button>
+        </div>
+      </div>
+      <div class="calendar-weekdays">
+        ${dayLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
+      </div>
+      <div class="calendar-grid">
+        ${cells.join("")}
+      </div>
+    </div>
+  `;
+
+  container.querySelector("[data-class-calendar-prev]")?.addEventListener("click", () => {
+    classSignupPageState.monthOffset -= 1;
+    renderClassCalendarBoard(classSignupPageState.sessions);
+  });
+
+  container.querySelector("[data-class-calendar-next]")?.addEventListener("click", () => {
+    classSignupPageState.monthOffset += 1;
+    renderClassCalendarBoard(classSignupPageState.sessions);
+  });
+}
+
+function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup) {
+  const nameValue = approvalData?.name || currentUser?.displayName || currentUser?.email || "";
+  const studentIdValue = approvalData?.studentId || "";
+  const firstChoice = ownSignup?.firstChoice || "";
+  const secondChoice = ownSignup?.secondChoice || "";
+  const noteValue = ownSignup?.note || "";
+  const sessionId = getClassSessionId(session);
+  const canEdit = canSignup;
+  const deleteButton = ownSignup
+    ? `<button class="button-secondary" data-class-signup-delete type="button" data-session-id="${escapeHtml(sessionId)}">刪除報名</button>`
+    : "";
+
+  if (!canEdit) {
+    return `
+      <div class="class-session-locked">
+        <p class="content-copy">目前尚未開放報名。你需要是已登入且前一週內登入過的社員，並且在報名期間內才能填寫。</p>
+      </div>
+    `;
+  }
+
+  return `
+    <form class="form-grid class-signup-form" data-class-signup-form data-session-id="${escapeHtml(sessionId)}">
+      <input type="hidden" name="sessionId" value="${escapeHtml(sessionId)}" />
+      <div class="class-signup-profile">
+        <div class="form-field">
+          <label>姓名</label>
+          <input name="name" type="text" value="${escapeHtml(nameValue)}" readonly />
+        </div>
+        <div class="form-field">
+          <label>學號</label>
+          <input name="studentId" type="text" value="${escapeHtml(studentIdValue)}" readonly />
+        </div>
+      </div>
+      <div class="class-signup-grid">
+        <div class="form-field">
+          <label for="class-first-${escapeHtml(sessionId)}">第一志願</label>
+          <select id="class-first-${escapeHtml(sessionId)}" name="firstChoice" data-class-choice>
+            ${getClassSignupOptionMarkup(firstChoice)}
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="class-second-${escapeHtml(sessionId)}">第二志願</label>
+          <select id="class-second-${escapeHtml(sessionId)}" name="secondChoice" data-class-choice>
+            ${getClassSignupOptionMarkup(secondChoice)}
+          </select>
+        </div>
+      </div>
+      <div class="form-field">
+        <label for="class-note-${escapeHtml(sessionId)}">備註</label>
+        <textarea id="class-note-${escapeHtml(sessionId)}" name="note" rows="3" placeholder="如果有特殊需求可以寫在這裡">${escapeHtml(noteValue)}</textarea>
+      </div>
+      <p class="login-note" data-class-signup-status>${escapeHtml(getClassLoginStatusCopy())}</p>
+      <div class="class-signup-actions">
+        <button class="button-primary" data-class-signup-submit type="submit">${ownSignup ? "更新報名" : "送出報名"}</button>
+        ${deleteButton}
+      </div>
+    </form>
+  `;
+}
+
+function renderClassSessionBoard(sessions = []) {
+  const container = document.querySelector("[data-class-session-board]");
+  if (!container) {
+    return;
+  }
+
+  const sortedSessions = [...sessions].sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
+  const ownedBySession = Object.fromEntries(classSignupPageState.ownSignups.map((signup) => [signup.sessionId, signup]));
+  const approvalData = classSignupPageState.approval;
+  const canSignup = Boolean(currentUser && classSignupPageState.loginRecent && (approvalData || currentUserIsAdmin));
+
+  if (sortedSessions.length === 0) {
+    container.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">目前還沒有設定社課日期</h3>
+        <p class="content-copy">管理員可以先到後台設定行事曆，之後這裡就會自動顯示可報名的社課。</p>
+      </article>
+    `;
+    return;
+  }
+
+  container.innerHTML = sortedSessions
+    .map((session) => {
+      const sessionId = getClassSessionId(session);
+      const ownSignup = ownedBySession[sessionId] || null;
+      const isSundaySignup = String(session.weekday || "").toLowerCase() === "sun" && Boolean(session.signupRequired);
+      const rosterPublished = Boolean(session.rosterPublished);
+      const openForSignup = isSundaySignup && isClassSignupWindowOpen(session);
+      const statusLabel = rosterPublished
+        ? "名單已公布"
+        : isSundaySignup
+          ? openForSignup
+            ? "報名中"
+            : "尚未開放"
+          : "固定社課";
+      const rosterMarkup =
+        rosterPublished && Array.isArray(session.publishedRoster) && session.publishedRoster.length > 0
+          ? `
+            <div class="class-roster-list">
+              ${session.publishedRoster
+                .map(
+                  (entry, index) => `
+                    <div class="class-roster-item">
+                      <span class="class-roster-index">#${String(index + 1).padStart(2, "0")}</span>
+                      <div>
+                        <p class="class-roster-name">${escapeHtml(entry.name || "未填姓名")} / ${escapeHtml(entry.studentId || "未填學號")}</p>
+                        <p class="class-roster-copy">${escapeHtml(entry.firstChoice || "未填志願一")} ・ ${escapeHtml(entry.secondChoice || "未填志願二")}</p>
+                      </div>
+                    </div>
+                  `,
+                )
+                .join("")}
+            </div>
+          `
+          : "";
+
+      return `
+        <article class="content-card class-session-card">
+          <div class="class-session-header">
+            <div>
+              <p class="section-kicker">${escapeHtml(getWeekdayLabel(session.weekday) || "社課")}</p>
+              <h3 class="content-title">${escapeHtml(session.title || "社課")}</h3>
+              <p class="content-copy">${escapeHtml(getClassSessionDateLabel(session))} ・ ${escapeHtml(getClassSessionTimeLabel(session) || "時間待定")}</p>
+            </div>
+            <span class="member-row-status">${escapeHtml(statusLabel)}</span>
+          </div>
+          <p class="content-copy">${escapeHtml(session.description || session.reminder || "請依照行事曆確認社課日期。")}</p>
+          ${session.reminder ? `<p class="class-session-reminder">提醒：${escapeHtml(session.reminder)}</p>` : ""}
+          ${
+            isSundaySignup
+              ? buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup && openForSignup)
+              : `<div class="class-session-note"><p class="content-copy">此場次不需要填寫志願，請直接依行事曆出席即可。</p></div>`
+          }
+          ${rosterMarkup}
+        </article>
+      `;
+    })
+    .join("");
+
+  bindClassSignupBoardEvents();
+}
+
+function renderClassRosterBoard(sessions = []) {
+  const container = document.querySelector("[data-class-roster-board]");
+  if (!container) {
+    return;
+  }
+
+  const publishedSessions = [...sessions]
+    .filter((session) => Boolean(session.rosterPublished))
+    .sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
+
+  if (publishedSessions.length === 0) {
+    container.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">尚未公布社課名單</h3>
+        <p class="content-copy">管理員在星期五公布後，這裡會自動顯示名單。</p>
+      </article>
+    `;
+    return;
+  }
+
+  container.innerHTML = publishedSessions
+    .map(
+      (session) => `
+        <article class="content-card class-roster-card">
+          <div class="class-session-header">
+            <div>
+              <p class="section-kicker">${escapeHtml(getWeekdayLabel(session.weekday) || "社課")}</p>
+              <h3 class="content-title">${escapeHtml(session.title || "社課名單")}</h3>
+              <p class="content-copy">${escapeHtml(getClassSessionDateLabel(session))} ・ ${escapeHtml(getClassSessionTimeLabel(session) || "時間待定")}</p>
+            </div>
+            <span class="member-row-status">已公布</span>
+          </div>
+          <p class="content-copy">${escapeHtml(session.reminder || "依公布名單出席。")}</p>
+          ${
+            Array.isArray(session.publishedRoster) && session.publishedRoster.length > 0
+              ? `
+                <div class="class-roster-list">
+                  ${session.publishedRoster
+                    .map(
+                      (entry, index) => `
+                        <div class="class-roster-item">
+                          <span class="class-roster-index">#${String(index + 1).padStart(2, "0")}</span>
+                          <div>
+                            <p class="class-roster-name">${escapeHtml(entry.name || "未填姓名")} / ${escapeHtml(entry.studentId || "未填學號")}</p>
+                            <p class="class-roster-copy">${escapeHtml(entry.firstChoice || "未填志願一")} ・ ${escapeHtml(entry.secondChoice || "未填志願二")}</p>
+                          </div>
+                        </div>
+                      `,
+                    )
+                    .join("")}
+                </div>
+              `
+              : `<p class="content-copy">目前還沒有名單內容。</p>`
+          }
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function bindClassSignupBoardEvents() {
+  document.querySelectorAll("[data-class-signup-form]").forEach((form) => {
+    if (form.dataset.initialized === "true") {
+      return;
+    }
+
+    form.dataset.initialized = "true";
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await handleClassSignupSubmit(event);
+    });
+  });
+
+  document.querySelectorAll("[data-class-signup-delete]").forEach((button) => {
+    if (button.dataset.initialized === "true") {
+      return;
+    }
+
+    button.dataset.initialized = "true";
+    button.addEventListener("click", async () => {
+      const sessionId = button.dataset.sessionId || "";
+      if (!sessionId || !currentUser?.uid) {
+        return;
+      }
+
+      const confirmed = window.confirm("要刪除這筆社課報名嗎？");
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await ensureAuthReady();
+        await deleteDoc(getClassSignupDocRef(sessionId, currentUser.uid));
+        await refreshClassSignupPageSafe({ force: true });
+      } catch (error) {
+        console.error("Delete class signup failed:", error);
+      }
+    });
+  });
+}
+
+async function handleClassSignupSubmit(event) {
+  const form = event.currentTarget;
+  const submitButton = form.querySelector("[data-class-signup-submit]");
+  const statusNode = form.querySelector("[data-class-signup-status]");
+  const sessionId = String(form.dataset.sessionId || form.querySelector("[name='sessionId']")?.value || "").trim();
+  const firstChoice = String(form.querySelector("[name='firstChoice']")?.value || "").trim();
+  const secondChoice = String(form.querySelector("[name='secondChoice']")?.value || "").trim();
+  const note = String(form.querySelector("[name='note']")?.value || "").trim();
+  const name = String(form.querySelector("[name='name']")?.value || "").trim();
+  const studentId = String(form.querySelector("[name='studentId']")?.value || "").trim();
+
+  if (!currentUser?.uid || !sessionId) {
+    if (statusNode) {
+      setMessageTone(statusNode, "請先登入後再報名。", "error");
+    }
+    return;
+  }
+
+  if (!classSignupPageState.loginRecent) {
+    if (statusNode) {
+      setMessageTone(statusNode, "你需要在前一週內登入過才可以報名。", "error");
+    }
+    return;
+  }
+
+  if (!classSignupPageState.approval && !currentUserIsAdmin) {
+    if (statusNode) {
+      setMessageTone(statusNode, "找不到你的審核資料，請先完成社員審核。", "error");
+    }
+    return;
+  }
+
+  if (!firstChoice || !secondChoice) {
+    if (statusNode) {
+      setMessageTone(statusNode, "請先填寫第一志願與第二志願。", "error");
+    }
+    return;
+  }
+
+  if (firstChoice === secondChoice && firstChoice !== "不方便參加") {
+    if (statusNode) {
+      setMessageTone(statusNode, "第一志願與第二志願不能填成相同時段。", "error");
+    }
+    return;
+  }
+
+  const session = classSignupPageState.sessions.find((item) => getClassSessionId(item) === sessionId);
+  if (!session) {
+    if (statusNode) {
+      setMessageTone(statusNode, "找不到這個社課場次。", "error");
+    }
+    return;
+  }
+
+  if (!isClassSignupWindowOpen(session) && !currentUserIsAdmin) {
+    if (statusNode) {
+      setMessageTone(statusNode, "這個場次目前還沒有開放報名。", "error");
+    }
+    return;
+  }
+
+  submitButton.disabled = true;
+
+  try {
+    await ensureAuthReady();
+    const signupRef = getClassSignupDocRef(sessionId, currentUser.uid);
+    const existing = await getDoc(signupRef);
+
+    await setDoc(
+      signupRef,
+      {
+        sessionId,
+        sessionDate: session.date || session.sessionDate || "",
+        sessionTitle: session.title || "",
+        sessionWeekday: session.weekday || "",
+        userId: currentUser.uid,
+        email: currentUser.email || "",
+        name: name || classSignupPageState.approval?.name || currentUser.email || "",
+        studentId: studentId || classSignupPageState.approval?.studentId || "",
+        firstChoice,
+        secondChoice,
+        note,
+        status: "submitted",
+        updatedAt: serverTimestamp(),
+        submittedAt: existing.exists() ? existing.data()?.submittedAt || serverTimestamp() : serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    if (statusNode) {
+      setMessageTone(statusNode, "報名已送出，星期五公布名單後請回來查看。", "success");
+    }
+
+    await refreshClassSignupPageSafe({ force: true });
+  } catch (error) {
+    console.error("Class signup submit failed:", error);
+    if (statusNode) {
+      setMessageTone(statusNode, `報名失敗：${error?.message || "請稍後再試一次。"}`, "error");
+    }
+  } finally {
+    submitButton.disabled = false;
+  }
+}
+
+async function refreshClassSignupPageSafe({ force = false } = {}) {
+  if (pageName !== "class-signup") {
+    return;
+  }
+
+  const calendar = document.querySelector("[data-class-calendar]");
+  const sessionBoard = document.querySelector("[data-class-session-board]");
+  const rosterBoard = document.querySelector("[data-class-roster-board]");
+  const statusCard = document.querySelector("[data-class-status]");
+
+  if (!calendar || !sessionBoard || !rosterBoard || !statusCard) {
+    return;
+  }
+
+  if (!firebaseConfigured) {
+    statusCard.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">Firebase 尚未設定</h3>
+        <p class="content-copy">請先確認 <code>src/firebase-config.js</code> 與 Firestore 規則。</p>
+      </article>
+    `;
+    return;
+  }
+
+  try {
+    if (force || !classSignupPageState.loaded) {
+      const [sessions, ownSignups, approvalDoc] = await Promise.all([
+        getCollectionEntries(CLASS_SESSION_COLLECTION),
+        currentUser?.uid
+          ? getDocs(query(collection(db, CLASS_SIGNUP_COLLECTION), where("userId", "==", currentUser.uid)))
+          : Promise.resolve({ docs: [] }),
+        currentUser?.email ? getDoc(getApprovalDocRef(currentUser.email)) : Promise.resolve(null),
+      ]);
+
+      classSignupPageState.sessions = sessions;
+      classSignupPageState.ownSignups = ownSignups.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+      classSignupPageState.approval =
+        approvalDoc && typeof approvalDoc.exists === "function" && approvalDoc.exists() ? approvalDoc.data() : null;
+      classSignupPageState.loginRecent = isRecentLoginWithinWindow();
+      classSignupPageState.loaded = true;
+    } else {
+      classSignupPageState.loginRecent = isRecentLoginWithinWindow();
+    }
+
+    renderClassSignupStatusCard();
+    renderClassCalendarBoard(classSignupPageState.sessions);
+    renderClassSessionBoard(classSignupPageState.sessions);
+    renderClassRosterBoard(classSignupPageState.sessions);
+  } catch (error) {
+    console.error("Class signup board load failed:", error);
+    statusCard.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">社課頁面載入失敗</h3>
+        <p class="content-copy">${escapeHtml(error?.message || "請確認 Firestore 規則與集合是否存在。")}</p>
+      </article>
+    `;
+  }
+}
+
+function renderAnnouncementsBoard(announcements = []) {
+  const container = document.querySelector("[data-announcement-board]");
+  if (!container) {
+    return;
+  }
+
+  const sortedAnnouncements = [...announcements].sort((a, b) => getAnnouncementSortMs(b) - getAnnouncementSortMs(a));
+
+  if (sortedAnnouncements.length === 0) {
+    container.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">目前沒有公告</h3>
+        <p class="content-copy">管理員之後發布的訊息會出現在這裡，並依時間由新到舊排列。</p>
+      </article>
+    `;
+    return;
+  }
+
+  container.innerHTML = sortedAnnouncements
+    .map(
+      (announcement) => `
+        <article class="notice-card">
+          <div class="notice-meta">
+            <span>${escapeHtml(announcement.date || formatTimestamp(announcement.createdAt))}</span>
+            <span>${escapeHtml(announcement.reminder || "公告")}</span>
+          </div>
+          <h3 class="notice-title">${escapeHtml(announcement.title || "公告")}</h3>
+          <p class="notice-copy">${escapeHtml(announcement.body || announcement.message || "")}</p>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+async function refreshAnnouncementsPageSafe({ force = false } = {}) {
+  if (pageName !== "notices") {
+    return;
+  }
+
+  const board = document.querySelector("[data-announcement-board]");
+  if (!board) {
+    return;
+  }
+
+  if (!firebaseConfigured) {
+    board.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">Firebase 尚未設定</h3>
+        <p class="content-copy">請先確認 <code>src/firebase-config.js</code> 與 Firestore 規則。</p>
+      </article>
+    `;
+    return;
+  }
+
+  try {
+    if (force || !announcementPageState.loaded) {
+      const announcements = await getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION);
+      announcementPageState.announcements = announcements;
+      announcementPageState.loaded = true;
+    }
+
+    renderAnnouncementsBoard(announcementPageState.announcements);
+  } catch (error) {
+    console.error("Announcement board load failed:", error);
+    board.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">公告載入失敗</h3>
+        <p class="content-copy">${escapeHtml(error?.message || "請稍後再試一次。")}</p>
+      </article>
+    `;
+  }
+}
+
+function renderAdminClassSessions(sessions = [], signups = []) {
+  const container = document.querySelector("[data-class-session-admin-list]");
+  if (!container) {
+    return;
+  }
+
+  const groupedSignups = groupClassSignupsBySession(signups);
+  const sortedSessions = [...sessions].sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
+
+  if (sortedSessions.length === 0) {
+    container.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">目前沒有社課設定</h3>
+        <p class="content-copy">先用左側表單建立一個新的社課日期，行事曆就會自動出現。</p>
+      </article>
+    `;
+    return;
+  }
+
+  container.innerHTML = sortedSessions
+    .map((session) => {
+      const sessionId = getClassSessionId(session);
+      const sessionSignups = (groupedSignups[sessionId] || []).sort(
+        (a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt),
+      );
+      const rosterCount = Array.isArray(session.publishedRoster) ? session.publishedRoster.length : 0;
+      const signupSummary =
+        sessionSignups.length > 0
+          ? sessionSignups
+              .map(
+                (signup) => `
+                  <div class="admin-signup-item">
+                    <strong>${escapeHtml(signup.name || "未填姓名")}</strong>
+                    <span>${escapeHtml(signup.studentId || "未填學號")}</span>
+                    <span>${escapeHtml(signup.firstChoice || "未填志願一")} / ${escapeHtml(signup.secondChoice || "未填志願二")}</span>
+                  </div>
+                `,
+              )
+              .join("")
+          : `<p class="content-copy">目前沒有報名資料。</p>`;
+
+      return `
+        <article class="content-card class-admin-card">
+          <div class="class-session-header">
+            <div>
+              <p class="section-kicker">${escapeHtml(getWeekdayLabel(session.weekday) || "社課")}</p>
+              <h3 class="content-title">${escapeHtml(session.title || "社課")}</h3>
+              <p class="content-copy">${escapeHtml(getClassSessionDateLabel(session))} ・ ${escapeHtml(getClassSessionTimeLabel(session) || "時間待定")}</p>
+            </div>
+            <span class="member-row-status">${escapeHtml(session.rosterPublished ? "已公布" : "未公布")}</span>
+          </div>
+          <p class="content-copy">${escapeHtml(session.description || session.reminder || "")}</p>
+          <div class="class-admin-meta">
+            <span>報名：${escapeHtml(String(sessionSignups.length))} 筆</span>
+            <span>名單：${escapeHtml(String(rosterCount))} 人</span>
+            <span>報名需求：${escapeHtml(session.signupRequired ? "需要" : "不需要")}</span>
+          </div>
+          <div class="admin-signup-summary">
+            ${signupSummary}
+          </div>
+          <div class="application-actions class-admin-actions">
+            <button class="button-secondary" data-class-session-publish type="button" data-session-id="${escapeHtml(sessionId)}">公布名單</button>
+            <button class="button-secondary application-save" data-class-session-delete type="button" data-session-id="${escapeHtml(sessionId)}">刪除社課</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  bindAdminClassSessionActions();
+}
+
+function renderAdminAnnouncements(announcements = []) {
+  const container = document.querySelector("[data-announcement-admin-list]");
+  if (!container) {
+    return;
+  }
+
+  const sortedAnnouncements = [...announcements].sort((a, b) => getAnnouncementSortMs(b) - getAnnouncementSortMs(a));
+
+  if (sortedAnnouncements.length === 0) {
+    container.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">目前沒有公告</h3>
+        <p class="content-copy">你可以先用上方表單發佈第一則公告。</p>
+      </article>
+    `;
+    return;
+  }
+
+  container.innerHTML = sortedAnnouncements
+    .map(
+      (announcement) => `
+        <article class="notice-card class-announcement-card">
+          <div class="notice-meta">
+            <span>${escapeHtml(announcement.date || formatTimestamp(announcement.createdAt))}</span>
+            <span>${escapeHtml(announcement.reminder || "公告")}</span>
+          </div>
+          <h3 class="notice-title">${escapeHtml(announcement.title || "公告")}</h3>
+          <p class="notice-copy">${escapeHtml(announcement.body || announcement.message || "")}</p>
+          <div class="application-actions class-admin-actions">
+            <button class="button-secondary application-save" data-announcement-delete type="button" data-announcement-id="${escapeHtml(announcement.id)}">刪除公告</button>
+          </div>
+        </article>
+      `,
+    )
+    .join("");
+
+  bindAdminAnnouncementActions();
+}
+
+function bindAdminClassSessionActions() {
+  document.querySelectorAll("[data-class-session-publish]").forEach((button) => {
+    if (button.dataset.initialized === "true") {
+      return;
+    }
+
+    button.dataset.initialized = "true";
+    button.addEventListener("click", async () => {
+      const sessionId = button.dataset.sessionId || "";
+      const session = membersDashboardCache.classSessions.find((item) => getClassSessionId(item) === sessionId);
+      if (!session) {
+        return;
+      }
+
+      const confirmed = window.confirm("要公布這個社課的名單嗎？");
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        const grouped = groupClassSignupsBySession(membersDashboardCache.classSessionSignups);
+        const sessionSignups = (grouped[sessionId] || []).sort(
+          (a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt),
+        );
+        const publishedRoster = sessionSignups.map((signup) => ({
+          name: signup.name || "",
+          studentId: signup.studentId || "",
+          firstChoice: signup.firstChoice || "",
+          secondChoice: signup.secondChoice || "",
+          note: signup.note || "",
+          email: signup.email || "",
+          userId: signup.userId || "",
+          submittedAt: formatTimestamp(signup.submittedAt || signup.createdAt),
+        }));
+
+        await setDoc(
+          getClassSessionDocRef(sessionId),
+          {
+            ...session,
+            rosterPublished: true,
+            publishedRoster,
+            publishedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+
+        await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+      } catch (error) {
+        console.error("Publish roster failed:", error);
+        window.alert(`公布名單失敗：${error?.message || "請稍後再試一次。"}`);
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-class-session-delete]").forEach((button) => {
+    if (button.dataset.initialized === "true") {
+      return;
+    }
+
+    button.dataset.initialized = "true";
+    button.addEventListener("click", async () => {
+      const sessionId = button.dataset.sessionId || "";
+      if (!sessionId) {
+        return;
+      }
+
+      const confirmed = window.confirm("要刪除這個社課設定嗎？相關報名資料也會一併刪除。");
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        const relatedSignups = membersDashboardCache.classSessionSignups.filter((signup) => String(signup.sessionId || "") === sessionId);
+        await Promise.all(relatedSignups.map((signup) => deleteDoc(doc(db, CLASS_SIGNUP_COLLECTION, signup.id))));
+        await deleteDoc(getClassSessionDocRef(sessionId));
+        await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+      } catch (error) {
+        console.error("Delete class session failed:", error);
+        window.alert(`刪除社課失敗：${error?.message || "請稍後再試一次。"}`);
+      }
+    });
+  });
+}
+
+function bindAdminAnnouncementActions() {
+  document.querySelectorAll("[data-announcement-delete]").forEach((button) => {
+    if (button.dataset.initialized === "true") {
+      return;
+    }
+
+    button.dataset.initialized = "true";
+    button.addEventListener("click", async () => {
+      const announcementId = button.dataset.announcementId || "";
+      if (!announcementId) {
+        return;
+      }
+
+      const confirmed = window.confirm("要刪除這則公告嗎？");
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await deleteDoc(getClassAnnouncementDocRef(announcementId));
+        await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+      } catch (error) {
+        console.error("Delete announcement failed:", error);
+        window.alert(`刪除公告失敗：${error?.message || "請稍後再試一次。"}`);
+      }
+    });
+  });
+}
+
+async function handleClassSessionFormSubmit(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submitButton = form.querySelector("[data-class-session-submit]");
+  const date = String(form.querySelector("[name='date']")?.value || "").trim();
+  const weekday = String(form.querySelector("[name='weekday']")?.value || "").trim().toLowerCase();
+  const title = String(form.querySelector("[name='title']")?.value || "").trim();
+  const timeLabel = String(form.querySelector("[name='timeLabel']")?.value || "").trim();
+  const description = String(form.querySelector("[name='description']")?.value || "").trim();
+  const reminder = String(form.querySelector("[name='reminder']")?.value || "").trim();
+  const signupRequired = Boolean(form.querySelector("[name='signupRequired']")?.checked);
+
+  if (!date || !weekday || !title || !timeLabel) {
+    window.alert("請先填寫日期、星期、標題與時間。");
+    return;
+  }
+
+  const sessionId = getClassSessionId({ date, weekday });
+  const sessionRef = getClassSessionDocRef(sessionId);
+  submitButton.disabled = true;
+
+  try {
+    const existing = await getDoc(sessionRef);
+    await setDoc(
+      sessionRef,
+      {
+        date,
+        weekday,
+        title,
+        timeLabel,
+        description,
+        reminder,
+        signupRequired,
+        rosterPublished: existing.exists() ? Boolean(existing.data()?.rosterPublished) : false,
+        publishedRoster: existing.exists() ? existing.data()?.publishedRoster || [] : [],
+        createdAt: existing.exists() ? existing.data()?.createdAt || serverTimestamp() : serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    form.reset();
+    await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+  } catch (error) {
+    console.error("Save class session failed:", error);
+    window.alert(`儲存社課失敗：${error?.message || "請稍後再試一次。"}`);
+  } finally {
+    submitButton.disabled = false;
+  }
+}
+
+async function handleAnnouncementFormSubmit(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submitButton = form.querySelector("[data-announcement-submit]");
+  const date = String(form.querySelector("[name='date']")?.value || "").trim();
+  const title = String(form.querySelector("[name='title']")?.value || "").trim();
+  const reminder = String(form.querySelector("[name='reminder']")?.value || "").trim();
+  const bodyText = String(form.querySelector("[name='body']")?.value || "").trim();
+
+  if (!date || !title || !bodyText) {
+    window.alert("請先填寫日期、標題與公告內容。");
+    return;
+  }
+
+  submitButton.disabled = true;
+
+  try {
+    const announcementRef = doc(collection(db, CLASS_ANNOUNCEMENT_COLLECTION));
+    await setDoc(announcementRef, {
+      date,
+      title,
+      reminder,
+      body: bodyText,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    form.reset();
+    await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+  } catch (error) {
+    console.error("Save announcement failed:", error);
+    window.alert(`儲存公告失敗：${error?.message || "請稍後再試一次。"}`);
+  } finally {
+    submitButton.disabled = false;
+  }
+}
+
+function bindAdminCreationForms() {
+  const sessionForm = document.querySelector("[data-class-session-form]");
+  if (sessionForm && sessionForm.dataset.initialized !== "true") {
+    sessionForm.dataset.initialized = "true";
+    sessionForm.addEventListener("submit", handleClassSessionFormSubmit);
+  }
+
+  const announcementForm = document.querySelector("[data-announcement-form]");
+  if (announcementForm && announcementForm.dataset.initialized !== "true") {
+    announcementForm.dataset.initialized = "true";
+    announcementForm.addEventListener("submit", handleAnnouncementFormSubmit);
+  }
+}
 
 const handleAuthSubmit = async (event) => {
   event.preventDefault();
@@ -1912,6 +3049,63 @@ const initMembersAutoRefresh = () => {
   });
 };
 
+const shouldAutoRefreshPublicBoard = () => {
+  if ((pageName !== "class-signup" && pageName !== "notices") || document.hidden || body.classList.contains("modal-open")) {
+    return false;
+  }
+
+  const activeElement = document.activeElement;
+  if (
+    activeElement &&
+    (activeElement.closest("[data-class-signup-form]") ||
+      activeElement.closest("[data-announcement-board]") ||
+      activeElement.tagName === "SELECT" ||
+      activeElement.tagName === "INPUT" ||
+      activeElement.tagName === "TEXTAREA")
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
+const initPublicBoardAutoRefresh = () => {
+  if (pageName !== "class-signup" && pageName !== "notices") {
+    return;
+  }
+
+  if (publicPageAutoRefreshTimer) {
+    return;
+  }
+
+  publicPageAutoRefreshTimer = window.setInterval(async () => {
+    if (!shouldAutoRefreshPublicBoard()) {
+      return;
+    }
+
+    if (pageName === "class-signup") {
+      await refreshClassSignupPageSafe({ force: true });
+      return;
+    }
+
+    if (pageName === "notices") {
+      await refreshAnnouncementsPageSafe({ force: true });
+    }
+  }, PUBLIC_PAGE_REFRESH_MS);
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden || !shouldAutoRefreshPublicBoard()) {
+      return;
+    }
+
+    if (pageName === "class-signup") {
+      void refreshClassSignupPageSafe({ force: true });
+    } else if (pageName === "notices") {
+      void refreshAnnouncementsPageSafe({ force: true });
+    }
+  });
+};
+
 const init = async () => {
   ensureLoginModal();
   ensureApplicationModal();
@@ -1925,6 +3119,7 @@ const init = async () => {
   initFaqAccordion();
   initKeybindings();
   initMembersAutoRefresh();
+  initPublicBoardAutoRefresh();
   setAuthMode("signin");
   updateLoginButtons();
 
@@ -1934,6 +3129,10 @@ const init = async () => {
 
   if (pageName === "members") {
     await refreshMembersDashboardSafe();
+  } else if (pageName === "class-signup") {
+    await refreshClassSignupPageSafe();
+  } else if (pageName === "notices") {
+    await refreshAnnouncementsPageSafe();
   }
 };
 

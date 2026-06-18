@@ -9,7 +9,7 @@
       content="臺科大羽球社 Firebase 註冊名單管理頁，查看目前註冊社員與最近登入狀態。"
     />
     <link rel="stylesheet" href="./src/index.css" />
-    <script defer type="module" src="./src/site.js?v=20260618-7"></script>
+    <script defer type="module" src="./src/site.js?v=20260618-8"></script>
   </head>
   <body data-page="members">
     <div id="page-top"></div>
@@ -159,6 +159,93 @@
                   <p class="section-description">只顯示目前篩選條件下的社員資料。</p>
                 </div>
                 <div class="member-list" data-members-list></div>
+              </section>
+              <section class="member-section">
+                <div class="section-header is-compact">
+                  <div class="section-kicker">Class Schedule</div>
+                  <h3 class="content-title">社課行事曆設定</h3>
+                  <p class="section-description">在這裡新增或刪除社課日期，週日場次也可以在星期五直接公布名單。</p>
+                </div>
+                <div class="content-grid class-admin-grid">
+                  <article class="content-card is-tight">
+                    <h3 class="content-title">新增社課日期</h3>
+                    <form class="form-grid class-session-form" data-class-session-form>
+                      <div class="form-field">
+                        <label for="class-session-date">日期</label>
+                        <input id="class-session-date" name="date" type="date" />
+                      </div>
+                      <div class="form-field">
+                        <label for="class-session-weekday">星期</label>
+                        <select id="class-session-weekday" name="weekday">
+                          <option value="wed">星期三</option>
+                          <option value="sun">星期日</option>
+                          <option value="fri">星期五</option>
+                          <option value="mon">星期一</option>
+                          <option value="tue">星期二</option>
+                          <option value="thu">星期四</option>
+                          <option value="sat">星期六</option>
+                        </select>
+                      </div>
+                      <div class="form-field">
+                        <label for="class-session-title">標題</label>
+                        <input id="class-session-title" name="title" type="text" placeholder="例如：雙打練習" />
+                      </div>
+                      <div class="form-field">
+                        <label for="class-session-time">時間</label>
+                        <input id="class-session-time" name="timeLabel" type="text" placeholder="例如：19:00 - 21:00" />
+                      </div>
+                      <div class="form-field">
+                        <label for="class-session-reminder">提醒事項</label>
+                        <textarea id="class-session-reminder" name="reminder" rows="3" placeholder="例如：請提前十分鐘到場"></textarea>
+                      </div>
+                      <div class="form-field">
+                        <label for="class-session-description">說明</label>
+                        <textarea id="class-session-description" name="description" rows="3" placeholder="可補充場地、內容或注意事項"></textarea>
+                      </div>
+                      <div class="form-field">
+                        <label>
+                          <input name="signupRequired" type="checkbox" checked />
+                          需要報名
+                        </label>
+                      </div>
+                      <button class="button-primary" data-class-session-submit type="submit">儲存社課</button>
+                    </form>
+                  </article>
+                  <div class="member-list class-admin-list" data-class-session-admin-list></div>
+                </div>
+              </section>
+
+              <section class="member-section">
+                <div class="section-header is-compact">
+                  <div class="section-kicker">Announcements</div>
+                  <h3 class="content-title">公告發佈</h3>
+                  <p class="section-description">新增公告後會依時間排序顯示在公告頁，社員一打開就能看到最新訊息。</p>
+                </div>
+                <div class="content-grid class-admin-grid">
+                  <article class="content-card is-tight">
+                    <h3 class="content-title">新增公告</h3>
+                    <form class="form-grid announcement-form" data-announcement-form>
+                      <div class="form-field">
+                        <label for="announcement-date">日期</label>
+                        <input id="announcement-date" name="date" type="date" />
+                      </div>
+                      <div class="form-field">
+                        <label for="announcement-title">標題</label>
+                        <input id="announcement-title" name="title" type="text" placeholder="公告標題" />
+                      </div>
+                      <div class="form-field">
+                        <label for="announcement-reminder">提醒事項</label>
+                        <input id="announcement-reminder" name="reminder" type="text" placeholder="例如：請記得帶水壺" />
+                      </div>
+                      <div class="form-field">
+                        <label for="announcement-body">內容</label>
+                        <textarea id="announcement-body" name="body" rows="5" placeholder="公告內容"></textarea>
+                      </div>
+                      <button class="button-primary" data-announcement-submit type="submit">發佈公告</button>
+                    </form>
+                  </article>
+                  <div class="notice-grid class-announcement-list" data-announcement-admin-list></div>
+                </div>
               </section>
             </div>
           </section>

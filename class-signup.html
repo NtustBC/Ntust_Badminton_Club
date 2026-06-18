@@ -3,60 +3,178 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>社課報名 | 臺科大羽球社</title>
-    <meta name="description" content="臺科大羽球社社課頁面，整理社課安排、報名方式與注意事項。" />
+    <title>社課報名 | NTUST Badminton Club</title>
+    <meta
+      name="description"
+      content="社課行事曆、週日報名與已公布名單。登入後一週內可填寫報名資料，管理員可在後台設定日期。"
+    />
     <link rel="stylesheet" href="./src/index.css" />
-    <script defer type="module" src="./src/site.js?v=20260618-7"></script>
+    <script defer type="module" src="./src/site.js?v=20260618-8"></script>
   </head>
   <body data-page="class-signup">
     <div id="page-top"></div>
     <div class="page-shell">
       <header class="site-header">
         <div class="container header-inner">
-          <a class="brand" href="./index.html"><span class="brand-mark"><img alt="臺科大羽球社 Logo" src="./assets/club-logo-cropped.png" /></span><span class="brand-copy"><p class="brand-title">臺科大羽球社</p><p class="brand-subtitle">NTUST BADMINTON CLUB</p></span></a>
-          <nav class="site-nav" aria-label="主要導覽">
+          <a class="brand" href="./index.html">
+            <span class="brand-mark">
+              <img alt="NTUST Badminton Club Logo" src="./assets/club-logo-cropped.png" />
+            </span>
+            <span class="brand-copy">
+              <p class="brand-title">臺科大羽球社</p>
+              <p class="brand-subtitle">NTUST BADMINTON CLUB</p>
+            </span>
+          </a>
+
+          <nav class="site-nav" aria-label="主選單">
             <a class="nav-link" href="./about.html">關於我們</a>
             <a class="nav-link" href="./club-signup.html">社團報名</a>
             <a class="nav-link" href="./class-signup.html" aria-current="page">社課報名</a>
             <a class="nav-link" href="./notices.html">公告</a>
             <a class="nav-link" href="./faq.html">FAQ</a>
           </nav>
-          <div class="header-actions"><button class="login-button header-login" data-open-login type="button">Sign In</button><button class="menu-button" data-menu-toggle type="button" aria-expanded="false" aria-label="開啟選單">MENU</button></div>
+
+          <div class="header-actions">
+            <button class="login-button header-login" data-open-login type="button">Sign In</button>
+            <button class="menu-button" data-menu-toggle type="button" aria-expanded="false" aria-label="切換選單">
+              MENU
+            </button>
+          </div>
         </div>
-        <div class="mobile-nav" data-mobile-nav><div class="container mobile-nav-grid"><a class="nav-link" href="./about.html">關於我們</a><a class="nav-link" href="./club-signup.html">社團報名</a><a class="nav-link" href="./class-signup.html" aria-current="page">社課報名</a><a class="nav-link" href="./notices.html">公告</a><a class="nav-link" href="./faq.html">FAQ</a><button class="login-button" data-open-login type="button">Sign In</button></div></div>
+
+        <div class="mobile-nav" data-mobile-nav>
+          <div class="container mobile-nav-grid">
+            <a class="nav-link" href="./about.html">關於我們</a>
+            <a class="nav-link" href="./club-signup.html">社團報名</a>
+            <a class="nav-link" href="./class-signup.html" aria-current="page">社課報名</a>
+            <a class="nav-link" href="./notices.html">公告</a>
+            <a class="nav-link" href="./faq.html">FAQ</a>
+            <button class="login-button" data-open-login type="button">Sign In</button>
+          </div>
+        </div>
       </header>
+
       <main class="page-main" id="top">
         <div class="container">
           <section class="page-hero">
             <div class="hero-card">
-              <div class="eyebrow">Training Registration</div>
-              <h1 class="page-title">社課安排，<br />分頁獨立管理</h1>
-              <p class="page-copy">這一頁可以專門放每週社課、場地資訊、報名限制與截止時間。之後如果你想接成每堂課獨立報名，也會比較好擴充。</p>
-              <div class="page-actions"><button class="button-primary" data-open-login type="button">社員登入後選擇參與<span aria-hidden="true">-></span></button><a class="button-secondary" href="./notices.html">先看近期公告</a></div>
+              <div class="eyebrow">Upcoming Sessions</div>
+              <h1 class="page-title">社課報名</h1>
+              <p class="page-copy">
+                這裡會顯示社課行事曆、週日報名表與已公布名單。請先登入會員帳號，且登入時間需在前一週內，才可以送出報名。
+              </p>
+              <div class="page-actions">
+                <button class="button-primary" data-open-login type="button">
+                  立即登入
+                  <span aria-hidden="true">→</span>
+                </button>
+                <a class="button-secondary" href="./notices.html">查看公告</a>
+              </div>
             </div>
-            <div class="side-card"><div class="logo-frame"><img alt="臺科大羽球社 Logo" src="./assets/club-logo-cropped.png" /></div><div><p class="side-title">先有清楚頁面，再接真實資料</p><p class="side-copy">這裡先示範三堂課的卡片形式，未來可以接成真實行事曆或表單連結。</p></div></div>
+
+            <div class="side-card">
+              <div class="logo-frame">
+                <img alt="NTUST Badminton Club Logo" src="./assets/club-logo-cropped.png" />
+              </div>
+              <div>
+                <p class="side-title">星期三晚上與星期日下午都有社課。</p>
+                <p class="side-copy">
+                  星期三為固定社課，星期日需要先填寫志願。週五會公布名單，管理員也可以在後台更新行事曆與公告內容。
+                </p>
+              </div>
+            </div>
           </section>
+
           <section class="section-shell">
-            <div class="section-header"><div class="section-kicker">Upcoming Sessions</div><h2 class="page-title">近期社課</h2><p class="section-description">目前先用卡片方式展示，之後可以改成社課列表、每週更新公告或直接接 Google 表單。</p></div>
-            <div class="notice-grid">
-              <article class="notice-card"><div class="notice-meta"><span>MON</span><span>19:00 - 21:00</span></div><h3 class="notice-title">基礎步伐與揮拍</h3><p class="notice-copy">適合剛加入社員或想重新調整基本動作的同學，著重移動節奏與基本落點感。</p></article>
-              <article class="notice-card"><div class="notice-meta"><span>WED</span><span>19:00 - 21:00</span></div><h3 class="notice-title">雙打站位與輪轉</h3><p class="notice-copy">以雙打站位、前後輪轉與節奏溝通為主，適合已有固定打球習慣的社員。</p></article>
-              <article class="notice-card"><div class="notice-meta"><span>FRI</span><span>18:30 - 21:30</span></div><h3 class="notice-title">實戰對抗練習</h3><p class="notice-copy">透過分組對抗與局間調整，讓大家熟悉實戰節奏，也方便社內夥伴彼此觀察。</p></article>
+            <div class="section-header">
+              <div class="section-kicker">Signup Status</div>
+              <h2 class="page-title">報名狀態</h2>
+              <p class="section-description">登入狀態、社員審核資料與是否能填寫報名表，都會在這裡顯示。</p>
             </div>
+            <div data-class-status></div>
+          </section>
+
+          <section class="section-shell">
+            <div class="section-header">
+              <div class="section-kicker">Calendar</div>
+              <h2 class="page-title">社課行事曆</h2>
+              <p class="section-description">有社課的日期會被標記出來，方便你先看好哪幾天有課。</p>
+            </div>
+            <div data-class-calendar></div>
+          </section>
+
+          <section class="section-shell">
+            <div class="section-header">
+              <div class="section-kicker">Sessions</div>
+              <h2 class="page-title">近期社課</h2>
+              <p class="section-description">星期日場次會顯示第一志願與第二志願，星期三場次則直接出席即可。</p>
+            </div>
+            <div data-class-session-board></div>
+          </section>
+
+          <section class="section-shell">
+            <div class="section-header">
+              <div class="section-kicker">Roster</div>
+              <h2 class="page-title">已公布名單</h2>
+              <p class="section-description">管理員在星期五公布後，名單會自動出現在這裡。</p>
+            </div>
+            <div data-class-roster-board></div>
           </section>
         </div>
       </main>
-      <footer class="site-footer"><div class="container"><div class="footer-panel"><div><div class="footer-brand"><img alt="臺科大羽球社 Logo" src="./assets/club-logo-cropped.png" /><div><p class="footer-title">臺科大羽球社</p><p class="brand-subtitle">NTUST BADMINTON CLUB</p></div></div><p class="footer-copy">如果你之後要把社課頁面接成每週更新，我也已經先把頁面結構分開了。</p>
+
+      <footer class="site-footer">
+        <div class="container">
+          <div class="footer-panel">
+            <div>
+              <div class="footer-brand">
+                <img alt="NTUST Badminton Club Logo" src="./assets/club-logo-cropped.png" />
+                <div>
+                  <p class="footer-title">臺科大羽球社</p>
+                  <p class="brand-subtitle">NTUST BADMINTON CLUB</p>
+                </div>
+              </div>
+              <p class="footer-copy">
+                社課報名頁會依照 Firestore 的社課資料自動更新，讓社員與管理員看到同一份內容。
+              </p>
               <div class="language-switch">
                 <label class="language-label" for="footer-language-class">LANGUAGE</label>
-                <select id="footer-language-class" class="language-select" data-language-select aria-label="選擇語言">
+                <select id="footer-language-class" class="language-select" data-language-select aria-label="語言切換">
                   <option value="zh-Hant">中文</option>
                   <option value="en">English</option>
                 </select>
               </div>
             </div>
 
-            <div class="footer-meta"><div><p class="footer-heading">Contact</p><p class="footer-note">社課時間、場地或報名方式有問題，都可以先來信或私訊 IG。</p></div><p class="footer-copyright">© 2026 臺科大羽球社 NTUST Badminton Club. All Rights Reserved.</p><ul class="footer-policy"><li><a href="./privacy.html">隱私權政策</a></li><li><a href="https://mail.google.com/mail/?view=cm&fs=1&to=ntustbc@gmail.com" target="_blank" rel="noreferrer">聯絡信箱</a></li><li><a href="https://www.instagram.com/ntust_badminton/" target="_blank" rel="noreferrer">IG</a></li></ul></div></div></div><a class="back-to-top" data-back-to-top href="#page-top" aria-label="回到頂部"><svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M6 14 12 8 18 14" /></svg></a></footer>
+            <div class="footer-meta">
+              <div>
+                <p class="footer-heading">Contact</p>
+                <p class="footer-note">如果看不到社課資料，請先登入並確認帳號已通過審核，必要時聯絡社團幹部協助處理。</p>
+              </div>
+
+              <p class="footer-copyright">© 2026 臺科大羽球社 NTUST Badminton Club. All Rights Reserved.</p>
+
+              <ul class="footer-policy">
+                <li><a href="./privacy.html">隱私權政策</a></li>
+                <li>
+                  <a href="https://mail.google.com/mail/?view=cm&fs=1&to=ntustbc@gmail.com" target="_blank" rel="noreferrer"
+                    >聯絡信箱</a
+                  >
+                </li>
+                <li>
+                  <a href="https://www.instagram.com/ntust_badminton/" target="_blank" rel="noreferrer">IG</a>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <a class="back-to-top" data-back-to-top href="#page-top" aria-label="回到頂部">
+          <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+            <path d="M6 14 12 8 18 14" />
+          </svg>
+        </a>
+      </footer>
     </div>
   </body>
 </html>
