@@ -64,14 +64,14 @@
         <div class="container">
           <section class="page-hero">
             <div class="hero-card">
-              <div class="eyebrow">Members Dashboard</div>
-              <h1 class="page-title">社員註冊名單</h1>
-              <p class="page-copy">
+              <div class="eyebrow" data-members-hero-eyebrow>Members Dashboard</div>
+              <h1 class="page-title" data-members-hero-title>社員註冊名單</h1>
+              <p class="page-copy" data-members-hero-copy>
                 這裡會顯示透過 Firebase 註冊進來的社員帳號，方便你快速查看目前註冊數、信箱與最近登入時間。
               </p>
               <div class="page-actions">
-                <button class="button-primary" data-open-login type="button">
-                  登入管理頁
+                <button class="button-primary" data-members-hero-cta type="button">
+                  <span data-members-hero-cta-label>登入管理頁</span>
                   <span aria-hidden="true">-></span>
                 </button>
                 <a class="button-secondary" href="./index.html">回到首頁</a>
@@ -80,8 +80,8 @@
 
             <div class="side-card">
               <div>
-                <p class="side-title">這裡看的是註冊帳號，不是完整社員資料</p>
-                <p class="side-copy">
+                <p class="side-title" data-members-hero-side-title>這裡看的是註冊帳號，不是完整社員資料</p>
+                <p class="side-copy" data-members-hero-side-copy>
                   如果你之後想再追蹤姓名、系級、社費或報名紀錄，我們可以繼續在 Firestore 往下擴充欄位與管理介面。
                 </p>
               </div>
@@ -94,8 +94,8 @@
           <section class="section-shell">
             <div class="section-header">
               <div class="section-kicker">Overview</div>
-              <h2 class="page-title">監看註冊狀態</h2>
-              <p class="section-description">
+              <h2 class="page-title" data-members-overview-title>監看註冊狀態</h2>
+              <p class="section-description" data-members-overview-copy>
                 這一頁只會在你登入後載入資料。若有設定管理員信箱，也會只讓指定信箱看到名單。
               </p>
             </div>

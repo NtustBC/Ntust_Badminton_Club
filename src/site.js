@@ -127,6 +127,39 @@ const signedInCopy = {
   buttonLabel: "Sign Out",
 };
 
+const membersPageCopy = {
+  public: {
+    title: "社員註冊名單",
+    copy:
+      "這裡會顯示透過 Firebase 註冊進來的社員帳號，方便你快速查看目前註冊數、信箱與最近登入時間。",
+    buttonLabel: "登入管理頁",
+    sideTitle: "這裡看到的是註冊帳號，不是完整社員資料",
+    sideCopy:
+      "如果你之後想再追蹤姓名、系級、社費或報名紀錄，我們可以繼續在 Firestore 往下擴充欄位與管理介面。",
+    overviewTitle: "註冊名單總覽",
+    overviewCopy:
+      "這一頁只會顯示透過 Firebase 帳號登入後的社員資料。若有設定管理員信箱，也會只讓指定信箱看到完整管理區。",
+  },
+  signedIn: {
+    title: "已登入社員帳號",
+    copy: "你目前登入的是一般社員帳號，若要查看管理頁，請切換成管理員帳號。",
+    buttonLabel: "切換管理員",
+    sideTitle: "這裡看的還是註冊帳號",
+    sideCopy: "管理頁只會開放給指定管理員信箱；如果你需要權限，請用管理員帳號重新登入。",
+    overviewTitle: "註冊名單總覽",
+    overviewCopy: "這裡顯示的是透過 Firebase 註冊進來的社員帳號，不是完整社員資料。",
+  },
+  admin: {
+    title: "社團管理頁",
+    copy: "你目前已使用管理員帳號登入，可以直接查看社員資料、註冊名單與各種管理區塊。",
+    buttonLabel: "前往管理頁",
+    sideTitle: "這裡是管理頁，不只是註冊名單",
+    sideCopy: "你可以在下方直接管理社員資料、審核報名、安排社課與發布公告或 FAQ，所有內容都會同步到 Firestore。",
+    overviewTitle: "管理總覽",
+    overviewCopy: "登入管理員後會顯示完整管理內容，包括社員、報名、社課、公告與 FAQ。",
+  },
+};
+
 const authErrorMessages = {
   "auth/email-already-in-use": "這個信箱已經註冊過了，請直接登入。",
   "auth/invalid-credential": "信箱或密碼不正確，請再確認一次。",
@@ -318,6 +351,8 @@ const escapeHtml = (value) =>
     .replaceAll("'", "&#39;");
 
 const getLoginButtons = () => document.querySelectorAll("[data-open-login]");
+const getMembersHeroCta = () => document.querySelector("[data-members-hero-cta]");
+const getMembersHeroCtaLabel = () => document.querySelector("[data-members-hero-cta-label]");
 const getApplicationButtons = () => document.querySelectorAll("[data-open-application]");
 const getApprovalDocId = (email) => email.trim().toLowerCase();
 const getApplicationDocId = (email, applicationType = "club") =>
@@ -451,6 +486,7 @@ const updateAdminNavigation = () => {
 const updateLoginButtons = () => {
   rememberLoginButtonLabels();
   updateAdminNavigation();
+  syncMembersPageHero();
 
   getLoginButtons().forEach((button) => {
     button.textContent = currentUser ? "Account" : button.dataset.defaultLabel;
@@ -1791,6 +1827,8 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
   if (pageName !== "members") {
     return;
   }
+
+  syncMembersPageHero();
 
   const gate = document.querySelector("[data-members-gate]");
   const content = document.querySelector("[data-members-content]");
@@ -3677,6 +3715,82 @@ const bindApplicationSuccessModalEvents = () => {
   });
 };
 
+const scrollToMembersContent = () => {
+  const content = document.querySelector("[data-members-content]");
+  if (!(content instanceof HTMLElement) || content.hidden) {
+    return;
+  }
+
+  content.scrollIntoView({ behavior: "smooth", block: "start" });
+};
+
+const syncMembersPageHero = () => {
+  if (pageName !== "members") {
+    return;
+  }
+
+  const heroEyebrow = document.querySelector("[data-members-hero-eyebrow]");
+  const heroTitle = document.querySelector("[data-members-hero-title]");
+  const heroCopy = document.querySelector("[data-members-hero-copy]");
+  const heroCtaLabel = getMembersHeroCtaLabel();
+  const heroSideTitle = document.querySelector("[data-members-hero-side-title]");
+  const heroSideCopy = document.querySelector("[data-members-hero-side-copy]");
+  const overviewTitle = document.querySelector("[data-members-overview-title]");
+  const overviewCopy = document.querySelector("[data-members-overview-copy]");
+  const heroState = currentUserIsAdmin ? membersPageCopy.admin : currentUser ? membersPageCopy.signedIn : membersPageCopy.public;
+
+  if (heroEyebrow) {
+    heroEyebrow.textContent = currentUserIsAdmin ? "MANAGEMENT DASHBOARD" : currentUser ? "MEMBER DASHBOARD" : "MEMBERS DASHBOARD";
+  }
+
+  if (heroTitle) {
+    heroTitle.textContent = heroState.title;
+  }
+
+  if (heroCopy) {
+    heroCopy.textContent = heroState.copy;
+  }
+
+  if (heroCtaLabel) {
+    heroCtaLabel.textContent = heroState.buttonLabel;
+  }
+
+  if (heroSideTitle) {
+    heroSideTitle.textContent = heroState.sideTitle;
+  }
+
+  if (heroSideCopy) {
+    heroSideCopy.textContent = heroState.sideCopy;
+  }
+
+  if (overviewTitle) {
+    overviewTitle.textContent = heroState.overviewTitle;
+  }
+
+  if (overviewCopy) {
+    overviewCopy.textContent = heroState.overviewCopy;
+  }
+
+  document.title = `${currentUserIsAdmin ? "社團管理頁" : "社員註冊名單"} | 臺科大羽球社`;
+};
+
+const bindMembersHeroCta = () => {
+  const button = getMembersHeroCta();
+  if (!button || button.dataset.membersHeroBound === "true") {
+    return;
+  }
+
+  button.dataset.membersHeroBound = "true";
+  button.addEventListener("click", () => {
+    if (currentUserIsAdmin) {
+      scrollToMembersContent();
+      return;
+    }
+
+    openLoginModal(button);
+  });
+};
+
 const bindOpenButtons = () => {
   rememberLoginButtonLabels();
 
@@ -3855,6 +3969,7 @@ const init = async () => {
   bindApplicationModalEvents();
   bindApplicationSuccessModalEvents();
   bindOpenButtons();
+  bindMembersHeroCta();
   initMenu();
   initLanguageSwitcher();
   initFaqAccordion();
