@@ -1,4 +1,3 @@
-export const allowedEmailDomain = "@mail.ntust.edu.tw";
 export const bootstrapAdminEmail = "admin@gmail.com";
 
 export const firebaseConfig = {

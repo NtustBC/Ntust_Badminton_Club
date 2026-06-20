@@ -207,9 +207,7 @@ img {
 }
 
 .button-primary,
-.button-dark,
 .login-button,
-.footer-cta,
 .back-link {
   display: inline-flex;
   align-items: center;
@@ -233,12 +231,8 @@ img {
 
 .button-primary:hover,
 .button-primary:focus-visible,
-.button-dark:hover,
-.button-dark:focus-visible,
 .login-button:hover,
 .login-button:focus-visible,
-.footer-cta:hover,
-.footer-cta:focus-visible,
 .back-link:hover,
 .back-link:focus-visible {
   background: var(--brand);
@@ -332,8 +326,7 @@ img {
 .footer-panel,
 .privacy-card,
 .notice-card,
-.timeline-card,
-.contact-card {
+.timeline-card {
   border: 1px solid rgba(15, 76, 129, 0.08);
   border-radius: var(--radius-lg);
   background: var(--surface);
@@ -345,8 +338,7 @@ img {
 .content-card,
 .footer-panel,
 .privacy-card,
-.timeline-card,
-.contact-card {
+.timeline-card {
   padding: 40px;
 }
 
@@ -397,7 +389,6 @@ img {
 .footer-copy,
 .timeline-copy,
 .privacy-copy,
-.contact-copy,
 .notice-copy {
   color: var(--muted);
   line-height: 1.9;
@@ -613,27 +604,6 @@ img {
   line-height: 1.65;
 }
 
-.side-home-line {
-  margin: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.side-home-label {
-  color: rgba(255, 255, 255, 0.68);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.side-home-value {
-  color: #ffffff;
-  font-family: var(--font-serif);
-  font-size: clamp(0.96rem, 1.55vw, 1.08rem);
-  line-height: 1.45;
-}
-
 .logo-frame {
   width: min(100%, 320px);
   margin-inline: auto;
@@ -668,8 +638,7 @@ img {
 .content-grid,
 .photo-card-grid,
 .notice-grid,
-.timeline-grid,
-.contact-grid {
+.timeline-grid {
   display: grid;
   gap: 20px;
   margin-top: 28px;
@@ -685,7 +654,6 @@ img {
   content: none;
 }
 
-.feature-kicker,
 .section-kicker,
 .mini-label {
   color: var(--brand);
@@ -695,11 +663,9 @@ img {
   text-transform: uppercase;
 }
 
-.feature-title,
 .content-title,
 .notice-title,
-.timeline-title,
-.contact-title {
+.timeline-title {
   margin: 16px 0 0;
   font-family: var(--font-serif);
   font-size: 1.4rem;
@@ -710,24 +676,8 @@ img {
 .feature-copy,
 .content-copy,
 .notice-copy,
-.timeline-copy,
-.contact-copy {
+.timeline-copy {
   margin: 12px 0 0;
-}
-
-.feature-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 22px;
-  color: var(--ink);
-  font-weight: 800;
-}
-
-.feature-link:hover,
-.feature-link:focus-visible {
-  color: var(--brand);
-  outline: none;
 }
 
 .section-shell {
@@ -935,35 +885,6 @@ img {
   transform: scale(1.025);
 }
 
-.bullet-list,
-.link-list {
-  list-style: none;
-  padding: 0;
-  margin: 18px 0 0;
-}
-
-.bullet-list {
-  display: grid;
-  gap: 12px;
-}
-
-.bullet-list li {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  line-height: 1.8;
-}
-
-.bullet-list li::before {
-  content: "";
-  width: 10px;
-  height: 10px;
-  border-radius: 0;
-  background: var(--brand);
-  flex: 0 0 auto;
-  margin-top: 10px;
-}
-
 .action-row {
   display: flex;
   flex-wrap: wrap;
@@ -1003,28 +924,10 @@ img {
   font-weight: 800;
 }
 
-.contact-card {
-  display: grid;
-  gap: 14px;
-}
-
-.contact-link-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px 26px;
-  margin-top: 6px;
-}
-
-.contact-link-group a,
-.footer-links a,
 .footer-policy a {
   font-weight: 700;
 }
 
-.contact-link-group a:hover,
-.contact-link-group a:focus-visible,
-.footer-links a:hover,
-.footer-links a:focus-visible,
 .footer-policy a:hover,
 .footer-policy a:focus-visible {
   color: var(--brand);
@@ -1121,11 +1024,6 @@ img {
   outline: none;
 }
 
-.footer-cta {
-  margin-top: 34px;
-}
-
-.footer-links,
 .footer-policy {
   list-style: none;
   padding: 0;
@@ -1415,12 +1313,6 @@ img {
   font-weight: 700;
   line-height: 1.6;
   word-break: break-word;
-}
-
-.auth-signout {
-  justify-self: start;
-  min-width: 136px;
-  margin-top: 6px;
 }
 
 .auth-status-actions {
@@ -1784,32 +1676,6 @@ img {
   justify-content: flex-start;
 }
 
-.class-status-card {
-  display: grid;
-  gap: 18px;
-}
-
-.class-status-grid {
-  display: grid;
-  gap: 16px;
-}
-
-.class-status-label {
-  margin: 0;
-  color: var(--brand);
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-.class-status-value {
-  margin: 8px 0 0;
-  color: var(--ink);
-  font-weight: 700;
-  line-height: 1.7;
-  word-break: break-word;
-}
 
 .calendar-shell {
   display: grid;
@@ -1900,7 +1766,6 @@ img {
 
 .class-session-card,
 .class-roster-card,
-.class-admin-card,
 .class-announcement-card {
   display: grid;
   gap: 14px;
@@ -2347,7 +2212,6 @@ button.admin-calendar-day:focus-visible {
   font-size: 0.78rem;
 }
 
-.class-admin-list,
 .class-announcement-list,
 .class-faq-admin-list {
   margin-top: 0;
@@ -2439,47 +2303,13 @@ button.admin-calendar-day:focus-visible {
   padding: 0 18px 18px;
 }
 
-.class-admin-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 16px;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.admin-signup-summary {
-  display: grid;
-  gap: 10px;
-}
-
-.admin-signup-item {
-  display: grid;
-  gap: 2px;
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
-  background: rgba(15, 76, 129, 0.04);
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
 @media (min-width: 760px) {
   .feature-grid,
   .content-grid,
   .faq-grid,
   .photo-card-grid,
   .notice-grid,
-  .timeline-grid,
-  .contact-grid {
+  .timeline-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -2492,7 +2322,6 @@ button.admin-calendar-day:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .class-status-grid,
   .class-signup-profile,
   .class-signup-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2606,8 +2435,7 @@ button.admin-calendar-day:focus-visible {
   .footer-panel,
   .privacy-card,
   .notice-card,
-  .timeline-card,
-  .contact-card {
+  .timeline-card {
     border-radius: var(--radius-lg);
   }
 
@@ -2616,8 +2444,7 @@ button.admin-calendar-day:focus-visible {
   .content-card,
   .footer-panel,
   .privacy-card,
-  .timeline-card,
-  .contact-card {
+  .timeline-card {
     padding: 24px;
   }
 
@@ -2730,12 +2557,8 @@ button.admin-calendar-day:focus-visible {
   .photo-card:focus-within img,
   .button-primary:hover,
   .button-primary:focus-visible,
-  .button-dark:hover,
-  .button-dark:focus-visible,
   .login-button:hover,
   .login-button:focus-visible,
-  .footer-cta:hover,
-  .footer-cta:focus-visible,
   .back-link:hover,
   .back-link:focus-visible,
   .button-secondary:hover,
