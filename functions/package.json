@@ -7,7 +7,7 @@
   },
   "scripts": {
     "serve": "firebase emulators:start --only functions",
-    "deploy": "firebase deploy --only functions"
+    "deploy": "firebase deploy --only functions,firestore"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",

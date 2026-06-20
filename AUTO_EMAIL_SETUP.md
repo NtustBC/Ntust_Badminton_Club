@@ -67,7 +67,7 @@ firebase functions:secrets:set RESEND_API_KEY
 在專案根目錄執行：
 
 ```powershell
-firebase deploy --only functions
+firebase deploy --only functions,firestore
 ```
 
 ## 6. 驗證
