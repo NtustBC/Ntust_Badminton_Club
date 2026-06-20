@@ -1562,6 +1562,23 @@ img {
   margin-top: 12px;
 }
 
+.load-warning-card {
+  grid-column: 1 / -1;
+  border-color: rgba(180, 83, 9, 0.18);
+  background: linear-gradient(180deg, rgba(255, 247, 237, 0.98), rgba(255, 252, 244, 0.96));
+}
+
+.load-warning-list {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: var(--ink);
+  line-height: 1.7;
+}
+
+.load-warning-list li + li {
+  margin-top: 6px;
+}
+
 .member-stat {
   padding: 22px 24px;
   border: 1px solid rgba(15, 76, 129, 0.08);

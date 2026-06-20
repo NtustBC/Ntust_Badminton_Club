@@ -75,6 +75,7 @@ let membersDashboardCache = {
   classSessionSignups: [],
   announcements: [],
   faqs: [],
+  loadWarnings: [],
   loaded: false,
 };
 let classSignupPageState = {
@@ -83,14 +84,17 @@ let classSignupPageState = {
   ownSignups: [],
   approval: null,
   monthOffset: 0,
+  loadWarnings: [],
 };
 let announcementPageState = {
   loaded: false,
   announcements: [],
+  loadWarnings: [],
 };
 let faqPageState = {
   loaded: false,
   faqs: [],
+  loadWarnings: [],
 };
 let adminClassCalendarMonthOffset = 0;
 let adminClassSessionEditingId = "";
@@ -700,9 +704,13 @@ const ensureAuthReady = async () => {
       currentUser = user;
       currentUserIsAdmin = false;
       membersDashboardCache.loaded = false;
+      membersDashboardCache.loadWarnings = [];
       classSignupPageState.loaded = false;
+      classSignupPageState.loadWarnings = [];
       announcementPageState.loaded = false;
+      announcementPageState.loadWarnings = [];
       faqPageState.loaded = false;
+      faqPageState.loadWarnings = [];
 
       if (user) {
         await loadAdminStatus(user);
@@ -1759,6 +1767,41 @@ const getCollectionEntries = async (collectionName) => {
   return snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
 };
 
+const loadWithFallback = async (label, warnings, loader, fallbackValue) => {
+  try {
+    return await loader();
+  } catch (error) {
+    warnings.push({ label, error });
+    return fallbackValue;
+  }
+};
+
+const buildLoadWarningMarkup = ({ title, copy, details = [] }) => {
+  const detailMarkup = details.length
+    ? `
+      <ul class="load-warning-list">
+        ${details
+          .map(
+            ({ label, error }) => `
+              <li>
+                <strong>${escapeHtml(label)}</strong>${error?.message ? `: ${escapeHtml(error.message)}` : ""}
+              </li>
+            `,
+          )
+          .join("")}
+      </ul>
+    `
+    : "";
+
+  return `
+    <article class="content-card is-tight load-warning-card">
+      <h3 class="content-title">${escapeHtml(title)}</h3>
+      <p class="content-copy">${escapeHtml(copy)}</p>
+      ${detailMarkup}
+    </article>
+  `;
+};
+
 const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows = false } = {}) => {
   if (pageName !== "members") {
     return;
@@ -1810,16 +1853,18 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
   initCustomAcademicYearControls();
   patchMembersFilterUI();
   const expandedMemberKeys = preserveExpandedRows ? getExpandedMemberKeys() : [];
+  bindAdminClassCreationForms();
 
   try {
     if (force || !membersDashboardCache.loaded) {
+      const dashboardWarnings = [];
       const [members, applications, classSessions, classSessionSignups, announcements, faqs] = await Promise.all([
-        getCollectionEntries("members"),
-        getCollectionEntries("applications"),
-        getCollectionEntries(CLASS_SESSION_COLLECTION),
-        getCollectionEntries(CLASS_SIGNUP_COLLECTION),
-        getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION),
-        getCollectionEntries(FAQ_COLLECTION),
+        loadWithFallback("社員名單", dashboardWarnings, () => getCollectionEntries("members"), []),
+        loadWithFallback("待審核申請", dashboardWarnings, () => getCollectionEntries("applications"), []),
+        loadWithFallback("社課日期", dashboardWarnings, () => getCollectionEntries(CLASS_SESSION_COLLECTION), []),
+        loadWithFallback("社課報名", dashboardWarnings, () => getCollectionEntries(CLASS_SIGNUP_COLLECTION), []),
+        loadWithFallback("公告", dashboardWarnings, () => getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION), []),
+        loadWithFallback("FAQ", dashboardWarnings, () => getCollectionEntries(FAQ_COLLECTION), []),
       ]);
 
       membersDashboardCache = {
@@ -1829,6 +1874,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
         classSessionSignups,
         announcements,
         faqs,
+        loadWarnings: dashboardWarnings,
         loaded: true,
       };
     }
@@ -1839,12 +1885,21 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
     );
 
     renderMembersSummary(displayMembers, membersDashboardCache.applications);
+    if (membersDashboardCache.loadWarnings.length > 0) {
+      summary.insertAdjacentHTML(
+        "afterbegin",
+        buildLoadWarningMarkup({
+          title: "部分資料載入失敗",
+          copy: "部分 Firestore 資料目前無法讀取，下面仍會顯示已載入的內容。",
+          details: membersDashboardCache.loadWarnings,
+        }),
+      );
+    }
     await renderApplicationReviewList(membersDashboardCache.applications);
     renderMembersList(displayMembers);
     renderAdminClassCalendarCompact(membersDashboardCache.classSessions, membersDashboardCache.classSessionSignups);
     renderAdminAnnouncements(membersDashboardCache.announcements);
     renderAdminFaqs(membersDashboardCache.faqs);
-    bindAdminClassCreationForms();
     if (preserveExpandedRows) {
       restoreExpandedMemberKeys(expandedMemberKeys);
     }
@@ -2382,25 +2437,44 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
   }
 
   try {
+    const loadWarnings = [];
     if (force || !classSignupPageState.loaded) {
       const [sessions, ownSignups, approvalDoc] = await Promise.all([
-        getCollectionEntries(CLASS_SESSION_COLLECTION),
+        loadWithFallback("社課日期", loadWarnings, () => getCollectionEntries(CLASS_SESSION_COLLECTION), []),
         currentUser?.uid
-          ? getDocs(query(collection(db, CLASS_SIGNUP_COLLECTION), where("userId", "==", currentUser.uid)))
+          ? loadWithFallback(
+              "我的報名",
+              loadWarnings,
+              () => getDocs(query(collection(db, CLASS_SIGNUP_COLLECTION), where("userId", "==", currentUser.uid))),
+              { docs: [] },
+            )
           : Promise.resolve({ docs: [] }),
-        currentUser?.email ? getDoc(getApprovalDocRef(currentUser.email)) : Promise.resolve(null),
+        currentUser?.email
+          ? loadWithFallback("審核資料", loadWarnings, () => getDoc(getApprovalDocRef(currentUser.email)), null)
+          : Promise.resolve(null),
       ]);
 
       classSignupPageState.sessions = sessions;
       classSignupPageState.ownSignups = ownSignups.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
       classSignupPageState.approval =
         approvalDoc && typeof approvalDoc.exists === "function" && approvalDoc.exists() ? approvalDoc.data() : null;
+      classSignupPageState.loadWarnings = loadWarnings;
       classSignupPageState.loaded = true;
     }
 
     renderClassCalendarBoard(classSignupPageState.sessions);
     renderClassSessionBoard(classSignupPageState.sessions);
     renderClassRosterBoard(classSignupPageState.sessions);
+    if (classSignupPageState.loadWarnings.length > 0) {
+      calendar.insertAdjacentHTML(
+        "afterbegin",
+        buildLoadWarningMarkup({
+          title: "部分資料載入失敗",
+          copy: "目前部分 Firestore 資料無法讀取，下面仍會顯示已載入的社課內容。",
+          details: classSignupPageState.loadWarnings,
+        }),
+      );
+    }
   } catch (error) {
     console.error("Class signup board load failed:", error);
     const message = `
@@ -2470,13 +2544,30 @@ async function refreshAnnouncementsPageSafe({ force = false } = {}) {
   }
 
   try {
+    const loadWarnings = [];
     if (force || !announcementPageState.loaded) {
-      const announcements = await getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION);
+      const announcements = await loadWithFallback(
+        "公告",
+        loadWarnings,
+        () => getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION),
+        [],
+      );
       announcementPageState.announcements = announcements;
+      announcementPageState.loadWarnings = loadWarnings;
       announcementPageState.loaded = true;
     }
 
     renderAnnouncementsBoard(announcementPageState.announcements);
+    if (announcementPageState.loadWarnings.length > 0) {
+      board.insertAdjacentHTML(
+        "afterbegin",
+        buildLoadWarningMarkup({
+          title: "部分資料載入失敗",
+          copy: "目前部分公告資料無法讀取，下面仍會顯示已載入的公告。",
+          details: announcementPageState.loadWarnings,
+        }),
+      );
+    }
   } catch (error) {
     console.error("Announcement board load failed:", error);
     board.innerHTML = `
@@ -2549,13 +2640,25 @@ async function refreshFaqPageSafe({ force = false } = {}) {
   }
 
   try {
+    const loadWarnings = [];
     if (force || !faqPageState.loaded) {
-      const faqs = await getCollectionEntries(FAQ_COLLECTION);
+      const faqs = await loadWithFallback("FAQ", loadWarnings, () => getCollectionEntries(FAQ_COLLECTION), []);
       faqPageState.faqs = faqs;
+      faqPageState.loadWarnings = loadWarnings;
       faqPageState.loaded = true;
     }
 
     renderFaqBoard(faqPageState.faqs);
+    if (faqPageState.loadWarnings.length > 0) {
+      board.insertAdjacentHTML(
+        "afterbegin",
+        buildLoadWarningMarkup({
+          title: "部分資料載入失敗",
+          copy: "目前部分 FAQ 資料無法讀取，下面仍會顯示已載入的問題。",
+          details: faqPageState.loadWarnings,
+        }),
+      );
+    }
   } catch (error) {
     console.error("FAQ board load failed:", error);
     board.innerHTML = `
