@@ -1967,6 +1967,24 @@ img {
   gap: 18px;
 }
 
+.class-session-editor-heading {
+  display: grid;
+  gap: 10px;
+}
+
+.class-session-editor-heading .content-title {
+  margin-top: 0;
+}
+
+.class-session-editor-english {
+  margin: 0;
+  color: var(--brand);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: none;
+}
+
 .class-session-form {
   gap: 18px;
 }
