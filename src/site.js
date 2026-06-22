@@ -359,6 +359,26 @@ const applicationSuccessModalMarkup = `
   </div>
 `;
 
+const actionSuccessModalMarkup = `
+  <div class="modal" data-action-success-modal hidden>
+    <div class="modal-backdrop" data-modal-backdrop></div>
+    <div class="modal-dialog success-modal-dialog">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title" data-action-success-title>儲存完畢</h2>
+          <p class="modal-subtitle" data-action-success-copy>內容已更新。</p>
+        </div>
+        <button class="modal-close" data-close-action-success type="button" aria-label="關閉完成視窗">
+          <span aria-hidden="true">+</span>
+        </button>
+      </div>
+      <div class="modal-footer">
+        <button class="login-button modal-submit" data-confirm-action-success type="button">確認</button>
+      </div>
+    </div>
+  </div>
+`;
+
 const adminClassCalendarModalMarkup = `
   <div class="modal" data-admin-class-calendar-modal hidden>
     <div class="modal-backdrop" data-modal-backdrop></div>
@@ -377,6 +397,7 @@ const adminClassCalendarModalMarkup = `
         <form class="form-grid admin-calendar-event-form" data-admin-calendar-event-form>
           <input name="eventId" type="hidden" value="" />
           <input name="date" type="hidden" value="" />
+          <p class="admin-calendar-form-state" data-admin-calendar-form-state>這一天還沒有內容，直接填寫下方欄位即可新增。</p>
           <div class="form-field">
             <label for="admin-calendar-event-type">類型</label>
             <select id="admin-calendar-event-type" name="eventType">
@@ -405,6 +426,26 @@ const adminClassCalendarModalMarkup = `
             <button class="button-secondary" data-admin-calendar-delete type="button">刪除</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+`;
+
+const publicCalendarDetailModalMarkup = `
+  <div class="modal" data-public-calendar-modal hidden>
+    <div class="modal-backdrop" data-modal-backdrop></div>
+    <div class="modal-dialog admin-calendar-modal-dialog">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title" data-public-calendar-title>行事曆內容</h2>
+          <p class="modal-subtitle" data-public-calendar-subtitle></p>
+        </div>
+        <button class="modal-close" data-close-public-calendar type="button" aria-label="關閉內容視窗">
+          <span aria-hidden="true">+</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="admin-calendar-modal-list" data-public-calendar-list></div>
       </div>
     </div>
   </div>
@@ -604,6 +645,16 @@ const ensureApplicationSuccessModal = () => {
   return document.querySelector("[data-application-success-modal]");
 };
 
+const ensureActionSuccessModal = () => {
+  const existing = document.querySelector("[data-action-success-modal]");
+  if (existing) {
+    return existing;
+  }
+
+  document.body.insertAdjacentHTML("beforeend", actionSuccessModalMarkup);
+  return document.querySelector("[data-action-success-modal]");
+};
+
 const ensureAdminClassCalendarModal = () => {
   const existing = document.querySelector("[data-admin-class-calendar-modal]");
   if (existing) {
@@ -612,6 +663,16 @@ const ensureAdminClassCalendarModal = () => {
 
   document.body.insertAdjacentHTML("beforeend", adminClassCalendarModalMarkup);
   return document.querySelector("[data-admin-class-calendar-modal]");
+};
+
+const ensurePublicCalendarModal = () => {
+  const existing = document.querySelector("[data-public-calendar-modal]");
+  if (existing) {
+    return existing;
+  }
+
+  document.body.insertAdjacentHTML("beforeend", publicCalendarDetailModalMarkup);
+  return document.querySelector("[data-public-calendar-modal]");
 };
 
 const getLoginModalElements = () => {
@@ -937,7 +998,7 @@ const getAdminCalendarEventsForDate = (dateKey) => {
     }));
 
   const announcementEvents = membersDashboardCache.announcements
-    .filter((announcement) => String(announcement.date || "").trim() === dateKey)
+    .filter((announcement) => getAnnouncementDateKey(announcement) === dateKey)
     .map((announcement) => ({
       type: "announcement",
       id: getAdminCalendarAnnouncementId(announcement),
@@ -954,14 +1015,138 @@ const getAdminCalendarEventsForDate = (dateKey) => {
   });
 };
 
+const getActionSuccessModalElements = () => {
+  const successModal = document.querySelector("[data-action-success-modal]");
+  return {
+    successModal,
+    title: successModal?.querySelector("[data-action-success-title]"),
+    copy: successModal?.querySelector("[data-action-success-copy]"),
+    confirmButton: successModal?.querySelector("[data-confirm-action-success]"),
+    closeButtons: successModal?.querySelectorAll("[data-close-action-success]") || [],
+  };
+};
+
+const getPublicCalendarModalElements = () => {
+  const calendarModal = document.querySelector("[data-public-calendar-modal]");
+  return {
+    calendarModal,
+    title: calendarModal?.querySelector("[data-public-calendar-title]"),
+    subtitle: calendarModal?.querySelector("[data-public-calendar-subtitle]"),
+    list: calendarModal?.querySelector("[data-public-calendar-list]"),
+    closeButtons: calendarModal?.querySelectorAll("[data-close-public-calendar]") || [],
+  };
+};
+
+const openActionSuccessModal = ({ title = "儲存完畢", copy = "內容已更新。" } = {}) => {
+  const { successModal, title: titleNode, copy: copyNode, confirmButton } = getActionSuccessModalElements();
+  if (!successModal) {
+    window.alert(copy);
+    return;
+  }
+
+  if (titleNode) {
+    titleNode.textContent = title;
+  }
+  if (copyNode) {
+    copyNode.textContent = copy;
+  }
+
+  successModal.hidden = false;
+  body.classList.add("modal-open");
+  window.setTimeout(() => confirmButton?.focus(), 50);
+};
+
+const closeActionSuccessModal = () => {
+  const { successModal } = getActionSuccessModalElements();
+  if (!successModal) {
+    return;
+  }
+
+  successModal.hidden = true;
+  body.classList.remove("modal-open");
+};
+
+const buildPublicCalendarEventMarkup = (event, { includeSignupAction = false } = {}) => {
+  const typeLabel = event.type === "class" ? "社課" : "公告";
+  const note = event.note || "無";
+  const sessionId = event.type === "class" ? getClassSessionId(event.source || {}) : "";
+  const signupButton =
+    includeSignupAction && sessionId
+      ? `<button class="button-primary" data-public-calendar-session-jump type="button" data-session-id="${escapeHtml(sessionId)}">前往報名</button>`
+      : "";
+
+  return `
+    <article class="admin-calendar-modal-session">
+      <div class="admin-calendar-modal-session-head">
+        <div>
+          <p class="admin-calendar-modal-session-weekday">${escapeHtml(typeLabel)}</p>
+          <h3 class="admin-calendar-modal-session-title">${escapeHtml(event.title || `${typeLabel}內容`)}</h3>
+        </div>
+        ${event.timeLabel ? `<span class="member-row-status">${escapeHtml(event.timeLabel)}</span>` : ""}
+      </div>
+      <p class="admin-calendar-modal-session-copy">${escapeHtml(note)}</p>
+      ${signupButton ? `<div class="admin-calendar-modal-session-actions">${signupButton}</div>` : ""}
+    </article>
+  `;
+};
+
+const openPublicCalendarModal = ({ title, subtitle, events = [], includeSignupAction = false }) => {
+  const { calendarModal, title: titleNode, subtitle: subtitleNode, list } = getPublicCalendarModalElements();
+  if (!calendarModal || !list) {
+    return;
+  }
+
+  if (titleNode) {
+    titleNode.textContent = title;
+  }
+  if (subtitleNode) {
+    subtitleNode.textContent = subtitle;
+  }
+
+  list.innerHTML =
+    events.length > 0
+      ? events.map((event) => buildPublicCalendarEventMarkup(event, { includeSignupAction })).join("")
+      : `<p class="admin-calendar-modal-empty">這一天目前沒有內容。</p>`;
+
+  calendarModal.hidden = false;
+  body.classList.add("modal-open");
+
+  list.querySelectorAll("[data-public-calendar-session-jump]").forEach((button) => {
+    if (button.dataset.initialized === "true") {
+      return;
+    }
+
+    button.dataset.initialized = "true";
+    button.addEventListener("click", () => {
+      const sessionId = button.dataset.sessionId || "";
+      const target = sessionId ? document.getElementById(`session-${sessionId}`) : null;
+      closePublicCalendarModal();
+      if (target instanceof HTMLElement) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  });
+};
+
+const closePublicCalendarModal = () => {
+  const { calendarModal } = getPublicCalendarModalElements();
+  if (!calendarModal) {
+    return;
+  }
+
+  calendarModal.hidden = true;
+  body.classList.remove("modal-open");
+};
+
 const setAdminCalendarEventForm = (event = null, dateKey = "") => {
-  const { form, deleteButton } = getAdminClassCalendarModalElements();
+  const { form, deleteButton, saveButton } = getAdminClassCalendarModalElements();
   if (!form) {
     return;
   }
 
   form.reset();
-  form.querySelector("[name='eventId']").value = event?.id || "";
+  const eventId = event?.id || "";
+  form.querySelector("[name='eventId']").value = eventId;
   form.querySelector("[name='date']").value = dateKey;
   form.querySelector("[name='eventType']").value = event?.type || "class";
   form.querySelector("[name='title']").value = event?.title || "";
@@ -978,11 +1163,21 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   }
 
   if (deleteButton) {
-    deleteButton.disabled = !event?.id;
+    deleteButton.disabled = !eventId;
+  }
+
+  const stateNode = form.querySelector("[data-admin-calendar-form-state]");
+  if (stateNode) {
+    stateNode.textContent = eventId
+      ? `目前正在編輯「${event?.title || "未命名內容"}」，儲存後會直接覆蓋原本資料。`
+      : "這一天還沒有內容，直接填寫下方欄位即可新增。";
+  }
+  if (saveButton) {
+    saveButton.textContent = eventId ? "更新內容" : "儲存";
   }
 
   form.dataset.editingType = event?.type || "";
-  form.dataset.editingId = event?.id || "";
+  form.dataset.editingId = eventId;
 };
 
 const openAdminClassCalendarModal = (dateKey, trigger = null) => {
@@ -1023,7 +1218,7 @@ const openAdminClassCalendarModal = (dateKey, trigger = null) => {
   }
 
   if (form) {
-    setAdminCalendarEventForm(null, dateKey);
+    setAdminCalendarEventForm(events.length === 1 ? events[0] : null, dateKey);
   }
 
   calendarModal.hidden = false;
@@ -2210,12 +2405,14 @@ function renderClassCalendarBoard(sessions = []) {
       })
       .join("");
 
+    const dayButtonTag = daySessions.length > 0 ? "button" : "div";
+    const dayButtonType = daySessions.length > 0 ? ` type="button" data-public-class-calendar-day data-date-key="${escapeHtml(dateKey)}"` : "";
     cells.push(`
-      <div class="calendar-day${daySessions.length > 0 ? " is-session" : ""}">
+      <${dayButtonTag} class="calendar-day${daySessions.length > 0 ? " is-session is-clickable" : ""}"${dayButtonType}>
         <span class="calendar-day-number">${escapeHtml(daySessions.length > 0 ? `${day} / ${daySessions.length} 場` : String(day))}</span>
         <span class="calendar-day-date">${escapeHtml(`${month + 1}/${day}`)}</span>
         <div class="calendar-session-list">${sessionMarkup || ""}</div>
-      </div>
+      </${dayButtonTag}>
     `);
   }
 
@@ -2253,6 +2450,36 @@ function renderClassCalendarBoard(sessions = []) {
   container.querySelector("[data-class-calendar-next]")?.addEventListener("click", () => {
     classSignupPageState.monthOffset += 1;
     renderClassCalendarBoard(classSignupPageState.sessions);
+  });
+
+  container.querySelectorAll("[data-public-class-calendar-day]").forEach((button) => {
+    if (button.dataset.initialized === "true") {
+      return;
+    }
+
+    button.dataset.initialized = "true";
+    button.addEventListener("click", () => {
+      const dateKey = button.dataset.dateKey || "";
+      const events = classSignupPageState.sessions
+        .filter((session) => String(session.date || session.sessionDate || "").trim() === dateKey)
+        .map((session) => ({
+          type: "class",
+          id: getClassSessionId(session),
+          title: session.title || "社課",
+          timeLabel: getClassSessionTimeLabel(session),
+          note: session.description || session.reminder || "無",
+          source: session,
+        }));
+      const parsedDate = parseDateKey(dateKey);
+      openPublicCalendarModal({
+        title: parsedDate
+          ? parsedDate.toLocaleDateString("zh-TW", { year: "numeric", month: "long", day: "numeric" })
+          : dateKey,
+        subtitle: `${getWeekdayLabel(DATE_WEEKDAY_ORDER[parsedDate?.getDay?.() ?? 0] || "")} · ${events.length} 場社課`,
+        events,
+        includeSignupAction: true,
+      });
+    });
   });
 }
 
@@ -2379,7 +2606,7 @@ function renderClassSessionBoard(sessions = []) {
           : "";
 
       return `
-        <article class="content-card class-session-card">
+        <article class="content-card class-session-card" id="session-${escapeHtml(sessionId)}">
           <div class="class-session-header">
             <div>
               <p class="section-kicker">${escapeHtml(getWeekdayLabel(session.weekday) || "社課")}</p>
@@ -2503,6 +2730,32 @@ function bindClassSignupBoardEvents() {
       }
     });
   });
+}
+
+function bindPublicCalendarModalEvents() {
+  const { calendarModal, closeButtons } = getPublicCalendarModalElements();
+  if (!calendarModal) {
+    return;
+  }
+
+  closeButtons.forEach((button) => {
+    if (button.dataset.initialized === "true") {
+      return;
+    }
+
+    button.dataset.initialized = "true";
+    button.addEventListener("click", closePublicCalendarModal);
+  });
+
+  if (calendarModal.dataset.initialized !== "true") {
+    calendarModal.dataset.initialized = "true";
+    calendarModal.addEventListener("click", (event) => {
+      const target = event.target;
+      if (target === calendarModal || target.hasAttribute("data-modal-backdrop")) {
+        closePublicCalendarModal();
+      }
+    });
+  }
 }
 
 async function handleClassSignupSubmit(event) {
@@ -2704,8 +2957,10 @@ function renderAnnouncementsBoard(announcements = []) {
     const hasAnnouncement = dayAnnouncements.length > 0;
     const isToday = dateKey === todayKey;
 
+    const dayTag = hasAnnouncement ? "button" : "article";
+    const dayAttrs = hasAnnouncement ? ` type="button" data-public-announcement-day data-date-key="${escapeHtml(dateKey)}"` : "";
     cells.push(`
-      <article class="admin-calendar-day${hasAnnouncement ? " is-session has-announcement" : ""}${isToday ? " is-today" : ""}">
+      <${dayTag} class="admin-calendar-day${hasAnnouncement ? " is-session has-announcement is-clickable" : ""}${isToday ? " is-today" : ""}"${dayAttrs}>
         <span class="admin-calendar-day-number">${escapeHtml(String(day))}</span>
         <span class="admin-calendar-day-label">${escapeHtml(`${month + 1}/${day}`)}</span>
         <span class="admin-calendar-day-events">
@@ -2721,7 +2976,7 @@ function renderAnnouncementsBoard(announcements = []) {
             )
             .join("")}
         </span>
-      </article>
+      </${dayTag}>
     `);
   }
 
@@ -2763,6 +3018,35 @@ function renderAnnouncementsBoard(announcements = []) {
   container.querySelector("[data-announcement-calendar-next]")?.addEventListener("click", () => {
     announcementCalendarMonthOffset += 1;
     renderAnnouncementsBoard(announcementPageState.announcements);
+  });
+
+  container.querySelectorAll("[data-public-announcement-day]").forEach((button) => {
+    if (button.dataset.initialized === "true") {
+      return;
+    }
+
+    button.dataset.initialized = "true";
+    button.addEventListener("click", () => {
+      const dateKey = button.dataset.dateKey || "";
+      const events = announcementPageState.announcements
+        .filter((announcement) => getAnnouncementDateKey(announcement) === dateKey)
+        .map((announcement) => ({
+          type: "announcement",
+          id: getAdminCalendarAnnouncementId(announcement),
+          title: announcement.title || "公告",
+          timeLabel: getAnnouncementTimeLabel(announcement),
+          note: getAnnouncementNote(announcement),
+          source: announcement,
+        }));
+      const parsedDate = parseDateKey(dateKey);
+      openPublicCalendarModal({
+        title: parsedDate
+          ? parsedDate.toLocaleDateString("zh-TW", { year: "numeric", month: "long", day: "numeric" })
+          : dateKey,
+        subtitle: `${getWeekdayLabel(DATE_WEEKDAY_ORDER[parsedDate?.getDay?.() ?? 0] || "")} · ${events.length} 則公告`,
+        events,
+      });
+    });
   });
 }
 
@@ -3683,9 +3967,9 @@ async function handleAdminCalendarEventSubmit(event) {
   event.preventDefault();
   const form = event.currentTarget;
   const submitButton = form.querySelector("[data-admin-calendar-save]");
-  const eventId = String(form.querySelector("[name='eventId']")?.value || "").trim();
+  const eventId = String(form.dataset.editingId || form.querySelector("[name='eventId']")?.value || "").trim();
   const date = String(form.querySelector("[name='date']")?.value || "").trim();
-  const eventType = String(form.querySelector("[name='eventType']")?.value || "class").trim();
+  const eventType = String(form.querySelector("[name='eventType']")?.value || form.dataset.editingType || "class").trim();
   const title = String(form.querySelector("[name='title']")?.value || "").trim();
   const timeLabel = String(form.querySelector("[name='timeLabel']")?.value || "").trim();
   const note = String(form.querySelector("[name='note']")?.value || "").trim() || "無";
@@ -3742,7 +4026,11 @@ async function handleAdminCalendarEventSubmit(event) {
 
     adminClassCalendarMonthOffset = getAdminCalendarMonthOffset(parseDateKey(date) || new Date());
     await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
-    openAdminClassCalendarModal(date, lastAdminClassCalendarTrigger);
+    closeAdminClassCalendarModal();
+    openActionSuccessModal({
+      title: "儲存完畢",
+      copy: eventId ? "內容已更新，原本的資料已同步覆蓋。" : "新內容已建立完成。",
+    });
   } catch (error) {
     console.error("Save calendar event failed:", error);
     window.alert(`儲存失敗：${error?.message || "請稍後再試一次。"}`);
@@ -4086,6 +4374,37 @@ const bindApplicationSuccessModalEvents = () => {
   });
 };
 
+const bindActionSuccessModalEvents = () => {
+  const { successModal, confirmButton, closeButtons } = getActionSuccessModalElements();
+  if (!successModal || !confirmButton) {
+    return;
+  }
+
+  if (confirmButton.dataset.initialized !== "true") {
+    confirmButton.dataset.initialized = "true";
+    confirmButton.addEventListener("click", closeActionSuccessModal);
+  }
+
+  closeButtons.forEach((button) => {
+    if (button.dataset.initialized === "true") {
+      return;
+    }
+
+    button.dataset.initialized = "true";
+    button.addEventListener("click", closeActionSuccessModal);
+  });
+
+  if (successModal.dataset.initialized !== "true") {
+    successModal.dataset.initialized = "true";
+    successModal.addEventListener("click", (event) => {
+      const target = event.target;
+      if (target === successModal || target.hasAttribute("data-modal-backdrop")) {
+        closeActionSuccessModal();
+      }
+    });
+  }
+};
+
 const scrollToMembersContent = () => {
   const content = document.querySelector("[data-members-content]");
   if (!(content instanceof HTMLElement) || content.hidden) {
@@ -4236,6 +4555,8 @@ const initKeybindings = () => {
     const { loginModal } = getLoginModalElements();
     const { applicationModal } = getApplicationModalElements();
     const { successModal } = getApplicationSuccessModalElements();
+    const { successModal: actionSuccessModal } = getActionSuccessModalElements();
+    const { calendarModal: publicCalendarModal } = getPublicCalendarModalElements();
 
     if (!loginModal.hidden) {
       closeLoginModal();
@@ -4247,6 +4568,14 @@ const initKeybindings = () => {
 
     if (!successModal.hidden) {
       closeApplicationSuccessModal();
+    }
+
+    if (actionSuccessModal && !actionSuccessModal.hidden) {
+      closeActionSuccessModal();
+    }
+
+    if (publicCalendarModal && !publicCalendarModal.hidden) {
+      closePublicCalendarModal();
     }
   });
 };
@@ -4336,9 +4665,13 @@ const init = async () => {
   ensureLoginModal();
   ensureApplicationModal();
   ensureApplicationSuccessModal();
+  ensureActionSuccessModal();
+  ensurePublicCalendarModal();
   bindLoginModalEvents();
   bindApplicationModalEvents();
   bindApplicationSuccessModalEvents();
+  bindActionSuccessModalEvents();
+  bindPublicCalendarModalEvents();
   bindOpenButtons();
   bindMembersHeroCta();
   initMenu();

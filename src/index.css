@@ -2188,6 +2188,97 @@ button.admin-calendar-day:focus-visible {
   border-top: 1px solid rgba(15, 76, 129, 0.1);
 }
 
+.admin-calendar-form-state {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(234, 242, 251, 0.96), rgba(245, 248, 252, 0.96));
+  color: var(--ink);
+  line-height: 1.7;
+}
+
+.admin-calendar-event-form .form-field label,
+.faq-form .form-field label {
+  color: var(--brand);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.admin-calendar-event-form .form-field input,
+.admin-calendar-event-form .form-field select,
+.admin-calendar-event-form .form-field textarea,
+.faq-form .form-field input,
+.faq-form .form-field textarea {
+  width: 100%;
+  min-height: 62px;
+  padding: 0 18px;
+  border: 1px solid rgba(15, 76, 129, 0.14);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(240, 246, 252, 0.96));
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 700;
+  box-shadow: 0 12px 26px rgba(15, 76, 129, 0.08);
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.admin-calendar-event-form .form-field select,
+.admin-calendar-event-form .form-field textarea,
+.faq-form .form-field textarea {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+.admin-calendar-event-form .form-field select {
+  cursor: pointer;
+  padding-right: 56px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--brand) 50%),
+    linear-gradient(135deg, var(--brand) 50%, transparent 50%);
+  background-position:
+    calc(100% - 28px) calc(50% - 4px),
+    calc(100% - 21px) calc(50% - 4px);
+  background-size: 7px 7px, 7px 7px;
+  background-repeat: no-repeat;
+}
+
+.admin-calendar-event-form .form-field textarea,
+.faq-form .form-field textarea {
+  min-height: 154px;
+  padding: 16px 18px;
+  resize: vertical;
+}
+
+.admin-calendar-event-form .form-field input::placeholder,
+.admin-calendar-event-form .form-field textarea::placeholder,
+.faq-form .form-field input::placeholder,
+.faq-form .form-field textarea::placeholder {
+  color: rgba(91, 116, 146, 0.78);
+  font-weight: 600;
+}
+
+.admin-calendar-event-form .form-field input:hover,
+.admin-calendar-event-form .form-field select:hover,
+.admin-calendar-event-form .form-field textarea:hover,
+.admin-calendar-event-form .form-field input:focus,
+.admin-calendar-event-form .form-field select:focus,
+.admin-calendar-event-form .form-field textarea:focus,
+.faq-form .form-field input:hover,
+.faq-form .form-field textarea:hover,
+.faq-form .form-field input:focus,
+.faq-form .form-field textarea:focus {
+  outline: none;
+  border-color: rgba(15, 76, 129, 0.3);
+  box-shadow: 0 16px 32px rgba(15, 76, 129, 0.12);
+  transform: translateY(-1px);
+}
+
 .admin-calendar-event-chip {
   display: grid;
   gap: 4px;
@@ -2232,6 +2323,25 @@ button.admin-calendar-day:focus-visible {
 .admin-calendar-event-chip small {
   color: var(--muted);
   font-weight: 700;
+}
+
+.calendar-day.is-clickable,
+.admin-calendar-day.is-clickable {
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.calendar-day.is-clickable:hover,
+.calendar-day.is-clickable:focus-visible,
+.admin-calendar-day.is-clickable:hover,
+.admin-calendar-day.is-clickable:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(15, 76, 129, 0.24);
+  box-shadow: 0 18px 32px rgba(15, 76, 129, 0.12);
+  outline: none;
 }
 
 .admin-calendar-signup-toggle {
