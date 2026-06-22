@@ -101,6 +101,7 @@ let authMode = "signin";
 let authReadyPromise = null;
 let lastLoginTrigger = null;
 let lastApplicationTrigger = null;
+let lastClassSignupTrigger = null;
 let membersAutoRefreshTimer = null;
 let publicPageAutoRefreshTimer = null;
 let membersDashboardCache = {
@@ -451,6 +452,24 @@ const publicCalendarDetailModalMarkup = `
   </div>
 `;
 
+const classSignupDetailModalMarkup = `
+  <div class="modal" data-class-signup-modal hidden>
+    <div class="modal-backdrop" data-modal-backdrop></div>
+    <div class="modal-dialog admin-calendar-modal-dialog class-signup-modal-dialog">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title" data-class-signup-modal-title>社課報名</h2>
+          <p class="modal-subtitle" data-class-signup-modal-subtitle></p>
+        </div>
+        <button class="modal-close" data-close-class-signup-modal type="button" aria-label="關閉社課報名視窗">
+          <span aria-hidden="true">+</span>
+        </button>
+      </div>
+      <div class="modal-body class-signup-modal-body" data-class-signup-modal-body></div>
+    </div>
+  </div>
+`;
+
 const escapeHtml = (value) =>
   String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -673,6 +692,16 @@ const ensurePublicCalendarModal = () => {
 
   document.body.insertAdjacentHTML("beforeend", publicCalendarDetailModalMarkup);
   return document.querySelector("[data-public-calendar-modal]");
+};
+
+const ensureClassSignupModal = () => {
+  const existing = document.querySelector("[data-class-signup-modal]");
+  if (existing) {
+    return existing;
+  }
+
+  document.body.insertAdjacentHTML("beforeend", classSignupDetailModalMarkup);
+  return document.querySelector("[data-class-signup-modal]");
 };
 
 const getLoginModalElements = () => {
@@ -1037,6 +1066,17 @@ const getPublicCalendarModalElements = () => {
   };
 };
 
+const getClassSignupModalElements = () => {
+  const calendarModal = ensureClassSignupModal();
+  return {
+    calendarModal,
+    title: calendarModal?.querySelector("[data-class-signup-modal-title]"),
+    subtitle: calendarModal?.querySelector("[data-class-signup-modal-subtitle]"),
+    body: calendarModal?.querySelector("[data-class-signup-modal-body]"),
+    closeButtons: calendarModal?.querySelectorAll("[data-close-class-signup-modal]") || [],
+  };
+};
+
 const openActionSuccessModal = ({ title = "儲存完畢", copy = "內容已更新。" } = {}) => {
   const { successModal, title: titleNode, copy: copyNode, confirmButton } = getActionSuccessModalElements();
   if (!successModal) {
@@ -1066,12 +1106,130 @@ const closeActionSuccessModal = () => {
   body.classList.remove("modal-open");
 };
 
+const getPublicClassSignupModalState = (session) => {
+  const sessionId = getClassSessionId(session);
+  const ownSignup = classSignupPageState.ownSignups.find((signup) => signup.sessionId === sessionId) || null;
+  const approvalData = classSignupPageState.approval;
+  const canSignup = Boolean(currentUser && (approvalData || currentUserIsAdmin));
+  const isSundaySignup = String(session.weekday || "").toLowerCase() === "sun" && Boolean(session.signupRequired);
+  const rosterPublished = Boolean(session.rosterPublished);
+  const signupOpen = isSundaySignup && isClassSignupWindowOpen(session);
+  const statusLabel = rosterPublished ? "已公布名單" : isSundaySignup ? (signupOpen ? "開放報名" : "尚未開放") : "固定社課";
+
+  return {
+    ownSignup,
+    approvalData,
+    canSignup,
+    isSundaySignup,
+    signupOpen,
+    statusLabel,
+  };
+};
+
+const renderClassSignupModalContent = (sessionId) => {
+  const { calendarModal, title, subtitle, body: bodyNode } = getClassSignupModalElements();
+  if (!calendarModal || !bodyNode) {
+    return;
+  }
+
+  calendarModal.dataset.sessionId = sessionId;
+
+  const session = classSignupPageState.sessions.find((item) => getClassSessionId(item) === sessionId);
+  if (!session) {
+    if (title) {
+      title.textContent = "社課報名";
+    }
+    if (subtitle) {
+      subtitle.textContent = "";
+    }
+    bodyNode.innerHTML = `
+      <article class="admin-calendar-modal-session">
+        <p class="admin-calendar-modal-empty">找不到這筆社課資料，請重新從行事曆開啟。</p>
+      </article>
+    `;
+    return;
+  }
+
+  const { ownSignup, approvalData, canSignup, isSundaySignup, signupOpen, statusLabel } = getPublicClassSignupModalState(session);
+  const formMarkup = isSundaySignup
+    ? buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup, signupOpen)
+    : `
+        <div class="class-session-note">
+          <p class="content-copy">此場次不需要填寫志願，請直接依照行事曆出席即可。</p>
+        </div>
+      `;
+
+  if (title) {
+    title.textContent = session.title || "社課報名";
+  }
+  if (subtitle) {
+    subtitle.textContent = [getClassSessionDateLabel(session), getClassSessionTimeLabel(session)].filter(Boolean).join(" ・ ");
+  }
+
+  bodyNode.innerHTML = `
+    <div class="class-signup-modal-stack">
+      <article class="admin-calendar-modal-session class-signup-modal-session-card">
+        <div class="admin-calendar-modal-session-head">
+          <div>
+            <p class="admin-calendar-modal-session-weekday">${escapeHtml(getWeekdayLabel(session.weekday) || "社課")}</p>
+            <h3 class="admin-calendar-modal-session-title">${escapeHtml(session.title || "社課")}</h3>
+          </div>
+          <span class="member-row-status">${escapeHtml(statusLabel)}</span>
+        </div>
+        <p class="admin-calendar-modal-session-copy">${escapeHtml(session.description || session.reminder || "這一天有社課安排，請依照時間參與。")}</p>
+        ${session.reminder ? `<p class="class-session-reminder">提醒：${escapeHtml(session.reminder)}</p>` : ""}
+      </article>
+      <section class="class-signup-modal-form-shell">
+        ${formMarkup}
+      </section>
+    </div>
+  `;
+
+  bindClassSignupBoardEvents();
+};
+
+const openClassSignupModal = (sessionId, trigger = null) => {
+  const { calendarModal } = getClassSignupModalElements();
+  if (!calendarModal || !sessionId) {
+    return;
+  }
+
+  lastClassSignupTrigger = trigger || null;
+  renderClassSignupModalContent(sessionId);
+  calendarModal.hidden = false;
+  body.classList.add("modal-open");
+
+  window.setTimeout(() => {
+    const { body: bodyNode } = getClassSignupModalElements();
+    const firstField = bodyNode?.querySelector("select, input, textarea, button");
+    if (firstField instanceof HTMLElement) {
+      firstField.focus();
+    }
+  }, 50);
+};
+
+const closeClassSignupModal = () => {
+  const { calendarModal } = getClassSignupModalElements();
+  if (!calendarModal) {
+    return;
+  }
+
+  calendarModal.hidden = true;
+  calendarModal.dataset.sessionId = "";
+  body.classList.remove("modal-open");
+
+  if (lastClassSignupTrigger instanceof HTMLElement) {
+    lastClassSignupTrigger.focus();
+  }
+};
+
 const buildPublicCalendarEventMarkup = (event, { includeSignupAction = false } = {}) => {
   const typeLabel = event.type === "class" ? "社課" : "公告";
   const note = event.note || "無";
   const sessionId = event.type === "class" ? getClassSessionId(event.source || {}) : "";
+  const canOpenSignup = includeSignupAction && sessionId && Boolean(event.source?.signupRequired);
   const signupButton =
-    includeSignupAction && sessionId
+    canOpenSignup
       ? `<button class="button-primary" data-public-calendar-session-jump type="button" data-session-id="${escapeHtml(sessionId)}">前往報名</button>`
       : "";
 
@@ -1119,10 +1277,9 @@ const openPublicCalendarModal = ({ title, subtitle, events = [], includeSignupAc
     button.dataset.initialized = "true";
     button.addEventListener("click", () => {
       const sessionId = button.dataset.sessionId || "";
-      const target = sessionId ? document.getElementById(`session-${sessionId}`) : null;
       closePublicCalendarModal();
-      if (target instanceof HTMLElement) {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (sessionId) {
+        openClassSignupModal(sessionId, button);
       }
     });
   });
@@ -1513,37 +1670,6 @@ const patchMembersFilterUI = () => {
       })
       .join("");
   }
-};
-
-const initCustomAcademicYearControls = () => {
-  const input = document.querySelector("[data-custom-year-input]");
-  const addButton = document.querySelector("[data-add-academic-year]");
-
-  if (!input || !addButton || addButton.dataset.initialized === "true") {
-    return;
-  }
-
-  addButton.addEventListener("click", () => {
-    const value = input.value.trim();
-    if (!value || !Number.isFinite(Number(value))) {
-      input.focus();
-      return;
-    }
-
-    const nextYears = Array.from(new Set([...getStoredAdminAcademicYears(), value])).sort(
-      (a, b) => Number(b) - Number(a),
-    );
-    saveAdminAcademicYears(nextYears);
-
-    if (memberFilters.year === "all") {
-      memberFilters.year = value;
-    }
-
-    input.value = "";
-    void refreshMembersDashboardSafe();
-  });
-
-  addButton.dataset.initialized = "true";
 };
 
 const formatTimestamp = (value) => {
@@ -2202,7 +2328,6 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
   gate.hidden = true;
   content.hidden = false;
   initMembersFilters();
-  initCustomAcademicYearControls();
   patchMembersFilterUI();
   const expandedMemberKeys = preserveExpandedRows ? getExpandedMemberKeys() : [];
   bindAdminClassCreationForms();
@@ -2359,11 +2484,6 @@ function renderClassCalendarBoard(sessions = []) {
     const sessionDate = parseDateKey(session.date || session.sessionDate || "");
     return sessionDate && sessionDate.getFullYear() === year && sessionDate.getMonth() === month;
   });
-  const monthAnnouncements = membersDashboardCache.announcements.filter((announcement) => {
-    const announcementDate = parseDateKey(announcement.date || "");
-    return announcementDate && announcementDate.getFullYear() === year && announcementDate.getMonth() === month;
-  });
-
   const sessionMap = monthSessions.reduce((acc, session) => {
     const dateKey = String(session.date || session.sessionDate || "").trim();
     if (!dateKey) {
@@ -2379,9 +2499,9 @@ function renderClassCalendarBoard(sessions = []) {
   }, {});
 
   const firstDay = new Date(year, month, 1);
-  const offset = (firstDay.getDay() + 6) % 7;
+  const offset = firstDay.getDay();
   const totalDays = new Date(year, month + 1, 0).getDate();
-  const dayLabels = ["一", "二", "三", "四", "五", "六", "日"];
+  const dayLabels = ["日", "一", "二", "三", "四", "五", "六"];
   const cells = [];
 
   for (let index = 0; index < offset; index += 1) {
@@ -2758,6 +2878,32 @@ function bindPublicCalendarModalEvents() {
   }
 }
 
+function bindClassSignupModalEvents() {
+  const { calendarModal, closeButtons } = getClassSignupModalElements();
+  if (!calendarModal) {
+    return;
+  }
+
+  closeButtons.forEach((button) => {
+    if (button.dataset.initialized === "true") {
+      return;
+    }
+
+    button.dataset.initialized = "true";
+    button.addEventListener("click", closeClassSignupModal);
+  });
+
+  if (calendarModal.dataset.initialized !== "true") {
+    calendarModal.dataset.initialized = "true";
+    calendarModal.addEventListener("click", (event) => {
+      const target = event.target;
+      if (target === calendarModal || target.hasAttribute("data-modal-backdrop")) {
+        closeClassSignupModal();
+      }
+    });
+  }
+}
+
 async function handleClassSignupSubmit(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -2830,10 +2976,9 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
   }
 
   const calendar = document.querySelector("[data-class-calendar]");
-  const sessionBoard = document.querySelector("[data-class-session-board]");
   const rosterBoard = document.querySelector("[data-class-roster-board]");
 
-  if (!calendar || !sessionBoard || !rosterBoard) {
+  if (!calendar || !rosterBoard) {
     return;
   }
 
@@ -2845,7 +2990,6 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
       </article>
     `;
     calendar.innerHTML = message;
-    sessionBoard.innerHTML = message;
     rosterBoard.innerHTML = message;
     return;
   }
@@ -2877,8 +3021,12 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
     }
 
     renderClassCalendarBoard(classSignupPageState.sessions);
-    renderClassSessionBoard(classSignupPageState.sessions);
     renderClassRosterBoard(classSignupPageState.sessions);
+    const { calendarModal: classSignupModal } = getClassSignupModalElements();
+    const activeSessionId = classSignupModal?.dataset.sessionId || "";
+    if (classSignupModal && !classSignupModal.hidden && activeSessionId) {
+      renderClassSignupModalContent(activeSessionId);
+    }
     if (classSignupPageState.loadWarnings.length > 0) {
       calendar.insertAdjacentHTML(
         "afterbegin",
@@ -2898,7 +3046,6 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
       </article>
     `;
     calendar.innerHTML = message;
-    sessionBoard.innerHTML = message;
     rosterBoard.innerHTML = message;
   }
 }
@@ -4557,6 +4704,7 @@ const initKeybindings = () => {
     const { successModal } = getApplicationSuccessModalElements();
     const { successModal: actionSuccessModal } = getActionSuccessModalElements();
     const { calendarModal: publicCalendarModal } = getPublicCalendarModalElements();
+    const { calendarModal: classSignupModal } = getClassSignupModalElements();
 
     if (!loginModal.hidden) {
       closeLoginModal();
@@ -4576,6 +4724,10 @@ const initKeybindings = () => {
 
     if (publicCalendarModal && !publicCalendarModal.hidden) {
       closePublicCalendarModal();
+    }
+
+    if (classSignupModal && !classSignupModal.hidden) {
+      closeClassSignupModal();
     }
   });
 };
@@ -4667,11 +4819,13 @@ const init = async () => {
   ensureApplicationSuccessModal();
   ensureActionSuccessModal();
   ensurePublicCalendarModal();
+  ensureClassSignupModal();
   bindLoginModalEvents();
   bindApplicationModalEvents();
   bindApplicationSuccessModalEvents();
   bindActionSuccessModalEvents();
   bindPublicCalendarModalEvents();
+  bindClassSignupModalEvents();
   bindOpenButtons();
   bindMembersHeroCta();
   initMenu();
