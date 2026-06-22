@@ -1,25 +1,61 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
-import {
-  createUserWithEmailAndPassword,
-  getAuth,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signOut,
-} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  getFirestore,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { bootstrapAdminEmail, firebaseConfig } from "./firebase-config.js";
+
+let initializeApp;
+let createUserWithEmailAndPassword;
+let getAuth;
+let onAuthStateChanged;
+let signInWithEmailAndPassword;
+let signOut;
+let collection;
+let deleteDoc;
+let doc;
+let getDoc;
+let getDocs;
+let getFirestore;
+let query;
+let serverTimestamp;
+let setDoc;
+let updateDoc;
+let where;
+
+let firebaseModulesPromise = null;
+
+const ensureFirebaseModules = async () => {
+  if (firebaseModulesPromise) {
+    return firebaseModulesPromise;
+  }
+
+  firebaseModulesPromise = (async () => {
+    try {
+      const firebaseModules = await import("./firebase-modules.js");
+      ({
+        initializeApp,
+        createUserWithEmailAndPassword,
+        getAuth,
+        onAuthStateChanged,
+        signInWithEmailAndPassword,
+        signOut,
+        collection,
+        deleteDoc,
+        doc,
+        getDoc,
+        getDocs,
+        getFirestore,
+        query,
+        serverTimestamp,
+        setDoc,
+        updateDoc,
+        where,
+      } = firebaseModules);
+      return firebaseModules;
+    } catch (error) {
+      firebaseModulesPromise = null;
+      throw error;
+    }
+  })();
+
+  return firebaseModulesPromise;
+};
 
 const body = document.body;
 const pageName = body.dataset.page || "";
@@ -717,9 +753,16 @@ const ensureAuthReady = async () => {
   }
 
   authReadyPromise = (async () => {
-    const app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
+    try {
+      await ensureFirebaseModules();
+      const app = initializeApp(firebaseConfig);
+      auth = getAuth(app);
+      db = getFirestore(app);
+    } catch (error) {
+      authReadyPromise = null;
+      setHint("Firebase SDK 載入失敗，請稍後再試。", "error");
+      return null;
+    }
 
     onAuthStateChanged(auth, async (user) => {
       currentUser = user;
@@ -3979,7 +4022,10 @@ const init = async () => {
   setAuthMode("signin");
   updateLoginButtons();
 
-  if (firebaseConfigured) {
+  const needsFirebaseOnLoad =
+    pageName === "members" || pageName === "class-signup" || pageName === "notices" || pageName === "faq";
+
+  if (firebaseConfigured && needsFirebaseOnLoad) {
     await ensureAuthReady();
   }
 

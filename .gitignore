@@ -1,5 +1,8 @@
 node_modules
 functions/node_modules
 dist
+_tmp/
+*-opt.jpg
+*.jpg.tmp
 *.log
 .firebase
