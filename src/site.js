@@ -4022,8 +4022,7 @@ const init = async () => {
   setAuthMode("signin");
   updateLoginButtons();
 
-  const needsFirebaseOnLoad =
-    pageName === "members" || pageName === "class-signup" || pageName === "notices" || pageName === "faq";
+  const needsFirebaseOnLoad = Boolean(document.querySelector("[data-open-login]"));
 
   if (firebaseConfigured && needsFirebaseOnLoad) {
     await ensureAuthReady();
