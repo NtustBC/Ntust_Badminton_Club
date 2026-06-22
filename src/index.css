@@ -2406,6 +2406,10 @@ button.admin-calendar-day:focus-visible {
 }
 
 @media (max-width: 979px) {
+  :root {
+    --page-scale: 1;
+  }
+
   .header-inner {
     grid-template-columns: 1fr auto;
   }
@@ -2421,7 +2425,33 @@ button.admin-calendar-day:focus-visible {
 
 @media (max-width: 759px) {
   .container {
-    width: min(1240px, calc(100% - 20px));
+    width: min(1240px, calc(100% - 24px));
+  }
+
+  .header-inner {
+    gap: 14px;
+  }
+
+  .brand {
+    gap: 10px;
+  }
+
+  .brand-mark img {
+    width: 46px;
+    height: 46px;
+  }
+
+  .brand-title {
+    font-size: 1rem;
+  }
+
+  .brand-subtitle {
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+  }
+
+  .header-actions {
+    gap: 8px;
   }
 
   .page-main {
@@ -2445,12 +2475,50 @@ button.admin-calendar-day:focus-visible {
   .footer-panel,
   .privacy-card,
   .timeline-card {
-    padding: 24px;
+    padding: 22px;
+  }
+
+  .button-primary,
+  .login-button,
+  .back-link,
+  .button-secondary,
+  .menu-button {
+    min-height: 44px;
+    padding: 0 18px;
+  }
+
+  .login-button {
+    min-width: 0;
+  }
+
+  .menu-button {
+    min-width: 64px;
+  }
+
+  .hero-actions,
+  .page-actions,
+  .class-signup-actions,
+  .class-admin-actions,
+  .class-session-form-actions,
+  .application-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hero-actions > *,
+  .page-actions > *,
+  .class-signup-actions > *,
+  .class-admin-actions > *,
+  .class-session-form-actions > *,
+  .application-actions > * {
+    width: 100%;
+    min-width: 0;
   }
 
   .faq-trigger {
     min-height: 72px;
-    padding: 22px 24px;
+    padding: 20px 18px;
+    gap: 14px;
   }
 
   .page-hero + .section-shell,
@@ -2459,7 +2527,7 @@ button.admin-calendar-day:focus-visible {
   }
 
   .faq-panel {
-    padding: 0 24px 24px;
+    padding: 0 18px 18px;
   }
 
   .modal {
@@ -2506,6 +2574,16 @@ button.admin-calendar-day:focus-visible {
     padding: 24px 24px 24px;
   }
 
+  .hero-facts {
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  .hero-fact-card {
+    min-height: 0;
+    padding: 16px 18px;
+  }
+
   .side-card-photo::after {
     right: 24px;
     bottom: 24px;
@@ -2526,17 +2604,73 @@ button.admin-calendar-day:focus-visible {
     font-size: 2.3rem;
   }
 
+  .member-filter-header,
+  .class-session-header,
+  .admin-calendar-modal-session-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .member-row-summary-side {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .class-roster-item {
+    flex-direction: column;
+  }
+
+  .class-roster-index {
+    min-width: 0;
+  }
+
+  .calendar-shell,
+  .admin-calendar-shell {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 8px;
+  }
+
+  .calendar-weekdays,
+  .calendar-grid,
+  .admin-calendar-weekdays,
+  .admin-calendar-grid {
+    min-width: 700px;
+  }
+
+  .calendar-day,
+  .admin-calendar-day {
+    min-height: 104px;
+  }
+
   .site-footer {
     padding-bottom: 0;
   }
 
   .footer-panel {
-    padding: 32px 0 88px;
+    padding: 28px 0 72px;
+  }
+
+  .footer-brand {
+    gap: 10px;
+  }
+
+  .footer-brand img {
+    width: 44px;
+    height: 44px;
+  }
+
+  .footer-title {
+    font-size: 1.24rem;
+  }
+
+  .footer-policy {
+    gap: 10px 16px;
   }
 
   .back-to-top {
-    right: 18px;
-    bottom: 18px;
+    right: 14px;
+    bottom: 14px;
   }
 }
 
