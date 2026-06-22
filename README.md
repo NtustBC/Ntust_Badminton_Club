@@ -1,191 +1,213 @@
-# NTUST Badminton Club
+# NTUST Badminton Club 操作手冊
 
-臺科大羽球社官方網站，使用 Vite、Firebase 與 GitHub Pages 建置。
+這份文件是給社團幹部、管理員與後續維護者使用的操作手冊。
+如果你只是要改內容、檢查網站、重新部署，照著下面步驟做就可以。
 
-這個專案提供社團介紹、社課與入社報名、公告、FAQ、會員後台，以及 Firebase Cloud Functions 的自動寄信流程。
+## 1. 這個網站可以做什麼
 
-## 特色
+- 顯示社團首頁、介紹、報名、公告、FAQ 與會員後台
+- 支援手機與桌機瀏覽
+- 透過 Firebase 管理會員資料、公告與報名資料
+- 透過 Cloud Functions 自動寄送入社申請通知與審核信
+- 部署到 GitHub Pages 供對外瀏覽
 
-- 響應式版型，手機與桌機都能正常瀏覽
-- 多頁式靜態網站，適合 GitHub Pages 部署
-- Firebase Auth + Firestore 會員與管理員功能
-- 社課報名、公告、FAQ 等動態資料頁
-- Cloud Functions 自動寄送入社申請通知與審核信
-- Firestore 規則與管理員權限控管
+## 2. 開始前要先準備
 
-## 網站頁面
-
-- `index.html`：首頁
-- `about.html`：社團介紹
-- `club-signup.html`：入社申請
-- `class-signup.html`：社課報名
-- `notices.html`：公告
-- `faq.html`：常見問題
-- `members.html`：會員後台
-- `privacy.html`：隱私權政策
-
-## 技術棧
-
-- [Vite](https://vite.dev/)
-- Vanilla JavaScript
-- CSS
-- Firebase Authentication
-- Cloud Firestore
-- Firebase Cloud Functions
-- GitHub Pages
-
-## 專案結構
-
-```text
-.
-├─ about.html
-├─ class-signup.html
-├─ club-signup.html
-├─ faq.html
-├─ index.html
-├─ members.html
-├─ notices.html
-├─ privacy.html
-├─ src/
-│  ├─ index.css
-│  ├─ site.js
-│  ├─ firebase-config.js
-│  └─ firebase-modules.js
-├─ assets/
-├─ functions/
-│  ├─ index.js
-│  └─ package.json
-├─ firestore.rules
-├─ firebase.json
-├─ .firebaserc
-└─ .github/workflows/deploy-pages.yml
-```
-
-## 開發需求
-
-- Node.js 20 或以上
+- Node.js 20 以上
 - npm
 - Firebase CLI
-
-如果你要修改 Firebase 或 Functions，另外還需要：
-
-- Firebase 專案
+- Firebase 專案 `ntustbc-64c11`
 - Resend API Key
 
-如果你要本機修改 `functions/index.js` 或跑 Functions Emulator，請先進入 `functions/` 安裝依賴：
+如果你是第一次在本機跑專案，先執行：
+
+```bash
+npm install
+```
+
+如果你要改 Cloud Functions，再進到 `functions/`：
 
 ```bash
 cd functions
 npm install
 ```
 
-常用的 Functions 本機指令：
+## 3. 本機開啟網站
 
-```bash
-npm run serve
-```
-
-## 本機開發
-
-安裝依賴：
-
-```bash
-npm install
-```
-
-啟動本機開發伺服器：
+1. 先安裝主專案依賴。
+2. 執行開發伺服器。
+3. 用瀏覽器打開 Vite 提供的網址。
 
 ```bash
 npm run dev
 ```
 
-Vite 會輸出本機網址，通常是 `http://localhost:5173/`。
+通常網址會是 `http://localhost:5173/`。
 
-## 建置與預覽
-
-產生正式版建置：
+如果你要確認正式版輸出是否正常，先建置再預覽：
 
 ```bash
 npm run build
-```
-
-預覽建置結果：
-
-```bash
 npm run preview
 ```
 
-## Firebase 設定
+## 4. 日常操作流程
 
-前端 Firebase 設定在 `src/firebase-config.js`。
+### 4.1 修改頁面文字或圖片
 
-如果你要把專案搬到新的 Firebase 專案，通常需要同步修改：
+如果你要改網站上看到的文字、段落、按鈕或圖片，通常會改這些檔案：
+
+- `index.html`
+- `about.html`
+- `club-signup.html`
+- `class-signup.html`
+- `notices.html`
+- `faq.html`
+- `members.html`
+- `privacy.html`
+- `assets/`
+
+樣式與版面主要在：
+
+- `src/index.css`
+
+互動邏輯主要在：
+
+- `src/site.js`
+
+### 4.2 修改公告、FAQ、社課內容
+
+這類內容通常分散在以下頁面：
+
+- 公告：`notices.html`
+- FAQ：`faq.html`
+- 社課報名：`class-signup.html`
+- 入社申請：`club-signup.html`
+- 會員後台：`members.html`
+
+如果內容是從 Firestore 讀取，改完之後要一起確認資料權限與規則。
+
+### 4.3 修改 Firebase 設定
+
+如果你要把網站切到新的 Firebase 專案，通常要一起改：
 
 - `src/firebase-config.js`
 - `.firebaserc`
 
-Firestore 規則在 `firestore.rules`，目前包含：
+預設管理員信箱是 `admin@gmail.com`。
 
-- `admins`
-- `members`
-- `applications`
-- `signupApprovals`
-- `classSessions`
-- `classSessionSignups`
-- `classAnnouncements`
-- `faqEntries`
+### 4.4 修改自動寄信內容
 
-預設管理員信箱是 `admin@gmail.com`，相關邏輯在 `src/firebase-config.js` 和會員後台流程中。
+Cloud Functions 的寄信流程在：
 
-## Cloud Functions
+- `functions/index.js`
 
-`functions/index.js` 目前負責兩個自動寄信 trigger：
+如果你要調整信件範本、寄件人資訊或申請說明，請一起參考：
 
-- 新增入社申請時，寄出申請受理通知
-- 申請狀態變成 approved 時，寄出審核通過通知
+- `AUTO_EMAIL_SETUP.md`
+- `member-application-email-template.md`
 
-部署前需要先設定 Resend secret：
+部署 Functions 前，先設定 secret：
 
 ```bash
 firebase functions:secrets:set RESEND_API_KEY
 ```
 
-如果你要調整信件內容、寄件人、聯絡信箱、手續費或匯款資訊，可以看：
+## 5. 部署流程
 
-- `AUTO_EMAIL_SETUP.md`
-- `member-application-email-template.md`
+### 5.1 部署到 GitHub Pages
 
-## 部署
+這個專案會在推送到 `main` 分支後，自動透過 `.github/workflows/deploy-pages.yml` 建置並部署。
 
-### GitHub Pages
+標準流程是：
 
-本專案使用 `.github/workflows/deploy-pages.yml` 自動部署到 GitHub Pages。
+1. 推送程式碼到 `main`
+2. GitHub Actions 執行 `npm install`
+3. GitHub Actions 執行 `npm run build`
+4. 產生 `dist/`
+5. 發佈到 GitHub Pages
 
-流程大致是：
+如果你只想先確認本機建置沒問題，可以先跑：
 
-1. 安裝依賴
-2. 執行 `npm run build`
-3. 將 `dist/` 上傳成 Pages artifact
-4. 使用 `actions/deploy-pages` 發佈
+```bash
+npm run build
+```
 
-### Firebase Functions / Firestore
+### 5.2 部署 Firebase Functions 與 Firestore
 
-如果你有更新後端函式或規則，可以部署 Functions 與 Firestore：
+如果你有改到後端函式或規則，使用：
 
 ```bash
 firebase deploy --only functions,firestore
 ```
 
-如果你習慣從 `functions/` 目錄操作，也可以使用 `functions/package.json` 提供的 deploy script。
+如果你是在 `functions/` 目錄內操作，也可以使用該目錄的 deploy script。
 
-## 常見修改點
+## 6. 權限與資料結構
 
-- 要改網站文字或版型：看 `src/index.css` 和各個 HTML 頁面
-- 要改互動邏輯：看 `src/site.js`
-- 要改 Firebase 設定：看 `src/firebase-config.js`
-- 要改自動寄信：看 `functions/index.js`
+Firestore 規則在：
 
-## 備註
+- `firestore.rules`
 
-- `dist/` 是建置輸出資料夾，通常不需要手動修改
-- 如果你在 GitHub Pages 看到 deployment failed，但 build 成功，通常是 Pages 部署排程或 in-progress deployment 衝突，不一定是前端程式壞掉
+目前常用的 collection 如下：
+
+| Collection | 用途 |
+| --- | --- |
+| `admins` | 管理員權限 |
+| `members` | 會員資料 |
+| `applications` | 入社申請 |
+| `signupApprovals` | 審核記錄 |
+| `classSessions` | 社課場次 |
+| `classSessionSignups` | 社課報名資料 |
+| `classAnnouncements` | 社課公告 |
+| `faqEntries` | FAQ 內容 |
+
+## 7. 常見問題
+
+### 7.1 GitHub Pages 顯示 deployment failed
+
+如果你看到 build 成功，但 Pages 部署失敗，常見原因是：
+
+- 前一個 `github-pages` 部署還在進行中
+- GitHub Actions 目前有併發的部署工作
+
+這種情況不一定是網站程式壞掉，通常先等前一個部署完成再重試。
+
+### 7.2 手機版版面怪怪的
+
+先檢查：
+
+- `src/index.css`
+- 對應頁面的 HTML 結構
+
+### 7.3 自動寄信沒送出
+
+先檢查：
+
+- `RESEND_API_KEY` 是否已設定
+- `functions/index.js` 是否有錯誤
+- Firebase Functions 日誌是否有失敗紀錄
+
+## 8. 重要檔案快速索引
+
+| 檔案 | 用途 |
+| --- | --- |
+| `src/index.css` | 全站樣式與 RWD |
+| `src/site.js` | 前端互動邏輯 |
+| `src/firebase-config.js` | Firebase 連線設定 |
+| `functions/index.js` | Cloud Functions 自動寄信 |
+| `firestore.rules` | Firestore 權限規則 |
+| `.github/workflows/deploy-pages.yml` | GitHub Pages 自動部署 |
+| `AUTO_EMAIL_SETUP.md` | 自動寄信設定說明 |
+| `member-application-email-template.md` | 入社申請信件範本 |
+
+## 9. 建議操作順序
+
+如果你只是要更新內容，建議照這個順序：
+
+1. 修改對應檔案
+2. 執行 `npm run dev` 檢查畫面
+3. 執行 `npm run build` 確認正式版可產生
+4. 推送到 `main`
+5. 等 GitHub Pages 自動部署完成
+
