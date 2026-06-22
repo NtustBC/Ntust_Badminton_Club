@@ -210,6 +210,7 @@ img {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
   gap: 10px;
   min-height: 52px;
   padding: 0 24px;
@@ -242,6 +243,7 @@ img {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
   min-height: 52px;
   padding: 0 24px;
   border: 1px solid rgba(20, 32, 44, 0.14);
@@ -263,7 +265,12 @@ img {
 }
 
 .login-button {
-  min-width: 92px;
+  width: 138px;
+  min-width: 138px;
+}
+
+.login-button.header-login {
+  width: 138px;
 }
 
 .menu-button {
@@ -2127,6 +2134,35 @@ button.admin-calendar-day:focus-visible {
   font-weight: 800;
 }
 
+.admin-calendar-day-events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-calendar-day-badge.is-announcement {
+  background: rgba(20, 32, 44, 0.08);
+  color: var(--ink);
+}
+
+.announcement-calendar-shell .admin-calendar-day-events {
+  display: grid;
+  gap: 6px;
+}
+
+.announcement-calendar-title {
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.announcement-calendar-note {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
 .admin-calendar-empty-board {
   margin: 0;
   padding: 16px 18px;
@@ -2144,6 +2180,76 @@ button.admin-calendar-day:focus-visible {
 .admin-calendar-modal-list {
   display: grid;
   gap: 14px;
+}
+
+.admin-calendar-event-form {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(15, 76, 129, 0.1);
+}
+
+.admin-calendar-event-chip {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid rgba(15, 76, 129, 0.1);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(241, 247, 253, 0.96));
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.admin-calendar-event-chip:hover,
+.admin-calendar-event-chip:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(15, 76, 129, 0.24);
+  box-shadow: 0 16px 28px rgba(15, 76, 129, 0.1);
+  outline: none;
+}
+
+.admin-calendar-event-chip span {
+  color: var(--brand);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.admin-calendar-event-chip.is-announcement span {
+  color: var(--ink);
+}
+
+.admin-calendar-event-chip strong {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+}
+
+.admin-calendar-event-chip small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.admin-calendar-signup-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.admin-calendar-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.admin-calendar-form-actions > * {
+  flex: 1 1 140px;
 }
 
 .admin-calendar-modal-session {
@@ -2200,7 +2306,13 @@ button.admin-calendar-day:focus-visible {
 }
 
 .admin-calendar-modal-empty {
-  box-shadow: none;
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(15, 76, 129, 0.08);
+  border-radius: var(--radius-md);
+  background: rgba(234, 242, 251, 0.58);
+  color: var(--muted);
+  line-height: 1.7;
 }
 
 .admin-mini-button {
@@ -2486,6 +2598,7 @@ button.admin-calendar-day:focus-visible {
   }
 
   .login-button {
+    width: auto;
     min-width: 0;
   }
 
