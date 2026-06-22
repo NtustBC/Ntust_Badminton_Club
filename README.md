@@ -1,213 +1,160 @@
-# NTUST Badminton Club 操作手冊
+# 臺科大羽球社網站使用說明
 
-這份文件是給社團幹部、管理員與後續維護者使用的操作手冊。
-如果你只是要改內容、檢查網站、重新部署，照著下面步驟做就可以。
+這份說明是給社員、新生和一般訪客看的。
+如果你只是想知道：
 
-## 1. 這個網站可以做什麼
+- 要去哪裡看最新公告
+- 怎麼報名社團
+- 怎麼報名社課
+- 有問題要先看哪一頁
 
-- 顯示社團首頁、介紹、報名、公告、FAQ 與會員後台
-- 支援手機與桌機瀏覽
-- 透過 Firebase 管理會員資料、公告與報名資料
-- 透過 Cloud Functions 自動寄送入社申請通知與審核信
-- 部署到 GitHub Pages 供對外瀏覽
+照著這份說明看就可以了。
 
-## 2. 開始前要先準備
+## 1. 先從首頁開始
 
-- Node.js 20 以上
-- npm
-- Firebase CLI
-- Firebase 專案 `ntustbc-64c11`
-- Resend API Key
+打開網站後，先看最上方的選單。
 
-如果你是第一次在本機跑專案，先執行：
+你會看到幾個主要入口：
 
-```bash
-npm install
-```
+- `關於我們`
+- `社團報名`
+- `社課報名`
+- `公告`
+- `FAQ`
 
-如果你要改 Cloud Functions，再進到 `functions/`：
+如果你是用手機看，右上角會變成選單按鈕，點開後一樣可以找到這些頁面。
 
-```bash
-cd functions
-npm install
-```
+## 2. 每一頁是做什麼的
 
-## 3. 本機開啟網站
+### 關於我們
 
-1. 先安裝主專案依賴。
-2. 執行開發伺服器。
-3. 用瀏覽器打開 Vite 提供的網址。
+這一頁是社團介紹，適合第一次認識臺科大羽球社的人先看。
 
-```bash
-npm run dev
-```
+你可以在這裡大致了解：
 
-通常網址會是 `http://localhost:5173/`。
+- 社團理念
+- 社團風格
+- 平常活動的樣子
 
-如果你要確認正式版輸出是否正常，先建置再預覽：
+### 社團報名
 
-```bash
-npm run build
-npm run preview
-```
+這一頁是給想加入社團的人看。
 
-## 4. 日常操作流程
+你如果還不是社員，通常先從這裡開始。
 
-### 4.1 修改頁面文字或圖片
+這一頁會告訴你：
 
-如果你要改網站上看到的文字、段落、按鈕或圖片，通常會改這些檔案：
+- 怎麼送出報名資料
+- 報名後要等什麼通知
+- 通過之後接下來要做什麼
 
-- `index.html`
-- `about.html`
-- `club-signup.html`
-- `class-signup.html`
-- `notices.html`
-- `faq.html`
-- `members.html`
-- `privacy.html`
-- `assets/`
+### 社課報名
 
-樣式與版面主要在：
+這一頁是給已經準備參加社課的人看。
 
-- `src/index.css`
+目前網站上會整理：
 
-互動邏輯主要在：
+- 社課行事曆
+- 近期社課資訊
+- 社課報名或名單公告
 
-- `src/site.js`
+一般來說：
 
-### 4.2 修改公告、FAQ、社課內容
+- 星期三是固定社課
+- 星期日需要先報名
+- 星期五通常會公布名單
 
-這類內容通常分散在以下頁面：
+如果你不確定今天能不能報名，先看這一頁最準。
 
-- 公告：`notices.html`
-- FAQ：`faq.html`
-- 社課報名：`class-signup.html`
-- 入社申請：`club-signup.html`
-- 會員後台：`members.html`
+### 公告
 
-如果內容是從 Firestore 讀取，改完之後要一起確認資料權限與規則。
+這一頁是看最新消息的地方。
 
-### 4.3 修改 Firebase 設定
+常見會放的內容有：
 
-如果你要把網站切到新的 Firebase 專案，通常要一起改：
+- 社課異動
+- 比賽資訊
+- 活動通知
+- 社費或提醒事項
 
-- `src/firebase-config.js`
-- `.firebaserc`
+如果你只想知道「最近社團有沒有新消息」，先看公告頁就對了。
 
-預設管理員信箱是 `admin@gmail.com`。
+### FAQ
 
-### 4.4 修改自動寄信內容
+這一頁是常見問題整理。
 
-Cloud Functions 的寄信流程在：
+適合在你還沒確定要不要加入、或不知道規則的時候先看。
 
-- `functions/index.js`
+常見像是：
 
-如果你要調整信件範本、寄件人資訊或申請說明，請一起參考：
+- 零基礎可不可以加入
+- 需不需要自己準備球拍
+- 社團報名和社課報名差在哪裡
+- 有問題要怎麼聯絡社團
 
-- `AUTO_EMAIL_SETUP.md`
-- `member-application-email-template.md`
+## 3. 想加入社團，怎麼做
 
-部署 Functions 前，先設定 secret：
+如果你是第一次加入，建議照這個順序：
 
-```bash
-firebase functions:secrets:set RESEND_API_KEY
-```
+1. 先到 `關於我們` 看社團介紹
+2. 再到 `社團報名` 看加入方式
+3. 送出報名資料
+4. 等社團通知
+5. 通過後再去看 `社課報名`
 
-## 5. 部署流程
+如果你已經確定要加入，但還沒看過規則，也可以先直接看 `FAQ`。
 
-### 5.1 部署到 GitHub Pages
+## 4. 想報名社課，怎麼做
 
-這個專案會在推送到 `main` 分支後，自動透過 `.github/workflows/deploy-pages.yml` 建置並部署。
+如果你已經是社員，或已經通過報名流程，可以直接看 `社課報名`。
 
-標準流程是：
+一般流程是：
 
-1. 推送程式碼到 `main`
-2. GitHub Actions 執行 `npm install`
-3. GitHub Actions 執行 `npm run build`
-4. 產生 `dist/`
-5. 發佈到 GitHub Pages
+1. 先確認近期社課安排
+2. 看當週是否需要報名
+3. 依照頁面說明完成報名
+4. 等公告或名單更新
 
-如果你只想先確認本機建置沒問題，可以先跑：
+建議你在報名前先看 `公告`，因為時間或場地有變動時，通常會先寫在那裡。
 
-```bash
-npm run build
-```
+## 5. 想知道最新消息，去哪裡看
 
-### 5.2 部署 Firebase Functions 與 Firestore
+直接看 `公告` 頁。
 
-如果你有改到後端函式或規則，使用：
+這一頁會把重要訊息集中整理起來，不用一直翻聊天記錄。
 
-```bash
-firebase deploy --only functions,firestore
-```
+如果你是要找比較固定的資訊，可以再搭配：
 
-如果你是在 `functions/` 目錄內操作，也可以使用該目錄的 deploy script。
+- `FAQ`：看常見問題
+- `社課報名`：看社課時間與名單
+- `關於我們`：看社團介紹
 
-## 6. 權限與資料結構
+## 6. 找不到答案怎麼辦
 
-Firestore 規則在：
+如果你看完還是不確定，可以直接透過網站底部的聯絡方式找社團：
 
-- `firestore.rules`
+- Gmail
+- Instagram
 
-目前常用的 collection 如下：
+通常這兩個是最快的聯絡方式。
 
-| Collection | 用途 |
+## 7. 快速索引
+
+| 你想找的資訊 | 建議先看哪一頁 |
 | --- | --- |
-| `admins` | 管理員權限 |
-| `members` | 會員資料 |
-| `applications` | 入社申請 |
-| `signupApprovals` | 審核記錄 |
-| `classSessions` | 社課場次 |
-| `classSessionSignups` | 社課報名資料 |
-| `classAnnouncements` | 社課公告 |
-| `faqEntries` | FAQ 內容 |
+| 社團介紹 | 關於我們 |
+| 要不要加入社團 | FAQ、社團報名 |
+| 怎麼加入社團 | 社團報名 |
+| 怎麼報名社課 | 社課報名 |
+| 最新通知 | 公告 |
+| 常見問題 | FAQ |
+| 聯絡社團 | 頁面底部聯絡方式 |
 
-## 7. 常見問題
+## 8. 最後提醒
 
-### 7.1 GitHub Pages 顯示 deployment failed
+- 如果你是第一次來，先看 `FAQ`
+- 如果你要找最新變動，先看 `公告`
+- 如果你要報名，先分清楚是 `社團報名` 還是 `社課報名`
 
-如果你看到 build 成功，但 Pages 部署失敗，常見原因是：
-
-- 前一個 `github-pages` 部署還在進行中
-- GitHub Actions 目前有併發的部署工作
-
-這種情況不一定是網站程式壞掉，通常先等前一個部署完成再重試。
-
-### 7.2 手機版版面怪怪的
-
-先檢查：
-
-- `src/index.css`
-- 對應頁面的 HTML 結構
-
-### 7.3 自動寄信沒送出
-
-先檢查：
-
-- `RESEND_API_KEY` 是否已設定
-- `functions/index.js` 是否有錯誤
-- Firebase Functions 日誌是否有失敗紀錄
-
-## 8. 重要檔案快速索引
-
-| 檔案 | 用途 |
-| --- | --- |
-| `src/index.css` | 全站樣式與 RWD |
-| `src/site.js` | 前端互動邏輯 |
-| `src/firebase-config.js` | Firebase 連線設定 |
-| `functions/index.js` | Cloud Functions 自動寄信 |
-| `firestore.rules` | Firestore 權限規則 |
-| `.github/workflows/deploy-pages.yml` | GitHub Pages 自動部署 |
-| `AUTO_EMAIL_SETUP.md` | 自動寄信設定說明 |
-| `member-application-email-template.md` | 入社申請信件範本 |
-
-## 9. 建議操作順序
-
-如果你只是要更新內容，建議照這個順序：
-
-1. 修改對應檔案
-2. 執行 `npm run dev` 檢查畫面
-3. 執行 `npm run build` 確認正式版可產生
-4. 推送到 `main`
-5. 等 GitHub Pages 自動部署完成
+這樣通常就可以很快找到你要的資訊了。
 
