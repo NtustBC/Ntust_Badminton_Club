@@ -3200,7 +3200,6 @@ function renderAnnouncementsBoard(announcements = []) {
     cells.push(`
       <${dayTag} class="admin-calendar-day${hasAnnouncement ? " is-session has-announcement is-clickable" : ""}${isToday ? " is-today" : ""}"${dayAttrs}>
         <span class="admin-calendar-day-number">${escapeHtml(String(day))}</span>
-        <span class="admin-calendar-day-label">${escapeHtml(`${month + 1}/${day}`)}</span>
         <span class="admin-calendar-day-events">
           ${dayAnnouncements
             .map(
@@ -3973,7 +3972,6 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
         data-date-key="${escapeHtml(dateKey)}"
       >
         <span class="admin-calendar-day-number">${escapeHtml(String(day))}</span>
-        <span class="admin-calendar-day-label">${escapeHtml(`${month + 1}/${day}`)}</span>
         ${eventCount > 0 ? `<span class="admin-calendar-day-marker" aria-hidden="true"></span>` : ""}
         <span class="admin-calendar-day-events">
           ${sessionCount > 0 ? `<span class="admin-calendar-day-badge">${escapeHtml(`${sessionCount} 社課`)}</span>` : ""}

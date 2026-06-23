@@ -2125,12 +2125,6 @@ button.admin-calendar-day:focus-visible {
   font-weight: 800;
 }
 
-.admin-calendar-day-label {
-  color: var(--muted);
-  font-size: 0.76rem;
-  font-weight: 700;
-}
-
 .admin-calendar-day-marker {
   width: 10px;
   height: 10px;
