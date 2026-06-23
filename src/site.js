@@ -67,6 +67,7 @@ const STORAGE_KEYS = {
   language: "ntust-badminton-language",
   customAcademicYears: "ntust-badminton-custom-academic-years",
   applicationCooldownPrefix: "ntust-badminton-application-cooldown",
+  authSnapshot: "ntust-badminton-auth-snapshot",
 };
 
 const DEFAULT_TERMS = ["上學期", "下學期", "未設定"];
@@ -138,6 +139,65 @@ let adminClassSessionEditingId = "";
 let lastAdminClassCalendarTrigger = null;
 let adminAnnouncementListResizeBound = false;
 let adminFaqListResizeBound = false;
+
+const readAuthSnapshot = () => {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEYS.authSnapshot);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || typeof parsed.signedIn !== "boolean") {
+      return null;
+    }
+
+    return {
+      signedIn: parsed.signedIn,
+      isAdmin: Boolean(parsed.isAdmin),
+      email: typeof parsed.email === "string" ? parsed.email : "",
+      uid: typeof parsed.uid === "string" ? parsed.uid : "",
+    };
+  } catch (error) {
+    return null;
+  }
+};
+
+const writeAuthSnapshot = (user, isAdmin = false) => {
+  try {
+    if (!user) {
+      window.localStorage.removeItem(STORAGE_KEYS.authSnapshot);
+      return;
+    }
+
+    window.localStorage.setItem(
+      STORAGE_KEYS.authSnapshot,
+      JSON.stringify({
+        signedIn: true,
+        isAdmin: Boolean(isAdmin),
+        email: String(user.email || ""),
+        uid: String(user.uid || ""),
+      }),
+    );
+  } catch (error) {
+    // Ignore storage failures so auth UI still works normally.
+  }
+};
+
+const primeAuthStateFromSnapshot = () => {
+  const snapshot = readAuthSnapshot();
+  if (!snapshot?.signedIn) {
+    currentUser = null;
+    currentUserIsAdmin = false;
+    return;
+  }
+
+  currentUser = {
+    uid: snapshot.uid,
+    email: snapshot.email,
+  };
+  currentUserIsAdmin = snapshot.isAdmin;
+};
 
 const memberFilters = {
   year: "all",
@@ -904,6 +964,8 @@ const ensureAuthReady = async () => {
       if (user) {
         await loadAdminStatus(user);
       }
+
+      writeAuthSnapshot(user, currentUserIsAdmin);
 
       updateLoginButtons();
       updateAuthView();
@@ -4814,6 +4876,7 @@ const initPublicBoardAutoRefresh = () => {
 };
 
 const init = async () => {
+  primeAuthStateFromSnapshot();
   ensureLoginModal();
   ensureApplicationModal();
   ensureApplicationSuccessModal();
