@@ -604,6 +604,8 @@ const getClassSessionId = (session = {}) => {
 };
 const getClassSessionDocRef = (sessionId) => doc(db, CLASS_SESSION_COLLECTION, sessionId);
 const getClassSignupDocRef = (sessionId, userId) => doc(db, CLASS_SIGNUP_COLLECTION, `${sessionId}-${userId}`);
+const getApprovedMemberDocId = (applicationId) => `application-${applicationId}`;
+const getApprovedMemberDocRef = (applicationId) => doc(db, "members", getApprovedMemberDocId(applicationId));
 const getClassAnnouncementDocRef = (announcementId) => doc(db, CLASS_ANNOUNCEMENT_COLLECTION, announcementId);
 const getFaqDocRef = (faqId) => doc(db, FAQ_COLLECTION, faqId);
 const getClassSessionSortMs = (session) => getDateKeyMs(session.date || session.sessionDate);
@@ -1440,7 +1442,7 @@ const openAdminClassCalendarModal = (dateKey, trigger = null) => {
   }
 
   if (form) {
-    setAdminCalendarEventForm(events.length === 1 ? events[0] : null, dateKey);
+    setAdminCalendarEventForm(events.length > 0 ? events[0] : null, dateKey);
   }
 
   calendarModal.hidden = false;
@@ -1482,6 +1484,11 @@ const syncMemberProfile = async (user, source) => {
   const existingDoc = await getDoc(memberRef);
   const approvalDoc = user.email ? await getDoc(getApprovalDocRef(user.email)) : null;
   const approvalData = approvalDoc?.exists() ? approvalDoc.data() : null;
+  const normalizedEmail = String(user.email || "").trim().toLowerCase();
+  const legacyApprovedMembers =
+    normalizedEmail
+      ? await getDocs(query(collection(db, "members"), where("email", "==", normalizedEmail)))
+      : null;
 
   const payload = {
     uid: user.uid,
@@ -1510,6 +1517,17 @@ const syncMemberProfile = async (user, source) => {
   }
 
   await setDoc(memberRef, payload, { merge: true });
+
+  if (legacyApprovedMembers) {
+    await Promise.all(
+      legacyApprovedMembers.docs
+        .filter((docSnapshot) => docSnapshot.id !== user.uid)
+        .map(async (docSnapshot) => {
+          await setDoc(memberRef, docSnapshot.data(), { merge: true });
+          await deleteDoc(docSnapshot.ref);
+        }),
+    );
+  }
 };
 
 const ensureBootstrapAdminDoc = async (user) => {
@@ -1591,11 +1609,7 @@ const syncMemberRecordFromApplication = async (application, applicationId) => {
     return;
   }
 
-  // Member documents are created on first login from the approval record.
-  // The admin dashboard already shows approved applications directly.
-  return;
-
-  const memberRef = doc(db, "members", `application-${applicationId}`);
+  const memberRef = getApprovedMemberDocRef(applicationId);
   const payload = {
     name: application.name || "",
     email: application.email.trim().toLowerCase(),
@@ -1617,7 +1631,7 @@ const syncMemberRecordFromApplication = async (application, applicationId) => {
     memberRef,
     {
       ...payload,
-      uid: `application-${applicationId}`,
+      uid: getApprovedMemberDocId(applicationId),
       createdAt: serverTimestamp(),
     },
     { merge: true },
@@ -1839,6 +1853,10 @@ const bindApplicationActionButtons = (applicationList) => {
         });
         await syncApprovalFromApplication(id, { ...data, reviewStatus: "rejected", approved: false });
         await deleteDoc(applicationRef);
+        const approvedMemberDoc = await getDoc(getApprovedMemberDocRef(id));
+        if (approvedMemberDoc.exists()) {
+          await deleteDoc(getApprovedMemberDocRef(id));
+        }
         await refreshMembersDashboardSafe({ force: true });
         return;
       }
@@ -1863,11 +1881,8 @@ const bindApplicationActionButtons = (applicationList) => {
           const updatedData = updatedDoc.data();
 
           await syncApprovalFromApplication(id, updatedData);
-          try {
-            await syncMemberRecordFromApplication(updatedData, id);
-          } catch (memberSyncError) {
-            console.warn("Approved application saved, but member collection sync failed.", memberSyncError);
-          }
+          await syncMemberRecordFromApplication(updatedData, id);
+          await deleteDoc(applicationRef);
           await refreshMembersDashboardSafe({ force: true });
           focusApprovedMember(id, updatedData);
           window.alert("學年度與學期已儲存，並已加入社員名單。");
@@ -1900,11 +1915,8 @@ const bindApplicationActionButtons = (applicationList) => {
         const updatedDoc = await getDoc(applicationRef);
         const updatedData = updatedDoc.data();
         await syncApprovalFromApplication(id, updatedData);
-        try {
-          await syncMemberRecordFromApplication(updatedData, id);
-        } catch (memberSyncError) {
-          console.warn("Approved application saved, but member collection sync failed.", memberSyncError);
-        }
+        await syncMemberRecordFromApplication(updatedData, id);
+        await deleteDoc(applicationRef);
         await refreshMembersDashboardSafe({ force: true });
 
         focusApprovedMember(id, updatedData);
@@ -2121,6 +2133,8 @@ const bindMemberActionButtons = (memberList) => {
       const memberId = button.dataset.memberId;
       const action = button.dataset.memberAction;
       const origin = button.dataset.memberOrigin || "members";
+      const email = String(button.dataset.memberEmail || "").trim().toLowerCase();
+      const applicationId = String(button.dataset.memberApplicationId || "").trim();
 
       if (action !== "delete" || !memberId) {
         return;
@@ -2133,6 +2147,18 @@ const bindMemberActionButtons = (memberList) => {
 
       const collectionName = origin === "applications" ? "applications" : "members";
       await deleteDoc(doc(db, collectionName, memberId));
+      if (email) {
+        const approvalDoc = await getDoc(getApprovalDocRef(email));
+        if (approvalDoc.exists()) {
+          await deleteDoc(getApprovalDocRef(email));
+        }
+      }
+      if (applicationId && collectionName !== "applications") {
+        const applicationDoc = await getDoc(doc(db, "applications", applicationId));
+        if (applicationDoc.exists()) {
+          await deleteDoc(doc(db, "applications", applicationId));
+        }
+      }
       await refreshMembersDashboardSafe({ force: true });
     });
   });
@@ -2240,7 +2266,7 @@ const renderMembersList = (members = []) => {
               <span>最近登入：${escapeHtml(formatTimestamp(member.lastLoginAt))}</span>
             </div>
             <div class="application-actions member-actions">
-              <button class="button-secondary application-save" data-member-action="delete" data-member-origin="${escapeHtml(member.origin || "members")}" data-member-id="${escapeHtml(member.origin === "applications" ? member.applicationId : member.id)}" type="button">
+              <button class="button-secondary application-save" data-member-action="delete" data-member-origin="${escapeHtml(member.origin || "members")}" data-member-id="${escapeHtml(member.origin === "applications" ? member.applicationId : member.id)}" data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}" data-member-application-id="${escapeHtml(member.applicationId || "")}" type="button">
                 刪除社員資料
               </button>
             </div>
