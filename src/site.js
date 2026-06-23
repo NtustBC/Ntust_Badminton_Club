@@ -651,6 +651,9 @@ const updateAdminNavigation = () => {
     link.href = "./members.html";
     link.textContent = "管理頁";
     link.dataset.adminNavLink = "true";
+    if (pageName === "members") {
+      link.setAttribute("aria-current", "page");
+    }
     return link;
   };
 
