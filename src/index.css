@@ -814,6 +814,28 @@ img {
     var(--surface);
 }
 
+.content-card-link {
+  display: block;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease;
+}
+
+.content-card-link:hover,
+.content-card-link:focus-visible {
+  transform: translateY(-4px);
+  border-color: rgba(15, 76, 129, 0.18);
+  box-shadow: 0 24px 48px rgba(15, 76, 129, 0.12);
+  outline: none;
+}
+
+.content-card-link:hover .content-title,
+.content-card-link:focus-visible .content-title {
+  color: var(--brand);
+}
+
 .content-card.is-tight {
   padding: 28px;
 }

@@ -538,6 +538,32 @@ const escapeHtml = (value) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 
+const escapeSpreadsheetXml = (value) =>
+  String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+
+const padNumber = (value) => String(value).padStart(2, "0");
+const formatExportTimestamp = (date = new Date()) =>
+  `${date.getFullYear()}${padNumber(date.getMonth() + 1)}${padNumber(date.getDate())}-${padNumber(date.getHours())}${padNumber(date.getMinutes())}`;
+
+const syncGlobalNavigationLabels = () => {
+  document.querySelectorAll('a[href="./club-signup.html"]').forEach((link) => {
+    if (link.closest(".site-nav") || link.closest(".mobile-nav")) {
+      link.textContent = "加入社團";
+    }
+  });
+
+  document.querySelectorAll('a[href="./notices.html"]').forEach((link) => {
+    if (link.closest(".site-nav") || link.closest(".mobile-nav")) {
+      link.textContent = "訊息公告";
+    }
+  });
+};
+
 const getLoginButtons = () => document.querySelectorAll("[data-open-login]");
 const getMembersHeroCta = () => document.querySelector("[data-members-hero-cta]");
 const getMembersHeroCtaLabel = () => document.querySelector("[data-members-hero-cta-label]");
@@ -2209,6 +2235,145 @@ const mergeMembersWithApprovedApplications = (members = [], applications = []) =
   );
 };
 
+const getFilteredMembersForExport = (members = []) => members.filter(matchesMemberFilter);
+
+const buildMembersExportWorkbook = (members = []) => {
+  const columns = [
+    "姓名",
+    "學號",
+    "系別",
+    "電話",
+    "信箱",
+    "學年度",
+    "學期",
+    "狀態",
+    "資料來源",
+    "建立時間",
+    "最近登入",
+  ];
+  const rows = members.map((member) => [
+    member.name || "",
+    member.studentId || "",
+    member.department || member.school || "",
+    member.phone || "",
+    member.email || "",
+    getAcademicYearLabel(member.academicYear || "未設定"),
+    getAcademicTermLabel(member.term || "未設定"),
+    member.status || "active",
+    member.origin === "applications" ? "申請通過" : "社員資料",
+    formatTimestamp(member.createdAt),
+    formatTimestamp(member.lastLoginAt),
+  ]);
+  const filterLabel = `${memberFilters.year === "all" ? "全部學年度" : getAcademicYearLabel(memberFilters.year)} / ${
+    memberFilters.term === "all" ? "全部學期" : getAcademicTermLabel(memberFilters.term)
+  }`;
+  const allRows = [
+    ["社員名單匯出"],
+    ["匯出時間", new Date().toLocaleString("zh-TW")],
+    ["目前篩選", filterLabel],
+    [""],
+    columns,
+    ...rows,
+  ];
+  const rowMarkup = allRows
+    .map((row) => {
+      const cellMarkup = row
+        .map((cell) => `<Cell><Data ss:Type="String">${escapeSpreadsheetXml(cell)}</Data></Cell>`)
+        .join("");
+      return `<Row>${cellMarkup}</Row>`;
+    })
+    .join("");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Worksheet ss:Name="社員名單">
+  <Table>${rowMarkup}</Table>
+ </Worksheet>
+</Workbook>`;
+};
+
+const downloadMembersExcel = (members = []) => {
+  const workbook = buildMembersExportWorkbook(members);
+  const blob = new Blob([workbook], { type: "application/vnd.ms-excel;charset=utf-8;" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const yearLabel = memberFilters.year === "all" ? "all-years" : `year-${memberFilters.year}`;
+  const termLabel =
+    memberFilters.term === "all"
+      ? "all-terms"
+      : memberFilters.term === "上學期"
+        ? "term-1"
+        : memberFilters.term === "下學期"
+          ? "term-2"
+          : "term-unset";
+
+  link.href = url;
+  link.download = `ntust-members-${yearLabel}-${termLabel}-${formatExportTimestamp()}.xls`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+};
+
+const renderMembersExportToolbar = (members = []) => {
+  const content = document.querySelector("[data-members-content]");
+  const summary = document.querySelector("[data-members-summary]");
+  if (!content || !summary) {
+    return;
+  }
+
+  const filteredMembers = getFilteredMembersForExport(members);
+  let toolbar = content.querySelector("[data-members-export-toolbar]");
+  if (!toolbar) {
+    summary.insertAdjacentHTML(
+      "afterend",
+      `
+        <section class="content-card is-tight member-filter-card" data-members-export-toolbar>
+          <div class="member-filter-header">
+            <div>
+              <p class="section-kicker">Export</p>
+              <h3 class="content-title">匯出社員名單</h3>
+              <p class="content-copy" data-members-export-copy></p>
+            </div>
+            <div class="page-actions">
+              <button class="button-secondary" data-members-export type="button">匯出 Excel</button>
+            </div>
+          </div>
+        </section>
+      `,
+    );
+    toolbar = content.querySelector("[data-members-export-toolbar]");
+  }
+
+  const copy = toolbar?.querySelector("[data-members-export-copy]");
+  const button = toolbar?.querySelector("[data-members-export]");
+  if (copy) {
+    copy.textContent = `會匯出目前篩選條件下的社員名單，共 ${filteredMembers.length} 筆。`;
+  }
+
+  if (button instanceof HTMLButtonElement) {
+    button.disabled = filteredMembers.length === 0;
+    if (button.dataset.bound !== "true") {
+      button.dataset.bound = "true";
+      button.addEventListener("click", () => {
+        const exportMembers = getFilteredMembersForExport(
+          mergeMembersWithApprovedApplications(membersDashboardCache.members, membersDashboardCache.applications),
+        );
+        if (exportMembers.length === 0) {
+          window.alert("目前沒有可匯出的社員資料。");
+          return;
+        }
+
+        downloadMembersExcel(exportMembers);
+      });
+    }
+  }
+};
+
 const renderMembersList = (members = []) => {
   const list = document.querySelector("[data-members-list]");
   if (!list) {
@@ -2453,6 +2618,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
     );
 
     renderMembersSummary(displayMembers, membersDashboardCache.applications);
+    renderMembersExportToolbar(displayMembers);
     if (membersDashboardCache.loadWarnings.length > 0) {
       summary.insertAdjacentHTML(
         "afterbegin",
@@ -4918,6 +5084,7 @@ const init = async () => {
   bindClassSignupModalEvents();
   bindOpenButtons();
   bindMembersHeroCta();
+  syncGlobalNavigationLabels();
   initMenu();
   initLanguageSwitcher();
   initFaqAccordion();
