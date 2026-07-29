@@ -273,6 +273,9 @@ const authErrorMessages = {
   "auth/too-many-requests": "嘗試次數過多，請稍後再試。",
   "auth/user-disabled": "這個帳號已停用，請聯絡管理員。",
   "auth/user-not-found": "查不到這個帳號，請先建立帳號。",
+  "permission-denied": "Firebase 權限不足，請確認 Firestore Rules 是否已更新。",
+  unavailable: "Firebase 目前無法連線，請稍後再試。",
+  "deadline-exceeded": "Firebase 回應逾時，請稍後再試。",
   "auth/weak-password": "密碼至少需要 8 個字元。",
 };
 
@@ -851,7 +854,10 @@ const loadCurrentMemberStatus = async (user) => {
   return currentMemberStatus;
 };
 
-const getFriendlyAuthError = (error) => authErrorMessages[error?.code] || "登入發生問題，請稍後再試一次。";
+const getFriendlyAuthError = (error) => {
+  const code = error?.code;
+  return authErrorMessages[code] || "登入發生問題，請稍後再試一次。" + (code ? "（" + code + "）" : "");
+};
 const getFriendlyApplicationError = (error) =>
   applicationErrorMessages[error?.code] || "送出申請時發生問題，請稍後再試一次。";
 
