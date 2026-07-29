@@ -1184,9 +1184,20 @@ const openLoginModal = async (trigger) => {
 
   if (firebaseConfigured) {
     await ensureAuthReady();
+    if (auth?.currentUser && !currentUser) {
+      currentUser = auth.currentUser;
+      await loadAdminStatus(currentUser);
+      await loadCurrentMemberStatus(currentUser);
+      writeAuthSnapshot(currentUser, currentUserIsAdmin);
+    }
   }
 
+  updateLoginButtons();
   updateAuthView();
+
+  if (pageName === "members" && currentUser) {
+    await refreshMembersDashboardSafe({ force: true });
+  }
 
   if (!currentUser) {
     window.setTimeout(() => emailInput.focus(), 50);
@@ -5169,21 +5180,27 @@ const handleAuthSubmit = async (event) => {
       return;
     }
 
-    if (authMode === "signup") {
-      const credential = await createUserWithEmailAndPassword(readyAuth, email, password);
-      await syncMemberProfile(credential.user, "signup", signupProfile);
-      await ensureBootstrapAdminDoc(credential.user);
-      await loadAdminStatus(credential.user);
-      await loadCurrentMemberStatus(credential.user);
-      setHint("帳號建立完成，已自動登入。你現在可以報名參加社團。", "success");
-    } else {
-      const credential = await signInWithEmailAndPassword(readyAuth, email, password);
-      await syncMemberProfile(credential.user, "signin");
-      await loadAdminStatus(credential.user);
-      await loadCurrentMemberStatus(credential.user);
-      setHint("登入成功，已更新社員狀態。", "success");
+    const credential =
+      authMode === "signup"
+        ? await createUserWithEmailAndPassword(readyAuth, email, password)
+        : await signInWithEmailAndPassword(readyAuth, email, password);
+
+    currentUser = credential.user;
+    await syncMemberProfile(credential.user, authMode === "signup" ? "signup" : "signin", authMode === "signup" ? signupProfile : {});
+    await ensureBootstrapAdminDoc(credential.user);
+    await loadAdminStatus(credential.user);
+    await loadCurrentMemberStatus(credential.user);
+    writeAuthSnapshot(credential.user, currentUserIsAdmin);
+    updateLoginButtons();
+    updateAuthView();
+
+    if (pageName === "members") {
+      membersDashboardCache.loaded = false;
+      await loadCurrentTermSettings();
+      await refreshMembersDashboardSafe({ force: true });
     }
 
+    setHint(authMode === "signup" ? "帳號建立完成，已自動登入。你現在可以報名參加社團。" : "登入成功，已更新社員狀態。", "success");
     event.target.reset();
   } catch (error) {
     setHint(getFriendlyAuthError(error), "error");
