@@ -1142,6 +1142,12 @@ const ensureAuthReady = async () => {
       return null;
     }
 
+    let initialAuthStateResolved = false;
+    let resolveInitialAuthState;
+    const initialAuthStatePromise = new Promise((resolve) => {
+      resolveInitialAuthState = resolve;
+    });
+
     onAuthStateChanged(auth, async (user) => {
       currentUser = user;
       currentUserIsAdmin = false;
@@ -1175,6 +1181,11 @@ const ensureAuthReady = async () => {
       updateLoginButtons();
       updateAuthView();
 
+      if (!initialAuthStateResolved) {
+        initialAuthStateResolved = true;
+        resolveInitialAuthState(auth);
+      }
+
       if (pageName === "members") {
         await refreshMembersDashboardSafe({ force: true });
       } else if (pageName === "class-signup") {
@@ -1184,6 +1195,7 @@ const ensureAuthReady = async () => {
       }
     });
 
+    await initialAuthStatePromise;
     return auth;
   })();
 
