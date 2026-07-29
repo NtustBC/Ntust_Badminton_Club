@@ -1,8 +1,10 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
 import {
+  browserLocalPersistence,
   createUserWithEmailAndPassword,
   getAuth,
   onAuthStateChanged,
+  setPersistence,
   signInWithEmailAndPassword,
   signOut,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
@@ -21,6 +23,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
 export {
+  browserLocalPersistence,
   collection,
   createUserWithEmailAndPassword,
   deleteDoc,
@@ -34,6 +37,7 @@ export {
   query,
   serverTimestamp,
   setDoc,
+  setPersistence,
   signInWithEmailAndPassword,
   signOut,
   updateDoc,

@@ -1,6 +1,7 @@
 import { bootstrapAdminEmail, firebaseConfig } from "./firebase-config.js";
 
 let initializeApp;
+let browserLocalPersistence;
 let createUserWithEmailAndPassword;
 let getAuth;
 let onAuthStateChanged;
@@ -15,6 +16,7 @@ let getFirestore;
 let query;
 let serverTimestamp;
 let setDoc;
+let setPersistence;
 let updateDoc;
 let where;
 
@@ -30,6 +32,7 @@ const ensureFirebaseModules = async () => {
       const firebaseModules = await import("./firebase-modules.js");
       ({
         initializeApp,
+        browserLocalPersistence,
         createUserWithEmailAndPassword,
         getAuth,
         onAuthStateChanged,
@@ -44,6 +47,7 @@ const ensureFirebaseModules = async () => {
         query,
         serverTimestamp,
         setDoc,
+        setPersistence,
         updateDoc,
         where,
       } = firebaseModules);
@@ -1135,6 +1139,9 @@ const ensureAuthReady = async () => {
       await ensureFirebaseModules();
       const app = initializeApp(firebaseConfig);
       auth = getAuth(app);
+      if (setPersistence && browserLocalPersistence) {
+        await setPersistence(auth, browserLocalPersistence);
+      }
       db = getFirestore(app);
     } catch (error) {
       authReadyPromise = null;
