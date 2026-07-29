@@ -21,6 +21,15 @@ service cloud.firestore {
         request.auth.token.email is string &&
         exists(/databases/$(database)/documents/signupApprovals/$(request.auth.token.email));
     }
+
+    function hasFormalMemberRecord() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
+        (
+          get(/databases/$(database)/documents/members/$(request.auth.uid)).data.membershipStatus == "formal_member" ||
+          get(/databases/$(database)/documents/members/$(request.auth.uid)).data.status == "formal_member"
+        );
+    }
     match /admins/{userId} {
       allow read: if isSignedIn() && request.auth.uid == userId;
       allow create: if isBootstrapAdminEmail() && request.auth.uid == userId;
@@ -66,11 +75,15 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.sessionId is string
-        && (!request.resource.data.keys().hasAny(["paymentStatus"]) || request.resource.data.paymentStatus == "unpaid");
+        && (
+          !request.resource.data.keys().hasAny(["dropInPaymentStatus"]) ||
+          request.resource.data.dropInPaymentStatus == "unpaid" ||
+          (request.resource.data.dropInPaymentStatus == "not_required" && hasFormalMemberRecord())
+        );
       allow update: if isAdmin() || (
         isSignedIn() &&
         resource.data.userId == request.auth.uid &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(["paymentStatus", "paidAt", "signupStatus"])
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(["paymentStatus", "paidAt", "dropInPaymentStatus", "dropInPaidAt", "signupStatus"])
       );
       allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
     }

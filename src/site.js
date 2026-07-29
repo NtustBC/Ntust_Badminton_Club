@@ -214,7 +214,7 @@ const memberFilters = {
 const authCopy = {
   signin: {
     title: "社員登入",
-    subtitle: "登入後可以報名參加社團；繳費完成後會顯示為正式社員。",
+    subtitle: "登入後可以報名參加社團；社費一次繳清後會顯示為正式社員。",
     submitLabel: "登入",
     hint: "輸入已建立的帳號密碼即可登入。",
   },
@@ -222,7 +222,7 @@ const authCopy = {
     title: "建立帳號",
     subtitle: "註冊時請一併填寫入社資料；帳號建立後即可登入並送出報名。",
     submitLabel: "建立帳號",
-    hint: "請填寫完整入社資料。註冊後可登入報名，繳費完成後成為正式社員。",
+    hint: "請填寫完整入社資料。註冊後可登入報名，社費一次繳清後成為正式社員。",
   },
 };
 
@@ -376,7 +376,7 @@ const applicationModalMarkup = `
       <div class="modal-header">
         <div>
           <h2 class="modal-title" id="application-title">社員申請</h2>
-          <p class="modal-subtitle" data-application-subtitle>填完資料後送出，完成社費繳納並經幹部確認後，才會取得正式社員資格。</p>
+          <p class="modal-subtitle" data-application-subtitle>填完資料後送出，完成一次性社費繳納並經幹部確認後，才會取得正式社員資格。</p>
         </div>
         <button class="modal-close" data-close-application type="button" aria-label="關閉申請視窗">
           <span aria-hidden="true">+</span>
@@ -788,7 +788,7 @@ const membershipStatusCopy = {
   },
   pending_payment: {
     label: "待繳費",
-    meaning: "已送出申請，請依通知完成社費繳納。",
+    meaning: "已註冊入社資料，請依通知完成一次性社費繳納。",
     action: "查看繳費方式",
   },
   payment_checking: {
@@ -1216,7 +1216,7 @@ const openApplicationModal = (trigger) => {
     type === "class"
       ? "填完社課參與資料後送出，管理員會再和你確認後續安排。"
       : "填完社員申請後送出，請依通知完成社費繳納；幹部確認後才會取得正式社員資格。";
-  setApplicationHint("送出後請留意繳費通知，正式社員資格以幹部確認款項為準。");
+  setApplicationHint("送出後請留意社費繳費通知，正式社員資格以幹部確認款項為準。");
   applicationModal.hidden = false;
   body.classList.add("modal-open");
   closeMobileNav();
@@ -2352,7 +2352,63 @@ const bindMemberActionButtons = (memberList) => {
       const email = String(button.dataset.memberEmail || "").trim().toLowerCase();
       const applicationId = String(button.dataset.memberApplicationId || "").trim();
 
-      if (action !== "delete" || !memberId) {
+      if (!memberId) {
+        return;
+      }
+
+      if (action === "toggle-membership-payment") {
+        const nextPaymentStatus = button.dataset.paymentStatus === "paid" ? "paid" : "unpaid";
+        const isPaid = nextPaymentStatus === "paid";
+        const confirmed = window.confirm(isPaid ? "要將這位成員標記為社費已繳並成為正式社員嗎？" : "要取消這位成員的正式社員資格嗎？");
+        if (!confirmed) {
+          return;
+        }
+
+        button.disabled = true;
+        try {
+          await setDoc(
+            getMemberDocRef(memberId),
+            {
+              paymentStatus: nextPaymentStatus,
+              membershipStatus: isPaid ? "formal_member" : "pending_payment",
+              status: isPaid ? "formal_member" : "pending_payment",
+              paidAt: isPaid ? serverTimestamp() : null,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true },
+          );
+
+          if (email) {
+            if (isPaid) {
+              await setDoc(
+                getApprovalDocRef(email),
+                {
+                  email,
+                  status: "approved",
+                  approvedAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                },
+                { merge: true },
+              );
+            } else {
+              const approvalDoc = await getDoc(getApprovalDocRef(email));
+              if (approvalDoc.exists()) {
+                await deleteDoc(getApprovalDocRef(email));
+              }
+            }
+          }
+
+          await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+        } catch (error) {
+          console.error("Update membership payment failed:", error);
+          window.alert(`更新社費狀態失敗：${error?.message || "請稍後再試一次。"}`);
+        } finally {
+          button.disabled = false;
+        }
+        return;
+      }
+
+      if (action !== "delete") {
         return;
       }
 
@@ -2379,7 +2435,6 @@ const bindMemberActionButtons = (memberList) => {
     });
   });
 };
-
 const getMemberIdFromApplication = (applicationId) => `application-${applicationId}`;
 
 const createMemberFromApprovedApplication = (application) => ({
@@ -2583,8 +2638,16 @@ const renderMembersList = (members = []) => {
   }
 
   list.innerHTML = filteredMembers
-    .map(
-      (member, index) => `
+    .map((member, index) => {
+      const isFormalMember = isFormalMemberRecord(member);
+      const memberStatusLabel = isFormalMember ? "正式社員" : "待繳社費";
+      const membershipAction =
+        member.origin === "members"
+          ? `<button class="button-secondary application-save" data-member-action="toggle-membership-payment" data-member-origin="members" data-member-id="${escapeHtml(member.id)}" data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}" data-payment-status="${isFormalMember ? "unpaid" : "paid"}" type="button">
+                ${isFormalMember ? "取消正式社員" : "標記社費已繳"}
+              </button>`
+          : "";
+      return `
         <article
           class="member-row member-row-expandable"
           data-member-row
@@ -2605,7 +2668,7 @@ const renderMembersList = (members = []) => {
                 <span class="member-row-email">${escapeHtml(member.name || "未填姓名")} / ${escapeHtml(member.studentId || "未填學號")}</span>
               </span>
               <span class="member-row-summary-side">
-                <span class="member-row-status">${escapeHtml(member.status || "active")}</span>
+                <span class="member-row-status">${escapeHtml(memberStatusLabel)}</span>
                 <span class="member-row-toggle">展開</span>
               </span>
             </span>
@@ -2621,14 +2684,15 @@ const renderMembersList = (members = []) => {
               <span>最近登入：${escapeHtml(formatTimestamp(member.lastLoginAt))}</span>
             </div>
             <div class="application-actions member-actions">
+              ${membershipAction}
               <button class="button-secondary application-save" data-member-action="delete" data-member-origin="${escapeHtml(member.origin || "members")}" data-member-id="${escapeHtml(member.origin === "applications" ? member.applicationId : member.id)}" data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}" data-member-application-id="${escapeHtml(member.applicationId || "")}" type="button">
                 刪除社員資料
               </button>
             </div>
           </div>
         </article>
-      `,
-    )
+      `;
+    })
     .join("");
 
   bindMemberToggleButtons(list);
@@ -2931,8 +2995,20 @@ function getSessionSignupLimit(session = {}) {
   return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : null;
 }
 
-function getSignupPaymentLabel(signup = {}) {
-  return signup.paymentStatus === "paid" ? "已繳費" : "未繳費";
+function isFormalMemberRecord(member = {}) {
+  return member.membershipStatus === "formal_member" || member.status === "formal_member";
+}
+
+function isFormalMemberSignup(signup = {}, member = null) {
+  return isFormalMemberRecord(member || {}) || signup.isFormalMemberAtSignup === true || signup.membershipStatusAtSignup === "formal_member";
+}
+
+function getSignupPaymentLabel(signup = {}, member = null) {
+  if (isFormalMemberSignup(signup, member)) {
+    return "正式社員免零打費";
+  }
+
+  return signup.dropInPaymentStatus === "paid" ? "零打已繳" : "零打未繳";
 }
 
 function getSignupStatusLabel(signup = {}) {
@@ -3462,9 +3538,8 @@ async function handleClassSignupSubmit(event) {
 
   const sessionSignups = getSessionSignups(sessionId).sort((a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt));
   const ownExistingSignup = sessionSignups.find((signup) => signup.userId === currentUser.uid) || null;
-  const limit = getSessionSignupLimit(session);
-  const signupIndex = ownExistingSignup ? sessionSignups.findIndex((signup) => signup.userId === currentUser.uid) : sessionSignups.length;
-  const signupStatus = limit && signupIndex >= limit ? "waitlisted" : "accepted";
+  const currentMembershipStatus = currentMemberProfile?.membershipStatus || currentMemberProfile?.status || "pending_payment";
+  const isFormalMember = currentMembershipStatus === "formal_member";
 
   submitButton.disabled = true;
 
@@ -3481,7 +3556,9 @@ async function handleClassSignupSubmit(event) {
         firstChoice,
         secondChoice,
         note,
-        paymentStatus: ownExistingSignup?.paymentStatus || "unpaid",
+        membershipStatusAtSignup: currentMembershipStatus,
+        isFormalMemberAtSignup: isFormalMember,
+        dropInPaymentStatus: isFormalMember ? "not_required" : ownExistingSignup?.dropInPaymentStatus || "unpaid",
         sessionDate: session.date || "",
         sessionWeekday: session.weekday || "",
         sessionTitle: session.title || "",
@@ -3793,7 +3870,7 @@ function renderFaqBoard(faqEntries = []) {
 
   const requiredFaq = {
     question: "註冊網站帳號就算加入羽球社了嗎？",
-    answer: "不算。註冊時會填寫入社資料，註冊後可以登入並送出報名；完成社費繳納並由幹部標記後，才會成為正式社員。",
+    answer: "不算。註冊時會填寫入社資料，註冊後可以登入並送出報名；社費是入社時一次付清，完成社費繳納並由幹部標記後，才會成為正式社員。尚未成為社員者，報名單場社課時才需要依場次繳零打費。",
     pinned: true,
   };
   const hasRequiredFaq = faqEntries.some((faq) => String(faq.question || "").trim() === requiredFaq.question);
@@ -4347,6 +4424,7 @@ const clearAdminClassSessionFormMode = () => {
 
 const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
   const grouped = groupClassSignupsBySession(signups);
+  const membersById = Object.fromEntries(membersDashboardCache.members.map((member) => [member.uid || member.id, member]));
   const sessionsWithSignups = sessions
     .map((session) => ({ session, sessionId: getClassSessionId(session), signups: grouped[getClassSessionId(session)] || [] }))
     .filter((entry) => entry.signups.length > 0)
@@ -4368,8 +4446,8 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
     <section class="member-section">
       <div class="section-header is-compact">
         <div class="section-kicker">Signups</div>
-        <h3 class="content-title">報名名單與繳費狀態</h3>
-        <p class="section-description">依場次顯示所有報名者；標記已繳費後，該帳號會成為正式社員。</p>
+        <h3 class="content-title">報名名單與零打費狀態</h3>
+        <p class="section-description">依場次顯示所有報名者。正式社員不需要單場零打費；非社員可在這裡標記該場零打費，社費請到社員名單標記。</p>
       </div>
       <div class="member-list">
         ${sessionsWithSignups
@@ -4387,23 +4465,28 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
                   ${sortedSignups
                     .map((signup, index) => {
                       const computedStatus = getComputedSignupStatus(signup, index, session);
-                      const paid = signup.paymentStatus === "paid";
+                      const member = membersById[signup.userId] || null;
+                      const isFormalMember = isFormalMemberSignup(signup, member);
+                      const dropInPaid = signup.dropInPaymentStatus === "paid";
+                      const paymentLabel = getSignupPaymentLabel(signup, member);
+                      const paymentAction = isFormalMember
+                        ? ""
+                        : `<button class="button-secondary application-save" data-class-dropin-payment type="button" data-signup-id="${escapeHtml(signup.id || `${sessionId}-${signup.userId}`)}" data-dropin-payment-status="${dropInPaid ? "unpaid" : "paid"}">${dropInPaid ? "標記零打未繳" : "標記零打已繳"}</button>`;
                       return `
                         <article class="member-row is-nested">
                           <div class="member-row-top">
                             <p class="member-row-index">#${String(index + 1).padStart(2, "0")} ${escapeHtml(signup.name || "未填姓名")}</p>
-                            <p class="member-row-status">${escapeHtml(getSignupStatusLabel({ ...signup, signupStatus: computedStatus }))} / ${escapeHtml(getSignupPaymentLabel(signup))}</p>
+                            <p class="member-row-status">${escapeHtml(getSignupStatusLabel({ ...signup, signupStatus: computedStatus }))} / ${escapeHtml(paymentLabel)}</p>
                           </div>
                           <p class="member-row-email">${escapeHtml(signup.email || "未填信箱")}</p>
                           <div class="member-row-meta">
                             <span>學號：${escapeHtml(signup.studentId || "未填寫")}</span>
+                            <span>身分：${escapeHtml(isFormalMember ? "正式社員" : "非社員零打")}</span>
                             <span>第一志願：${escapeHtml(signup.firstChoice || "未填寫")}</span>
                             <span>第二志願：${escapeHtml(signup.secondChoice || "未填寫")}</span>
                             <span>備註：${escapeHtml(signup.note || "無")}</span>
                           </div>
-                          <div class="application-actions">
-                            <button class="button-secondary application-save" data-class-signup-payment type="button" data-signup-id="${escapeHtml(signup.id || `${sessionId}-${signup.userId}`)}" data-user-id="${escapeHtml(signup.userId || "")}" data-email="${escapeHtml(signup.email || "")}" data-payment-status="${paid ? "unpaid" : "paid"}">${paid ? "標記未繳費" : "標記已繳費"}</button>
-                          </div>
+                          ${paymentAction ? `<div class="application-actions">${paymentAction}</div>` : ""}
                         </article>
                       `;
                     })
@@ -4619,7 +4702,7 @@ function bindAdminClassCalendarActions() {
     });
   });
 
-  document.querySelectorAll("[data-class-signup-payment]").forEach((button) => {
+  document.querySelectorAll("[data-class-dropin-payment]").forEach((button) => {
     if (button.dataset.initialized === "true") {
       return;
     }
@@ -4627,9 +4710,7 @@ function bindAdminClassCalendarActions() {
     button.dataset.initialized = "true";
     button.addEventListener("click", async () => {
       const signupId = button.dataset.signupId || "";
-      const userId = button.dataset.userId || "";
-      const email = String(button.dataset.email || "").trim().toLowerCase();
-      const nextPaymentStatus = button.dataset.paymentStatus === "paid" ? "paid" : "unpaid";
+      const nextDropInPaymentStatus = button.dataset.dropinPaymentStatus === "paid" ? "paid" : "unpaid";
 
       if (!signupId) {
         return;
@@ -4638,47 +4719,21 @@ function bindAdminClassCalendarActions() {
       button.disabled = true;
       try {
         await updateDoc(doc(db, CLASS_SIGNUP_COLLECTION, signupId), {
-          paymentStatus: nextPaymentStatus,
-          paidAt: nextPaymentStatus === "paid" ? serverTimestamp() : null,
+          dropInPaymentStatus: nextDropInPaymentStatus,
+          dropInPaidAt: nextDropInPaymentStatus === "paid" ? serverTimestamp() : null,
           updatedAt: serverTimestamp(),
         });
 
-        if (userId) {
-          await setDoc(
-            getMemberDocRef(userId),
-            {
-              paymentStatus: nextPaymentStatus,
-              membershipStatus: nextPaymentStatus === "paid" ? "formal_member" : "pending_payment",
-              status: nextPaymentStatus === "paid" ? "formal_member" : "pending_payment",
-              paidAt: nextPaymentStatus === "paid" ? serverTimestamp() : null,
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true },
-          );
-        }
-
-        if (nextPaymentStatus === "paid" && email) {
-          await setDoc(
-            getApprovalDocRef(email),
-            {
-              email,
-              status: "approved",
-              approvedAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true },
-          );
-        }
-
         await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
       } catch (error) {
-        console.error("Update payment status failed:", error);
-        window.alert(`更新繳費狀態失敗：${error?.message || "請稍後再試一次。"}`);
+        console.error("Update drop-in payment status failed:", error);
+        window.alert(`更新零打費狀態失敗：${error?.message || "請稍後再試一次。"}`);
       } finally {
         button.disabled = false;
       }
     });
   });
+
   document.querySelectorAll("[data-class-session-edit]").forEach((button) => {
     if (button.dataset.initialized === "true") {
       return;
@@ -5154,7 +5209,7 @@ const handleApplicationSubmit = async (event) => {
     applicationForm.reset();
     closeApplicationModal();
     openApplicationSuccessModal();
-    setApplicationHint("申請已送出。請依繳費通知完成社費繳納，幹部確認後才會成為正式社員。", "success");
+    setApplicationHint("申請已送出。請依通知完成一次性社費繳納，幹部確認後才會成為正式社員。", "success");
   } catch (error) {
     console.error("Application submit failed:", error);
     setMessageTone(applicationHint, getFriendlyApplicationError(error), "error");
