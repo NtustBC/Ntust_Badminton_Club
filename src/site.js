@@ -106,6 +106,7 @@ let currentUser = null;
 let currentUserIsAdmin = false;
 let currentMemberStatus = "not_applied";
 let currentMemberProfile = null;
+let configuredAcademicYear = "";
 let authMode = "signin";
 let authReadyPromise = null;
 let lastLoginTrigger = null;
