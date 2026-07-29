@@ -16,6 +16,11 @@ service cloud.firestore {
       );
     }
 
+    function isOfficialMember() {
+      return isSignedIn() &&
+        request.auth.token.email is string &&
+        exists(/databases/$(database)/documents/signupApprovals/$(request.auth.token.email));
+    }
     match /admins/{userId} {
       allow read: if isSignedIn() && request.auth.uid == userId;
       allow create: if isBootstrapAdminEmail() && request.auth.uid == userId;
@@ -48,11 +53,11 @@ service cloud.firestore {
     }
 
     match /classSessionSignups/{signupId} {
-      allow create: if isSignedIn()
+      allow create: if isOfficialMember()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.sessionId is string;
       allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow update, delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin() || (isOfficialMember() && resource.data.userId == request.auth.uid);
     }
 
     match /classAnnouncements/{announcementId} {

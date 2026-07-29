@@ -98,6 +98,8 @@ let auth = null;
 let db = null;
 let currentUser = null;
 let currentUserIsAdmin = false;
+let currentMemberStatus = "not_applied";
+let currentMemberProfile = null;
 let authMode = "signin";
 let authReadyPromise = null;
 let lastLoginTrigger = null;
@@ -189,6 +191,8 @@ const primeAuthStateFromSnapshot = () => {
   if (!snapshot?.signedIn) {
     currentUser = null;
     currentUserIsAdmin = false;
+    currentMemberStatus = "not_applied";
+    currentMemberProfile = null;
     return;
   }
 
@@ -197,6 +201,8 @@ const primeAuthStateFromSnapshot = () => {
     email: snapshot.email,
   };
   currentUserIsAdmin = snapshot.isAdmin;
+  currentMemberStatus = "not_applied";
+  currentMemberProfile = null;
 };
 
 const memberFilters = {
@@ -206,23 +212,23 @@ const memberFilters = {
 
 const authCopy = {
   signin: {
-    title: "會員登入",
-    subtitle: "用社員帳號登入後，就能查看管理功能與個人狀態。",
-    submitLabel: "Sign In",
+    title: "社員登入",
+    subtitle: "登入後可以查看入社進度；正式社員才會開放社員專屬功能。",
+    submitLabel: "登入",
     hint: "輸入已建立的帳號密碼即可登入。",
   },
   signup: {
     title: "建立帳號",
-    subtitle: "只有審核通過的社員，才能建立登入帳號。",
-    submitLabel: "Create Account",
-    hint: "請使用申請時填寫的同一個信箱建立帳號。",
+    subtitle: "所有人都可以先建立網站帳號，用來填寫申請與查詢進度。",
+    submitLabel: "建立帳號",
+    hint: "請使用常用信箱建立帳號；這不代表已完成入社。",
   },
 };
 
 const signedInCopy = {
   title: "帳號資訊",
-  subtitle: "你目前已登入，可以在這裡登出或前往管理頁。",
-  buttonLabel: "Sign Out",
+  subtitle: "你目前已登入，可以在這裡查看社員狀態與登出。",
+  buttonLabel: "登出",
 };
 
 const membersPageCopy = {
@@ -301,7 +307,7 @@ const loginModalMarkup = `
         </div>
 
         <div class="auth-status-card" data-auth-status hidden>
-          <p class="auth-status-label">Signed In</p>
+          <p class="auth-status-label">社員狀態</p>
           <p class="auth-status-email" data-auth-email></p>
           <p class="login-note" data-auth-status-hint></p>
           <div class="auth-status-actions">
@@ -338,7 +344,7 @@ const loginModalMarkup = `
         </form>
       </div>
       <div class="modal-footer">
-        <button class="login-button modal-submit" data-auth-submit form="login-form" type="submit">Sign In</button>
+        <button class="login-button modal-submit" data-auth-submit form="login-form" type="submit">登入</button>
       </div>
     </div>
   </div>
@@ -351,7 +357,7 @@ const applicationModalMarkup = `
       <div class="modal-header">
         <div>
           <h2 class="modal-title" id="application-title">社員申請</h2>
-          <p class="modal-subtitle" data-application-subtitle>填完資料後送出，管理員審核通過後就能建立登入帳號。</p>
+          <p class="modal-subtitle" data-application-subtitle>填完資料後送出，完成社費繳納並經幹部確認後，才會取得正式社員資格。</p>
         </div>
         <button class="modal-close" data-close-application type="button" aria-label="關閉申請視窗">
           <span aria-hidden="true">+</span>
@@ -708,8 +714,81 @@ const updateLoginButtons = () => {
   syncMembersPageHero();
 
   getLoginButtons().forEach((button) => {
-    button.textContent = currentUser ? "Account" : button.dataset.defaultLabel;
+    button.textContent = currentUser ? "帳號狀態" : button.dataset.defaultLabel;
   });
+};
+
+const membershipStatusCopy = {
+  not_applied: {
+    label: "尚未申請",
+    meaning: "只有網站帳號，尚未送出入社申請。",
+    action: "填寫入社申請",
+  },
+  pending_payment: {
+    label: "待繳費",
+    meaning: "已送出申請，請依通知完成社費繳納。",
+    action: "查看繳費方式",
+  },
+  payment_checking: {
+    label: "款項確認中",
+    meaning: "已回報繳費，等待幹部確認款項。",
+    action: "查看處理進度",
+  },
+  formal_member: {
+    label: "正式社員",
+    meaning: "幹部已確認款項，社員專屬功能已開放。",
+    action: "進入社員專區",
+  },
+  expired: {
+    label: "資格到期",
+    meaning: "本學期尚未續費，社員專屬功能暫停開放。",
+    action: "查看續費方式",
+  },
+};
+
+const getMembershipStatusCopy = (status) => membershipStatusCopy[status] || membershipStatusCopy.not_applied;
+const isOfficialMemberStatus = () => currentUserIsAdmin || currentMemberStatus === "formal_member";
+
+const normalizeMembershipStatus = (memberData = null, approvalData = null) => {
+  const explicitStatus = String(memberData?.membershipStatus || memberData?.status || "").trim().toLowerCase();
+
+  if (["expired", "qualification_expired"].includes(explicitStatus)) {
+    return "expired";
+  }
+
+  if (["payment_checking", "payment-confirming", "payment_confirming", "confirming"].includes(explicitStatus)) {
+    return "payment_checking";
+  }
+
+  if (["pending_payment", "pending-payment", "pending", "applied"].includes(explicitStatus)) {
+    return "pending_payment";
+  }
+
+  if (approvalData || ["formal_member", "formal", "approved"].includes(explicitStatus)) {
+    return "formal_member";
+  }
+
+  return "not_applied";
+};
+
+const loadCurrentMemberStatus = async (user) => {
+  currentMemberStatus = "not_applied";
+  currentMemberProfile = null;
+
+  if (!db || !user?.uid) {
+    return currentMemberStatus;
+  }
+
+  const [memberDoc, approvalDoc] = await Promise.all([
+    getDoc(getMemberDocRef(user.uid)),
+    user.email ? getDoc(getApprovalDocRef(user.email)) : Promise.resolve(null),
+  ]);
+  const memberData = memberDoc.exists() ? memberDoc.data() : null;
+  const approvalData = approvalDoc && typeof approvalDoc.exists === "function" && approvalDoc.exists() ? approvalDoc.data() : null;
+
+  currentMemberProfile = { ...(memberData || {}), ...(approvalData || {}) };
+  currentMemberStatus = normalizeMembershipStatus(memberData, approvalData);
+  return currentMemberStatus;
 };
 
 const getFriendlyAuthError = (error) => authErrorMessages[error?.code] || "登入發生問題，請稍後再試一次。";
@@ -913,9 +992,15 @@ const updateAuthView = () => {
     loginForm.hidden = true;
     statusCard.hidden = false;
     authSwitch.hidden = true;
-    statusEmail.textContent = currentUser.email || "";
-    statusHint.textContent = currentUserIsAdmin ? "你目前有管理員權限。" : "你已登入社員帳號。";
-    adminLink.hidden = !currentUserIsAdmin;
+    const statusCopy = getMembershipStatusCopy(currentMemberStatus);
+    statusEmail.innerHTML = `
+      <span class="member-status-badge">${escapeHtml(currentUserIsAdmin ? "管理員" : statusCopy.label)}</span>
+      <span>${escapeHtml(currentUser.email || "")}</span>
+    `;
+    statusHint.textContent = currentUserIsAdmin ? "你目前有管理員權限，可以進入管理頁。" : `${statusCopy.meaning}｜${statusCopy.action}`;
+    adminLink.hidden = false;
+    adminLink.href = currentUserIsAdmin ? "./members.html" : currentMemberStatus === "formal_member" ? "./class-signup.html" : "./club-signup.html";
+    adminLink.textContent = currentUserIsAdmin ? "進入管理頁" : statusCopy.action;
     authSubmit.textContent = signedInCopy.buttonLabel;
     authSubmit.dataset.authAction = "signout";
     authSubmit.removeAttribute("form");
@@ -983,6 +1068,8 @@ const ensureAuthReady = async () => {
     onAuthStateChanged(auth, async (user) => {
       currentUser = user;
       currentUserIsAdmin = false;
+      currentMemberStatus = "not_applied";
+      currentMemberProfile = null;
       membersDashboardCache.loaded = false;
       membersDashboardCache.loadWarnings = [];
       classSignupPageState.loaded = false;
@@ -994,6 +1081,7 @@ const ensureAuthReady = async () => {
 
       if (user) {
         await loadAdminStatus(user);
+        await loadCurrentMemberStatus(user);
       }
 
       writeAuthSnapshot(user, currentUserIsAdmin);
@@ -1054,8 +1142,8 @@ const openApplicationModal = (trigger) => {
   applicationSubtitle.textContent =
     type === "class"
       ? "填完社課參與資料後送出，管理員會再和你確認後續安排。"
-      : "填完社員申請後送出，管理員審核通過後就能建立登入帳號。";
-  setApplicationHint("送出後管理員會再審核資料。");
+      : "填完社員申請後送出，請依通知完成社費繳納；幹部確認後才會取得正式社員資格。";
+  setApplicationHint("送出後請留意繳費通知，正式社員資格以幹部確認款項為準。");
   applicationModal.hidden = false;
   body.classList.add("modal-open");
   closeMobileNav();
@@ -1203,7 +1291,7 @@ const getPublicClassSignupModalState = (session) => {
   const sessionId = getClassSessionId(session);
   const ownSignup = classSignupPageState.ownSignups.find((signup) => signup.sessionId === sessionId) || null;
   const approvalData = classSignupPageState.approval;
-  const canSignup = Boolean(currentUser && (approvalData || currentUserIsAdmin));
+  const canSignup = Boolean(currentUser && (approvalData || isOfficialMemberStatus()));
   const isSundaySignup = String(session.weekday || "").toLowerCase() === "sun" && Boolean(session.signupRequired);
   const rosterPublished = Boolean(session.rosterPublished);
   const signupOpen = isSundaySignup && isClassSignupWindowOpen(session);
@@ -1526,7 +1614,8 @@ const syncMemberProfile = async (user, source) => {
 
   if (!existingDoc.exists()) {
     payload.createdAt = serverTimestamp();
-    payload.status = "active";
+    payload.status = "not_applied";
+    payload.membershipStatus = "not_applied";
   }
 
   if (approvalData) {
@@ -1540,6 +1629,8 @@ const syncMemberProfile = async (user, source) => {
     payload.academicYear = approvalData.academicYear || "未設定";
     payload.term = approvalData.term || "未設定";
     payload.approvedAt = approvalData.approvedAt || serverTimestamp();
+    payload.status = "formal_member";
+    payload.membershipStatus = "formal_member";
   }
 
   await setDoc(memberRef, payload, { merge: true });
@@ -2566,7 +2657,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
     content.hidden = true;
     gate.innerHTML = `
       <h2 class="content-title">請先登入</h2>
-      <p class="content-copy">按上方 <code>Sign In</code> 後登入，才能查看管理資料。</p>
+      <p class="content-copy">按上方 <code>登入／註冊</code> 後登入，才能查看管理資料。</p>
     `;
     return;
   }
@@ -2874,7 +2965,7 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
   if (!canSignup) {
     return `
       <div class="class-session-locked">
-        <p class="content-copy">你目前尚未通過正式申請，暫時無法報名社課。若已送出申請，請先等待管理員審核。</p>
+        <p class="content-copy">你目前尚未取得正式社員資格，暫時無法報名社課。完成社費繳納並經幹部確認後，系統才會開放社員專屬功能。</p>
       </div>
     `;
   }
@@ -2935,7 +3026,7 @@ function renderClassSessionBoard(sessions = []) {
   const sortedSessions = [...sessions].sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
   const ownedBySession = Object.fromEntries(classSignupPageState.ownSignups.map((signup) => [signup.sessionId, signup]));
   const approvalData = classSignupPageState.approval;
-  const canSignup = Boolean(currentUser && (approvalData || currentUserIsAdmin));
+  const canSignup = Boolean(currentUser && (approvalData || isOfficialMemberStatus()));
 
   if (sortedSessions.length === 0) {
     container.innerHTML = `
@@ -3176,7 +3267,7 @@ async function handleClassSignupSubmit(event) {
     return;
   }
 
-  if (!classSignupPageState.approval && !currentUserIsAdmin) {
+  if (!classSignupPageState.approval && !isOfficialMemberStatus()) {
     return;
   }
 
@@ -3515,7 +3606,17 @@ function renderFaqBoard(faqEntries = []) {
     return;
   }
 
-  const sortedFaqs = [...faqEntries].sort((a, b) => getFaqSortMs(b) - getFaqSortMs(a));
+  const requiredFaq = {
+    question: "註冊網站帳號就算加入羽球社了嗎？",
+    answer: "不算。註冊帳號僅供登入與查詢申請進度；完成社費繳納並經幹部確認後，才會成為正式社員。",
+    pinned: true,
+  };
+  const hasRequiredFaq = faqEntries.some((faq) => String(faq.question || "").trim() === requiredFaq.question);
+  const sortedFaqs = [requiredFaq, ...faqEntries.filter((faq) => !(hasRequiredFaq && String(faq.question || "").trim() === requiredFaq.question))].sort((a, b) => {
+    if (a.pinned) return -1;
+    if (b.pinned) return 1;
+    return getFaqSortMs(b) - getFaqSortMs(a);
+  });
 
   if (sortedFaqs.length === 0) {
     container.innerHTML = `
@@ -4610,22 +4711,18 @@ const handleAuthSubmit = async (event) => {
     }
 
     if (authMode === "signup") {
-      const approved = await ensureSignupApproved(email);
-      if (!approved) {
-        setHint("這個信箱尚未通過審核，暫時不能建立帳號。", "error");
-        return;
-      }
-
       const credential = await createUserWithEmailAndPassword(readyAuth, email, password);
       await syncMemberProfile(credential.user, "signup");
       await ensureBootstrapAdminDoc(credential.user);
       await loadAdminStatus(credential.user);
-      setHint("帳號建立完成，已自動登入。", "success");
+      await loadCurrentMemberStatus(credential.user);
+      setHint("帳號建立完成，已自動登入。請接著填寫入社申請。", "success");
     } else {
       const credential = await signInWithEmailAndPassword(readyAuth, email, password);
       await syncMemberProfile(credential.user, "signin");
       await loadAdminStatus(credential.user);
-      setHint("登入成功。", "success");
+      await loadCurrentMemberStatus(credential.user);
+      setHint("登入成功，已更新社員狀態。", "success");
     }
 
     event.target.reset();
@@ -4689,11 +4786,32 @@ const handleApplicationSubmit = async (event) => {
       updatedAt: serverTimestamp(),
     });
 
+    if (currentUser?.uid && currentUser.email?.trim().toLowerCase() === email) {
+      await setDoc(
+        getMemberDocRef(currentUser.uid),
+        {
+          uid: currentUser.uid,
+          email,
+          name,
+          studentId,
+          department,
+          phone,
+          applicationType,
+          status: "pending_payment",
+          membershipStatus: "pending_payment",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      await loadCurrentMemberStatus(currentUser);
+      updateAuthView();
+    }
+
     rememberApplicationSubmit(email, applicationType);
     applicationForm.reset();
     closeApplicationModal();
     openApplicationSuccessModal();
-    setApplicationHint("申請已送出，等管理員審核通過後就能建立登入帳號。", "success");
+    setApplicationHint("申請已送出。請依繳費通知完成社費繳納，幹部確認後才會成為正式社員。", "success");
   } catch (error) {
     console.error("Application submit failed:", error);
     setMessageTone(applicationHint, getFriendlyApplicationError(error), "error");
