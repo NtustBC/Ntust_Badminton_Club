@@ -77,13 +77,16 @@
               <p class="page-copy" data-members-hero-copy>
                 這裡會顯示透過 Firebase 註冊進來的社員帳號，方便你快速查看目前註冊數、信箱與最近登入時間。
               </p>
-              <div class="page-actions">
-                <button class="button-primary" data-members-hero-cta type="button">
-                  <span data-members-hero-cta-label>登入管理頁</span>
-                  <span aria-hidden="true">-></span>
-                </button>
-                <a class="button-secondary" href="./index.html">回到首頁</a>
-              </div>
+              <form class="academic-year-setting" data-academic-year-setting hidden>
+                <div class="form-field">
+                  <label for="current-academic-year">設定目前學年度</label>
+                  <div class="academic-year-setting-row">
+                    <input id="current-academic-year" data-current-academic-year-input inputmode="numeric" pattern="[0-9]*" type="text" placeholder="例如：115" />
+                    <button class="button-primary" type="submit">儲存</button>
+                  </div>
+                  <p class="content-copy" data-current-academic-year-hint>輸入後會加入下方學年度篩選選單。</p>
+                </div>
+              </form>
             </div>
 
             <div class="side-card">

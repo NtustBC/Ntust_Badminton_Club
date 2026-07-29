@@ -412,6 +412,50 @@ img {
   gap: 18px;
   margin-top: 34px;
 }
+.academic-year-setting {
+  max-width: 520px;
+  margin-top: 24px;
+}
+
+.academic-year-setting[hidden] {
+  display: none;
+}
+
+.academic-year-setting .form-field label {
+  color: var(--brand);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.academic-year-setting-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.academic-year-setting-row input {
+  min-height: 58px;
+  padding: 0 18px;
+  border: 1px solid rgba(15, 76, 129, 0.14);
+  border-radius: var(--radius-sm);
+  background: rgba(248, 251, 255, 0.96);
+  color: var(--ink);
+  font-size: 1.04rem;
+  font-weight: 700;
+}
+
+.academic-year-setting-row input:focus {
+  outline: none;
+  border-color: rgba(15, 76, 129, 0.3);
+  box-shadow: 0 0 0 4px rgba(15, 76, 129, 0.08);
+}
+
+.academic-year-setting-row .button-primary {
+  min-height: 58px;
+}
 
 .hero-facts {
   display: grid;

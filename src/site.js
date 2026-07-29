@@ -80,6 +80,8 @@ const CLASS_SESSION_COLLECTION = "classSessions";
 const CLASS_SIGNUP_COLLECTION = "classSessionSignups";
 const CLASS_ANNOUNCEMENT_COLLECTION = "classAnnouncements";
 const FAQ_COLLECTION = "faqEntries";
+const SITE_SETTINGS_COLLECTION = "siteSettings";
+const CURRENT_TERM_SETTINGS_DOC = "currentTerm";
 const CLASS_WEEKDAY_LABELS = {
   mon: "星期一",
   tue: "星期二",
@@ -237,7 +239,6 @@ const membersPageCopy = {
     title: "社員註冊名單",
     copy:
       "這裡會顯示透過 Firebase 註冊進來的社員帳號，方便你快速查看目前註冊數、信箱與最近登入時間。",
-    buttonLabel: "登入管理頁",
     sideTitle: "這裡看到的是註冊帳號，不是完整社員資料",
     sideCopy:
       "如果你之後想再追蹤姓名、系級、社費或報名紀錄，我們可以繼續在 Firestore 往下擴充欄位與管理介面。",
@@ -248,7 +249,6 @@ const membersPageCopy = {
   signedIn: {
     title: "已登入社員帳號",
     copy: "你目前登入的是一般社員帳號，若要查看管理頁，請切換成管理員帳號。",
-    buttonLabel: "切換管理員",
     sideTitle: "這裡看的還是註冊帳號",
     sideCopy: "管理頁只會開放給指定管理員信箱；如果你需要權限，請用管理員帳號重新登入。",
     overviewTitle: "註冊名單總覽",
@@ -257,7 +257,6 @@ const membersPageCopy = {
   admin: {
     title: "社團管理頁",
     copy: "你目前已使用管理員帳號登入，可以直接查看社員資料、註冊名單與各種管理區塊。",
-    buttonLabel: "前往管理頁",
     sideTitle: "這裡是管理頁，不只是註冊名單",
     sideCopy: "你可以在下方直接管理社員資料、審核報名、安排社課與發布公告或 FAQ，所有內容都會同步到 Firestore。",
     overviewTitle: "管理總覽",
@@ -604,8 +603,6 @@ const syncGlobalNavigationLabels = () => {
 };
 
 const getLoginButtons = () => document.querySelectorAll("[data-open-login]");
-const getMembersHeroCta = () => document.querySelector("[data-members-hero-cta]");
-const getMembersHeroCtaLabel = () => document.querySelector("[data-members-hero-cta-label]");
 const getApplicationButtons = () => document.querySelectorAll("[data-open-application]");
 const getApprovalDocId = (email) => email.trim().toLowerCase();
 const getApplicationDocId = (email, applicationType = "club") =>
@@ -702,6 +699,7 @@ const getApprovedMemberDocId = (applicationId) => `application-${applicationId}`
 const getApprovedMemberDocRef = (applicationId) => doc(db, "members", getApprovedMemberDocId(applicationId));
 const getClassAnnouncementDocRef = (announcementId) => doc(db, CLASS_ANNOUNCEMENT_COLLECTION, announcementId);
 const getFaqDocRef = (faqId) => doc(db, FAQ_COLLECTION, faqId);
+const getSiteSettingsDocRef = (settingId) => doc(db, SITE_SETTINGS_COLLECTION, settingId);
 const getClassSessionSortMs = (session) => getDateKeyMs(session.date || session.sessionDate);
 const getAnnouncementSortMs = (announcement) => getTimestampMs(announcement.createdAt || announcement.updatedAt || announcement.date);
 const getFaqSortMs = (faq) => getTimestampMs(faq.createdAt || faq.updatedAt || faq.date);
@@ -1705,6 +1703,8 @@ const syncMemberProfile = async (user, source, profile = {}) => {
     payload.department = profile.department || "";
     payload.school = profile.department || "";
     payload.phone = profile.phone || "";
+    payload.academicYear = getConfiguredAcademicYear();
+    payload.term = "未設定";
     payload.membershipStatus = "pending_payment";
     payload.status = "pending_payment";
     payload.paymentStatus = "unpaid";
@@ -1887,9 +1887,38 @@ const saveAdminAcademicYears = (years) => {
   window.localStorage.setItem(STORAGE_KEYS.customAcademicYears, JSON.stringify(years));
 };
 
+const isValidAcademicYearValue = (value) => /^\d{2,3}$/.test(String(value || "").trim());
+
+const getConfiguredAcademicYear = () => {
+  if (isValidAcademicYearValue(configuredAcademicYear)) {
+    return String(configuredAcademicYear).trim();
+  }
+
+  const storedYears = getStoredAdminAcademicYears();
+  return storedYears[0] || String(Math.max(getRocAcademicYear(), MIN_ACADEMIC_YEAR));
+};
+
+const loadCurrentTermSettings = async () => {
+  if (!db) {
+    return;
+  }
+
+  try {
+    const settingsDoc = await getDoc(getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC));
+    const academicYear = settingsDoc.exists() ? String(settingsDoc.data()?.academicYear || "").trim() : "";
+    if (isValidAcademicYearValue(academicYear)) {
+      configuredAcademicYear = academicYear;
+      saveAdminAcademicYears(Array.from(new Set([academicYear, ...getStoredAdminAcademicYears()])).sort((a, b) => Number(b) - Number(a)));
+    }
+  } catch (error) {
+    console.warn("Load current term settings failed:", error);
+  }
+};
+
 const buildAcademicYearOptions = () => {
-  const baseYear = Math.max(getRocAcademicYear(), MIN_ACADEMIC_YEAR);
-  return ["all", ...Array.from({ length: 6 }, (_, index) => String(baseYear + 1 - index)), "未設定"];
+  const configuredYear = getConfiguredAcademicYear();
+  const baseYear = Math.max(Number(configuredYear), getRocAcademicYear(), MIN_ACADEMIC_YEAR);
+  return Array.from(new Set(["all", configuredYear, ...Array.from({ length: 6 }, (_, index) => String(baseYear + 1 - index)), "未設定"]));
 };
 
 const buildAdminAcademicYearOptions = () => {
@@ -5208,7 +5237,7 @@ const handleApplicationSubmit = async (event) => {
       email,
       note,
       applicationType,
-      academicYear: String(Math.max(getRocAcademicYear(), MIN_ACADEMIC_YEAR)),
+      academicYear: getConfiguredAcademicYear(),
       term: "未設定",
       approved: false,
       reviewStatus: "pending",
@@ -5355,14 +5384,6 @@ const bindActionSuccessModalEvents = () => {
   }
 };
 
-const scrollToMembersContent = () => {
-  const content = document.querySelector("[data-members-content]");
-  if (!(content instanceof HTMLElement) || content.hidden) {
-    return;
-  }
-
-  content.scrollIntoView({ behavior: "smooth", block: "start" });
-};
 
 const syncMembersPageHero = () => {
   if (pageName !== "members") {
@@ -5372,7 +5393,6 @@ const syncMembersPageHero = () => {
   const heroEyebrow = document.querySelector("[data-members-hero-eyebrow]");
   const heroTitle = document.querySelector("[data-members-hero-title]");
   const heroCopy = document.querySelector("[data-members-hero-copy]");
-  const heroCtaLabel = getMembersHeroCtaLabel();
   const heroSideTitle = document.querySelector("[data-members-hero-side-title]");
   const heroSideCopy = document.querySelector("[data-members-hero-side-copy]");
   const overviewTitle = document.querySelector("[data-members-overview-title]");
@@ -5391,10 +5411,6 @@ const syncMembersPageHero = () => {
     heroCopy.textContent = heroState.copy;
   }
 
-  if (heroCtaLabel) {
-    heroCtaLabel.textContent = heroState.buttonLabel;
-  }
-
   if (heroSideTitle) {
     heroSideTitle.textContent = heroState.sideTitle;
   }
@@ -5411,23 +5427,81 @@ const syncMembersPageHero = () => {
     overviewCopy.textContent = heroState.overviewCopy;
   }
 
+  syncAcademicYearSetting();
   document.title = `${currentUserIsAdmin ? "社團管理頁" : "社員註冊名單"} | 臺科大羽球社`;
 };
 
-const bindMembersHeroCta = () => {
-  const button = getMembersHeroCta();
-  if (!button || button.dataset.membersHeroBound === "true") {
+const getDefaultAdminAcademicYear = () => getConfiguredAcademicYear();
+
+const syncAcademicYearSetting = () => {
+  const form = document.querySelector("[data-academic-year-setting]");
+  const input = document.querySelector("[data-current-academic-year-input]");
+  const hint = document.querySelector("[data-current-academic-year-hint]");
+  if (!(form instanceof HTMLFormElement) || !(input instanceof HTMLInputElement)) {
     return;
   }
 
-  button.dataset.membersHeroBound = "true";
-  button.addEventListener("click", () => {
-    if (currentUserIsAdmin) {
-      scrollToMembersContent();
+  form.hidden = !currentUserIsAdmin;
+  input.value = getDefaultAdminAcademicYear();
+  if (hint) {
+    hint.textContent = currentUserIsAdmin ? "輸入後會加入下方學年度篩選選單。" : "登入管理員後可以設定目前學年度。";
+  }
+};
+
+const bindAcademicYearSetting = () => {
+  const form = document.querySelector("[data-academic-year-setting]");
+  const input = document.querySelector("[data-current-academic-year-input]");
+  const hint = document.querySelector("[data-current-academic-year-hint]");
+  if (!(form instanceof HTMLFormElement) || !(input instanceof HTMLInputElement) || form.dataset.bound === "true") {
+    return;
+  }
+
+  form.dataset.bound = "true";
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const value = input.value.trim();
+    if (!isValidAcademicYearValue(value)) {
+      if (hint) {
+        hint.textContent = "請輸入 2 到 3 位數的民國學年度，例如 115。";
+      }
+      input.focus();
       return;
     }
 
-    openLoginModal(button);
+    const years = Array.from(new Set([value, ...getStoredAdminAcademicYears()])).sort((a, b) => Number(b) - Number(a));
+    const submitButton = form.querySelector("button[type=\"submit\"]");
+    if (submitButton instanceof HTMLButtonElement) {
+      submitButton.disabled = true;
+    }
+    try {
+      await setDoc(
+        getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC),
+        {
+          academicYear: value,
+          updatedAt: serverTimestamp(),
+          updatedBy: currentUser?.uid || "",
+          updatedByEmail: currentUser?.email || "",
+        },
+        { merge: true },
+      );
+      saveAdminAcademicYears(years);
+      configuredAcademicYear = value;
+      memberFilters.year = value;
+      patchMembersFilterUI();
+      void refreshMembersDashboardSafe();
+      if (hint) {
+        hint.textContent = `已設定目前學年度為 ${value} 學年度。`;
+      }
+    } catch (error) {
+      console.error("Save academic year setting failed:", error);
+      if (hint) {
+        hint.textContent = `儲存失敗：${error?.message || "請稍後再試一次。"}`;
+      }
+    } finally {
+      if (submitButton instanceof HTMLButtonElement) {
+        submitButton.disabled = false;
+      }
+    }
   });
 };
 
@@ -5631,7 +5705,7 @@ const init = async () => {
   bindPublicCalendarModalEvents();
   bindClassSignupModalEvents();
   bindOpenButtons();
-  bindMembersHeroCta();
+  bindAcademicYearSetting();
   syncGlobalNavigationLabels();
   initMenu();
   initLanguageSwitcher();
@@ -5646,6 +5720,7 @@ const init = async () => {
 
   if (firebaseConfigured && needsFirebaseOnLoad) {
     await ensureAuthReady();
+    await loadCurrentTermSettings();
   }
 
   if (pageName === "members") {
