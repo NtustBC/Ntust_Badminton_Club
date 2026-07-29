@@ -30,8 +30,17 @@ service cloud.firestore {
     match /members/{userId} {
       allow get: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
       allow list: if isAdmin();
-      allow create: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
-      allow update: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow create: if isAdmin() || (
+        isSignedIn() &&
+        request.auth.uid == userId &&
+        (!request.resource.data.keys().hasAny(["membershipStatus", "status"]) || request.resource.data.membershipStatus in ["not_applied", "pending_payment"]) &&
+        (!request.resource.data.keys().hasAny(["paymentStatus"]) || request.resource.data.paymentStatus == "unpaid")
+      );
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        request.auth.uid == userId &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(["membershipStatus", "status", "paymentStatus", "paidAt", "approvedAt"])
+      );
       allow delete: if isAdmin();
     }
 
@@ -53,11 +62,17 @@ service cloud.firestore {
     }
 
     match /classSessionSignups/{signupId} {
-      allow create: if isOfficialMember()
+      allow read: if true;
+      allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
-        && request.resource.data.sessionId is string;
-      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow update, delete: if isAdmin() || (isOfficialMember() && resource.data.userId == request.auth.uid);
+        && request.resource.data.sessionId is string
+        && (!request.resource.data.keys().hasAny(["paymentStatus"]) || request.resource.data.paymentStatus == "unpaid");
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.userId == request.auth.uid &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(["paymentStatus", "paidAt", "signupStatus"])
+      );
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
     }
 
     match /classAnnouncements/{announcementId} {

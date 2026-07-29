@@ -121,6 +121,7 @@ let classSignupPageState = {
   loaded: false,
   sessions: [],
   ownSignups: [],
+  sessionSignups: [],
   approval: null,
   monthOffset: 0,
   loadWarnings: [],
@@ -213,15 +214,15 @@ const memberFilters = {
 const authCopy = {
   signin: {
     title: "社員登入",
-    subtitle: "登入後可以查看入社進度；正式社員才會開放社員專屬功能。",
+    subtitle: "登入後可以報名參加社團；繳費完成後會顯示為正式社員。",
     submitLabel: "登入",
     hint: "輸入已建立的帳號密碼即可登入。",
   },
   signup: {
     title: "建立帳號",
-    subtitle: "所有人都可以先建立網站帳號，用來填寫申請與查詢進度。",
+    subtitle: "註冊時請一併填寫入社資料；帳號建立後即可登入並送出報名。",
     submitLabel: "建立帳號",
-    hint: "請使用常用信箱建立帳號；這不代表已完成入社。",
+    hint: "請填寫完整入社資料。註冊後可登入報名，繳費完成後成為正式社員。",
   },
 };
 
@@ -339,6 +340,24 @@ const loginModalMarkup = `
               type="password"
               autocomplete="new-password"
             />
+          </div>
+          <div class="auth-signup-profile" data-auth-signup-profile hidden>
+            <div class="form-field">
+              <label for="signup-name">姓名</label>
+              <input id="signup-name" name="name" placeholder="王小明" type="text" autocomplete="name" />
+            </div>
+            <div class="form-field">
+              <label for="signup-student-id">學號</label>
+              <input id="signup-student-id" name="studentId" placeholder="B11303044" type="text" />
+            </div>
+            <div class="form-field">
+              <label for="signup-department">系別</label>
+              <input id="signup-department" name="department" placeholder="機械系" type="text" />
+            </div>
+            <div class="form-field">
+              <label for="signup-phone">聯絡電話</label>
+              <input id="signup-phone" name="phone" placeholder="09xx-xxx-xxx" type="tel" autocomplete="tel" />
+            </div>
           </div>
           <p class="login-note" data-login-hint>${authCopy.signin.hint}</p>
         </form>
@@ -488,6 +507,20 @@ const adminClassCalendarModalMarkup = `
             <input name="signupRequired" type="checkbox" checked />
             社課需要報名
           </label>
+          <div class="admin-calendar-signup-settings" data-admin-calendar-signup-settings>
+            <div class="form-field">
+              <label for="admin-calendar-signup-open">報名開始</label>
+              <input id="admin-calendar-signup-open" name="signupOpenAt" type="datetime-local" />
+            </div>
+            <div class="form-field">
+              <label for="admin-calendar-signup-close">報名截止</label>
+              <input id="admin-calendar-signup-close" name="signupCloseAt" type="datetime-local" />
+            </div>
+            <div class="form-field">
+              <label for="admin-calendar-signup-limit">人數上限</label>
+              <input id="admin-calendar-signup-limit" name="signupLimit" min="1" placeholder="不填則不限" type="number" />
+            </div>
+          </div>
           <div class="admin-calendar-form-actions">
             <button class="button-primary" data-admin-calendar-save type="submit">儲存</button>
             <button class="button-secondary" data-admin-calendar-delete type="button">刪除</button>
@@ -597,6 +630,35 @@ const formatDateInputValue = (date = new Date()) => {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+};
+const formatDateTimeLocalValue = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  if (typeof value === "string") {
+    return value.slice(0, 16);
+  }
+
+  if (typeof value?.toDate === "function") {
+    const date = value.toDate();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  }
+
+  return "";
+};
+
+const getDateTimeLocalMs = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value?.toDate === "function") {
+    return value.toDate().getTime();
+  }
+
+  const ms = new Date(String(value)).getTime();
+  return Number.isNaN(ms) ? null : ms;
 };
 const getDateKeyMs = (value) => {
   const date = parseDateKey(value);
@@ -721,8 +783,8 @@ const updateLoginButtons = () => {
 const membershipStatusCopy = {
   not_applied: {
     label: "尚未申請",
-    meaning: "只有網站帳號，尚未送出入社申請。",
-    action: "填寫入社申請",
+    meaning: "帳號已建立，可以登入並報名參加社團。",
+    action: "前往報名",
   },
   pending_payment: {
     label: "待繳費",
@@ -887,6 +949,11 @@ const getLoginModalElements = () => {
     authTabs: loginModal.querySelectorAll("[data-auth-tab]"),
     confirmField: loginModal.querySelector("[data-auth-confirm-field]"),
     confirmInput: loginModal.querySelector("#login-password-confirm"),
+    signupProfile: loginModal.querySelector("[data-auth-signup-profile]"),
+    signupNameInput: loginModal.querySelector("#signup-name"),
+    signupStudentIdInput: loginModal.querySelector("#signup-student-id"),
+    signupDepartmentInput: loginModal.querySelector("#signup-department"),
+    signupPhoneInput: loginModal.querySelector("#signup-phone"),
     emailInput: loginModal.querySelector("#login-email"),
     passwordInput: loginModal.querySelector("#login-password"),
     statusCard: loginModal.querySelector("[data-auth-status]"),
@@ -958,17 +1025,23 @@ const setApplicationHint = (message, tone = "default") => {
 const setAuthMode = (mode) => {
   authMode = mode;
 
-  const { loginModal, authSubtitle, authSubmit, authTabs, confirmField, confirmInput, passwordInput } =
+  const { loginModal, authSubtitle, authSubmit, authTabs, confirmField, confirmInput, passwordInput, signupProfile } =
     getLoginModalElements();
 
   loginModal.querySelector(".modal-title").textContent = authCopy[mode].title;
   authSubtitle.textContent = authCopy[mode].subtitle;
   authSubmit.textContent = authCopy[mode].submitLabel;
   confirmField.hidden = mode !== "signup";
+  if (signupProfile) {
+    signupProfile.hidden = mode !== "signup";
+  }
   passwordInput.setAttribute("autocomplete", mode === "signup" ? "new-password" : "current-password");
 
   if (mode !== "signup") {
     confirmInput.value = "";
+    signupProfile?.querySelectorAll("input").forEach((input) => {
+      input.value = "";
+    });
   }
 
   authTabs.forEach((tab) => {
@@ -1291,7 +1364,7 @@ const getPublicClassSignupModalState = (session) => {
   const sessionId = getClassSessionId(session);
   const ownSignup = classSignupPageState.ownSignups.find((signup) => signup.sessionId === sessionId) || null;
   const approvalData = classSignupPageState.approval;
-  const canSignup = Boolean(currentUser && (approvalData || isOfficialMemberStatus()));
+  const canSignup = Boolean(currentUser);
   const isSundaySignup = String(session.weekday || "").toLowerCase() === "sun" && Boolean(session.signupRequired);
   const rosterPublished = Boolean(session.rosterPublished);
   const signupOpen = isSundaySignup && isClassSignupWindowOpen(session);
@@ -1332,6 +1405,8 @@ const renderClassSignupModalContent = (sessionId) => {
   }
 
   const { ownSignup, approvalData, canSignup, isSundaySignup, signupOpen, statusLabel } = getPublicClassSignupModalState(session);
+  const sessionSignups = getSessionSignups(sessionId);
+  const signupsMarkup = buildPublicSignupListMarkup(session, sessionSignups);
   const formMarkup = isSundaySignup
     ? buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup, signupOpen)
     : `
@@ -1362,6 +1437,10 @@ const renderClassSignupModalContent = (sessionId) => {
       </article>
       <section class="class-signup-modal-form-shell">
         ${formMarkup}
+      </section>
+      <section class="class-signup-modal-form-shell">
+        <h3 class="content-title">報名名單</h3>
+        ${signupsMarkup}
       </section>
     </div>
   `;
@@ -1490,14 +1569,22 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   form.querySelector("[name='title']").value = event?.title || "";
   form.querySelector("[name='timeLabel']").value = event?.timeLabel || "";
   form.querySelector("[name='note']").value = event?.note || "";
+  form.querySelector("[name='signupOpenAt']").value = event?.type === "class" ? formatDateTimeLocalValue(event.source?.signupOpenAt) : "";
+  form.querySelector("[name='signupCloseAt']").value = event?.type === "class" ? formatDateTimeLocalValue(event.source?.signupCloseAt) : "";
+  form.querySelector("[name='signupLimit']").value = event?.type === "class" ? event.source?.signupLimit || "" : "";
 
   const signupRequired = form.querySelector("[name='signupRequired']");
   if (signupRequired instanceof HTMLInputElement) {
     signupRequired.checked = event?.type === "class" ? Boolean(event.source?.signupRequired ?? true) : false;
   }
   const signupToggle = form.querySelector(".admin-calendar-signup-toggle");
+  const signupSettings = form.querySelector("[data-admin-calendar-signup-settings]");
+  const signupFieldsHidden = (event?.type || "class") !== "class";
   if (signupToggle) {
-    signupToggle.hidden = (event?.type || "class") !== "class";
+    signupToggle.hidden = signupFieldsHidden;
+  }
+  if (signupSettings) {
+    signupSettings.hidden = signupFieldsHidden;
   }
 
   if (deleteButton) {
@@ -1589,7 +1676,7 @@ const applyLanguage = (lang) => {
   window.localStorage.setItem(STORAGE_KEYS.language, lang);
 };
 
-const syncMemberProfile = async (user, source) => {
+const syncMemberProfile = async (user, source, profile = {}) => {
   if (!db || !user?.uid) {
     return;
   }
@@ -1612,10 +1699,22 @@ const syncMemberProfile = async (user, source) => {
     lastLoginAt: serverTimestamp(),
   };
 
+  if (profile.name || profile.studentId || profile.department || profile.phone) {
+    payload.name = profile.name || "";
+    payload.studentId = profile.studentId || "";
+    payload.department = profile.department || "";
+    payload.school = profile.department || "";
+    payload.phone = profile.phone || "";
+    payload.membershipStatus = "pending_payment";
+    payload.status = "pending_payment";
+    payload.paymentStatus = "unpaid";
+  }
+
   if (!existingDoc.exists()) {
     payload.createdAt = serverTimestamp();
-    payload.status = "not_applied";
-    payload.membershipStatus = "not_applied";
+    payload.status = profile.name ? "pending_payment" : "not_applied";
+    payload.membershipStatus = profile.name ? "pending_payment" : "not_applied";
+    payload.paymentStatus = profile.name ? "unpaid" : "unpaid";
   }
 
   if (approvalData) {
@@ -2802,14 +2901,92 @@ function groupClassSignupsBySession(signups = []) {
 }
 
 function isClassSignupWindowOpen(session) {
+  const now = Date.now();
+  const openMs = getDateTimeLocalMs(session.signupOpenAt);
+  const closeMs = getDateTimeLocalMs(session.signupCloseAt);
+
+  if (openMs && now < openMs) {
+    return false;
+  }
+
+  if (closeMs && now > closeMs) {
+    return false;
+  }
+
+  if (openMs || closeMs) {
+    return true;
+  }
+
   const sessionDateMs = getClassSessionSortMs(session);
   if (!Number.isFinite(sessionDateMs) || sessionDateMs === Number.POSITIVE_INFINITY) {
     return false;
   }
 
-  const diffMs = sessionDateMs - Date.now();
+  const diffMs = sessionDateMs - now;
   return diffMs >= 0 && diffMs <= CLASS_SIGNUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 }
+
+function getSessionSignupLimit(session = {}) {
+  const limit = Number(session.signupLimit || 0);
+  return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : null;
+}
+
+function getSignupPaymentLabel(signup = {}) {
+  return signup.paymentStatus === "paid" ? "已繳費" : "未繳費";
+}
+
+function getSignupStatusLabel(signup = {}) {
+  if (signup.signupStatus === "accepted") {
+    return "報名成功";
+  }
+  if (signup.signupStatus === "waitlisted") {
+    return "候補";
+  }
+  return "待確認";
+}
+
+function getSessionSignups(sessionId) {
+  return classSignupPageState.sessionSignups.filter((signup) => String(signup.sessionId || "") === String(sessionId || ""));
+}function getComputedSignupStatus(signup = {}, index = 0, session = {}) {
+  if (signup.signupStatus === "accepted" || signup.signupStatus === "waitlisted") {
+    return signup.signupStatus;
+  }
+
+  const limit = getSessionSignupLimit(session);
+  return limit && index >= limit ? "waitlisted" : "accepted";
+}
+
+function buildPublicSignupListMarkup(session, signups = []) {
+  const sessionId = getClassSessionId(session);
+  const sortedSignups = [...signups].sort((a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt));
+  const limit = getSessionSignupLimit(session);
+  const limitCopy = limit ? `人數上限：${limit} 人` : "人數上限：不限";
+
+  if (sortedSignups.length === 0) {
+    return `<div class="class-roster-list"><p class="content-copy">目前尚無報名資料。${escapeHtml(limitCopy)}</p></div>`;
+  }
+
+  return `
+    <div class="class-roster-list" aria-label="${escapeHtml(sessionId)} 報名名單">
+      <p class="content-copy">${escapeHtml(limitCopy)}，目前 ${sortedSignups.length} 人報名。</p>
+      ${sortedSignups
+        .map((signup, index) => {
+          const computedStatus = getComputedSignupStatus(signup, index, session);
+          return `
+            <div class="class-roster-item">
+              <span class="class-roster-index">#${String(index + 1).padStart(2, "0")}</span>
+              <div>
+                <p class="class-roster-name">${escapeHtml(signup.name || "未填姓名")} / ${escapeHtml(signup.studentId || "未填學號")}</p>
+                <p class="class-roster-copy">${escapeHtml(getSignupStatusLabel({ ...signup, signupStatus: computedStatus }))} ・ ${escapeHtml(getSignupPaymentLabel(signup))}</p>
+              </div>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
 
 function renderClassCalendarBoard(sessions = []) {
   const container = document.querySelector("[data-class-calendar]");
@@ -2952,8 +3129,8 @@ function renderClassCalendarBoard(sessions = []) {
 }
 
 function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup, signupOpen) {
-  const nameValue = approvalData?.name || currentUser?.displayName || currentUser?.email || "";
-  const studentIdValue = approvalData?.studentId || "";
+  const nameValue = currentMemberProfile?.name || approvalData?.name || currentUser?.displayName || currentUser?.email || "";
+  const studentIdValue = currentMemberProfile?.studentId || approvalData?.studentId || "";
   const firstChoice = ownSignup?.firstChoice || "";
   const secondChoice = ownSignup?.secondChoice || "";
   const noteValue = ownSignup?.note || "";
@@ -2965,7 +3142,7 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
   if (!canSignup) {
     return `
       <div class="class-session-locked">
-        <p class="content-copy">你目前尚未取得正式社員資格，暫時無法報名社課。完成社費繳納並經幹部確認後，系統才會開放社員專屬功能。</p>
+        <p class="content-copy">請先登入或註冊帳號。註冊時填完入社資料後，就可以送出報名。</p>
       </div>
     `;
   }
@@ -3026,7 +3203,7 @@ function renderClassSessionBoard(sessions = []) {
   const sortedSessions = [...sessions].sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
   const ownedBySession = Object.fromEntries(classSignupPageState.ownSignups.map((signup) => [signup.sessionId, signup]));
   const approvalData = classSignupPageState.approval;
-  const canSignup = Boolean(currentUser && (approvalData || isOfficialMemberStatus()));
+  const canSignup = Boolean(currentUser);
 
   if (sortedSessions.length === 0) {
     container.innerHTML = `
@@ -3052,6 +3229,8 @@ function renderClassSessionBoard(sessions = []) {
             ? "報名中"
             : "尚未開放"
           : "固定社課";
+      const sessionSignups = getSessionSignups(sessionId);
+      const liveSignupMarkup = isSundaySignup ? buildPublicSignupListMarkup(session, sessionSignups) : "";
       const rosterMarkup =
         rosterPublished && Array.isArray(session.publishedRoster) && session.publishedRoster.length > 0
           ? `
@@ -3090,6 +3269,7 @@ function renderClassSessionBoard(sessions = []) {
               ? buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup, openForSignup)
               : `<div class="class-session-note"><p class="content-copy">此場次不需要填寫志願，請直接依行事曆出席即可。</p></div>`
           }
+          ${liveSignupMarkup}
           ${rosterMarkup}
         </article>
       `;
@@ -3267,10 +3447,6 @@ async function handleClassSignupSubmit(event) {
     return;
   }
 
-  if (!classSignupPageState.approval && !isOfficialMemberStatus()) {
-    return;
-  }
-
   if (!firstChoice || !secondChoice) {
     return;
   }
@@ -3284,6 +3460,12 @@ async function handleClassSignupSubmit(event) {
     return;
   }
 
+  const sessionSignups = getSessionSignups(sessionId).sort((a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt));
+  const ownExistingSignup = sessionSignups.find((signup) => signup.userId === currentUser.uid) || null;
+  const limit = getSessionSignupLimit(session);
+  const signupIndex = ownExistingSignup ? sessionSignups.findIndex((signup) => signup.userId === currentUser.uid) : sessionSignups.length;
+  const signupStatus = limit && signupIndex >= limit ? "waitlisted" : "accepted";
+
   submitButton.disabled = true;
 
   try {
@@ -3294,11 +3476,12 @@ async function handleClassSignupSubmit(event) {
         sessionId,
         userId: currentUser.uid,
         email: currentUser.email || "",
-        name: name || classSignupPageState.approval?.name || currentUser.email || "",
-        studentId: studentId || classSignupPageState.approval?.studentId || "",
+        name: name || currentMemberProfile?.name || currentUser.email || "",
+        studentId: studentId || currentMemberProfile?.studentId || "",
         firstChoice,
         secondChoice,
         note,
+        paymentStatus: ownExistingSignup?.paymentStatus || "unpaid",
         sessionDate: session.date || "",
         sessionWeekday: session.weekday || "",
         sessionTitle: session.title || "",
@@ -3345,8 +3528,9 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
   try {
     const loadWarnings = [];
     if (force || !classSignupPageState.loaded) {
-      const [sessions, ownSignups, approvalDoc] = await Promise.all([
+      const [sessions, allSignups, ownSignups, approvalDoc] = await Promise.all([
         loadWithFallback("社課日期", loadWarnings, () => getCollectionEntries(CLASS_SESSION_COLLECTION), []),
+        loadWithFallback("報名名單", loadWarnings, () => getCollectionEntries(CLASS_SIGNUP_COLLECTION), []),
         currentUser?.uid
           ? loadWithFallback(
               "我的報名",
@@ -3361,6 +3545,7 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
       ]);
 
       classSignupPageState.sessions = sessions;
+      classSignupPageState.sessionSignups = allSignups;
       classSignupPageState.ownSignups = ownSignups.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
       classSignupPageState.approval =
         approvalDoc && typeof approvalDoc.exists === "function" && approvalDoc.exists() ? approvalDoc.data() : null;
@@ -3608,7 +3793,7 @@ function renderFaqBoard(faqEntries = []) {
 
   const requiredFaq = {
     question: "註冊網站帳號就算加入羽球社了嗎？",
-    answer: "不算。註冊帳號僅供登入與查詢申請進度；完成社費繳納並經幹部確認後，才會成為正式社員。",
+    answer: "不算。註冊時會填寫入社資料，註冊後可以登入並送出報名；完成社費繳納並由幹部標記後，才會成為正式社員。",
     pinned: true,
   };
   const hasRequiredFaq = faqEntries.some((faq) => String(faq.question || "").trim() === requiredFaq.question);
@@ -4160,6 +4345,78 @@ const clearAdminClassSessionFormMode = () => {
   renderAdminClassCalendarCompact(membersDashboardCache.classSessions, membersDashboardCache.classSessionSignups);
 };
 
+const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
+  const grouped = groupClassSignupsBySession(signups);
+  const sessionsWithSignups = sessions
+    .map((session) => ({ session, sessionId: getClassSessionId(session), signups: grouped[getClassSessionId(session)] || [] }))
+    .filter((entry) => entry.signups.length > 0)
+    .sort((a, b) => getClassSessionSortMs(a.session) - getClassSessionSortMs(b.session));
+
+  if (sessionsWithSignups.length === 0) {
+    return `
+      <section class="member-section">
+        <div class="section-header is-compact">
+          <div class="section-kicker">Signups</div>
+          <h3 class="content-title">報名名單</h3>
+          <p class="section-description">目前還沒有任何報名資料。</p>
+        </div>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="member-section">
+      <div class="section-header is-compact">
+        <div class="section-kicker">Signups</div>
+        <h3 class="content-title">報名名單與繳費狀態</h3>
+        <p class="section-description">依場次顯示所有報名者；標記已繳費後，該帳號會成為正式社員。</p>
+      </div>
+      <div class="member-list">
+        ${sessionsWithSignups
+          .map(({ session, sessionId, signups: sessionSignups }) => {
+            const limit = getSessionSignupLimit(session);
+            const sortedSignups = [...sessionSignups].sort((a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt));
+            return `
+              <article class="member-row">
+                <div class="member-row-top">
+                  <p class="member-row-index">${escapeHtml(session.title || "社團報名")}</p>
+                  <p class="member-row-status">${limit ? `上限 ${limit} 人` : "不限人數"}</p>
+                </div>
+                <p class="member-row-email">${escapeHtml(getClassSessionDateLabel(session))} / ${escapeHtml(getClassSessionTimeLabel(session) || "時間待定")}</p>
+                <div class="member-list">
+                  ${sortedSignups
+                    .map((signup, index) => {
+                      const computedStatus = getComputedSignupStatus(signup, index, session);
+                      const paid = signup.paymentStatus === "paid";
+                      return `
+                        <article class="member-row is-nested">
+                          <div class="member-row-top">
+                            <p class="member-row-index">#${String(index + 1).padStart(2, "0")} ${escapeHtml(signup.name || "未填姓名")}</p>
+                            <p class="member-row-status">${escapeHtml(getSignupStatusLabel({ ...signup, signupStatus: computedStatus }))} / ${escapeHtml(getSignupPaymentLabel(signup))}</p>
+                          </div>
+                          <p class="member-row-email">${escapeHtml(signup.email || "未填信箱")}</p>
+                          <div class="member-row-meta">
+                            <span>學號：${escapeHtml(signup.studentId || "未填寫")}</span>
+                            <span>第一志願：${escapeHtml(signup.firstChoice || "未填寫")}</span>
+                            <span>第二志願：${escapeHtml(signup.secondChoice || "未填寫")}</span>
+                            <span>備註：${escapeHtml(signup.note || "無")}</span>
+                          </div>
+                          <div class="application-actions">
+                            <button class="button-secondary application-save" data-class-signup-payment type="button" data-signup-id="${escapeHtml(signup.id || `${sessionId}-${signup.userId}`)}" data-user-id="${escapeHtml(signup.userId || "")}" data-email="${escapeHtml(signup.email || "")}" data-payment-status="${paid ? "unpaid" : "paid"}">${paid ? "標記未繳費" : "標記已繳費"}</button>
+                          </div>
+                        </article>
+                      `;
+                    })
+                    .join("")}
+                </div>
+              </article>
+            `;
+          })
+          .join("")}
+      </div>
+    </section>
+  `;
+};
 const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
   const container = getAdminClassCalendarContainer();
   if (!container) {
@@ -4274,6 +4531,7 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
         ${cells.join("")}
       </div>
     </div>
+    ${buildAdminSignupOverviewMarkup(sessions, signups)}
   `;
 
   container.querySelector("[data-admin-calendar-prev]")?.addEventListener("click", () => {
@@ -4328,8 +4586,13 @@ function bindAdminClassCalendarActions() {
     form.addEventListener("submit", handleAdminCalendarEventSubmit);
     form.querySelector("[name='eventType']")?.addEventListener("change", (event) => {
       const signupToggle = form.querySelector(".admin-calendar-signup-toggle");
+      const signupSettings = form.querySelector("[data-admin-calendar-signup-settings]");
+      const signupFieldsHidden = event.target.value !== "class";
       if (signupToggle) {
-        signupToggle.hidden = event.target.value !== "class";
+        signupToggle.hidden = signupFieldsHidden;
+      }
+      if (signupSettings) {
+        signupSettings.hidden = signupFieldsHidden;
       }
     });
   }
@@ -4356,6 +4619,66 @@ function bindAdminClassCalendarActions() {
     });
   });
 
+  document.querySelectorAll("[data-class-signup-payment]").forEach((button) => {
+    if (button.dataset.initialized === "true") {
+      return;
+    }
+
+    button.dataset.initialized = "true";
+    button.addEventListener("click", async () => {
+      const signupId = button.dataset.signupId || "";
+      const userId = button.dataset.userId || "";
+      const email = String(button.dataset.email || "").trim().toLowerCase();
+      const nextPaymentStatus = button.dataset.paymentStatus === "paid" ? "paid" : "unpaid";
+
+      if (!signupId) {
+        return;
+      }
+
+      button.disabled = true;
+      try {
+        await updateDoc(doc(db, CLASS_SIGNUP_COLLECTION, signupId), {
+          paymentStatus: nextPaymentStatus,
+          paidAt: nextPaymentStatus === "paid" ? serverTimestamp() : null,
+          updatedAt: serverTimestamp(),
+        });
+
+        if (userId) {
+          await setDoc(
+            getMemberDocRef(userId),
+            {
+              paymentStatus: nextPaymentStatus,
+              membershipStatus: nextPaymentStatus === "paid" ? "formal_member" : "pending_payment",
+              status: nextPaymentStatus === "paid" ? "formal_member" : "pending_payment",
+              paidAt: nextPaymentStatus === "paid" ? serverTimestamp() : null,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true },
+          );
+        }
+
+        if (nextPaymentStatus === "paid" && email) {
+          await setDoc(
+            getApprovalDocRef(email),
+            {
+              email,
+              status: "approved",
+              approvedAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true },
+          );
+        }
+
+        await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+      } catch (error) {
+        console.error("Update payment status failed:", error);
+        window.alert(`更新繳費狀態失敗：${error?.message || "請稍後再試一次。"}`);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
   document.querySelectorAll("[data-class-session-edit]").forEach((button) => {
     if (button.dataset.initialized === "true") {
       return;
@@ -4477,6 +4800,9 @@ async function handleAdminCalendarEventSubmit(event) {
   const timeLabel = String(form.querySelector("[name='timeLabel']")?.value || "").trim();
   const note = String(form.querySelector("[name='note']")?.value || "").trim() || "無";
   const signupRequired = Boolean(form.querySelector("[name='signupRequired']")?.checked);
+  const signupOpenAt = String(form.querySelector("[name='signupOpenAt']")?.value || "").trim();
+  const signupCloseAt = String(form.querySelector("[name='signupCloseAt']")?.value || "").trim();
+  const signupLimit = Number(form.querySelector("[name='signupLimit']")?.value || 0);
   const weekday = getWeekdayKeyFromDateValue(date);
 
   if (!date || !title || !timeLabel) {
@@ -4517,6 +4843,9 @@ async function handleAdminCalendarEventSubmit(event) {
           description: note,
           reminder: note,
           signupRequired,
+          signupOpenAt,
+          signupCloseAt,
+          signupLimit: Number.isFinite(signupLimit) && signupLimit > 0 ? Math.floor(signupLimit) : null,
           rosterPublished: existing?.exists() ? Boolean(existing.data()?.rosterPublished) : false,
           publishedRoster: existing?.exists() ? existing.data()?.publishedRoster || [] : [],
           publishedAt: existing?.exists() ? existing.data()?.publishedAt || null : null,
@@ -4590,6 +4919,9 @@ async function handleAdminClassSessionSubmit(event) {
   const description = String(form.querySelector("[name='description']")?.value || "").trim();
   const reminder = String(form.querySelector("[name='reminder']")?.value || "").trim();
   const signupRequired = Boolean(form.querySelector("[name='signupRequired']")?.checked);
+  const signupOpenAt = String(form.querySelector("[name='signupOpenAt']")?.value || "").trim();
+  const signupCloseAt = String(form.querySelector("[name='signupCloseAt']")?.value || "").trim();
+  const signupLimit = Number(form.querySelector("[name='signupLimit']")?.value || 0);
   const editingSessionId = String(sessionIdInput?.value || adminClassSessionEditingId || "").trim();
 
   if (!date || !weekday || !title || !timeLabel) {
@@ -4677,10 +5009,16 @@ function bindAdminClassCreationForms() {
 const handleAuthSubmit = async (event) => {
   event.preventDefault();
 
-  const { emailInput, passwordInput, confirmInput, authSubmit } = getLoginModalElements();
+  const { emailInput, passwordInput, confirmInput, authSubmit, signupNameInput, signupStudentIdInput, signupDepartmentInput, signupPhoneInput } = getLoginModalElements();
   const email = emailInput.value.trim().toLowerCase();
   const password = passwordInput.value;
   const passwordConfirm = confirmInput.value;
+  const signupProfile = {
+    name: String(signupNameInput?.value || "").trim(),
+    studentId: String(signupStudentIdInput?.value || "").trim(),
+    department: String(signupDepartmentInput?.value || "").trim(),
+    phone: String(signupPhoneInput?.value || "").trim(),
+  };
 
   if (!firebaseConfigured) {
     setHint("Firebase 尚未設定完成，請先確認 src/firebase-config.js。", "error");
@@ -4702,6 +5040,11 @@ const handleAuthSubmit = async (event) => {
     return;
   }
 
+  if (authMode === "signup" && (!signupProfile.name || !signupProfile.studentId || !signupProfile.department || !signupProfile.phone)) {
+    setHint("請完整填寫姓名、學號、系別與聯絡電話。", "error");
+    return;
+  }
+
   authSubmit.disabled = true;
 
   try {
@@ -4712,11 +5055,11 @@ const handleAuthSubmit = async (event) => {
 
     if (authMode === "signup") {
       const credential = await createUserWithEmailAndPassword(readyAuth, email, password);
-      await syncMemberProfile(credential.user, "signup");
+      await syncMemberProfile(credential.user, "signup", signupProfile);
       await ensureBootstrapAdminDoc(credential.user);
       await loadAdminStatus(credential.user);
       await loadCurrentMemberStatus(credential.user);
-      setHint("帳號建立完成，已自動登入。請接著填寫入社申請。", "success");
+      setHint("帳號建立完成，已自動登入。你現在可以報名參加社團。", "success");
     } else {
       const credential = await signInWithEmailAndPassword(readyAuth, email, password);
       await syncMemberProfile(credential.user, "signin");
