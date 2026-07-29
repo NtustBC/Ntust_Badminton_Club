@@ -1151,8 +1151,17 @@ const ensureAuthReady = async () => {
       faqPageState.loadWarnings = [];
 
       if (user) {
-        await loadAdminStatus(user);
-        await loadCurrentMemberStatus(user);
+        try {
+          await loadAdminStatus(user);
+        } catch (error) {
+          console.warn("Load admin status failed:", error);
+        }
+
+        try {
+          await loadCurrentMemberStatus(user);
+        } catch (error) {
+          console.warn("Load member status failed:", error);
+        }
       }
 
       writeAuthSnapshot(user, currentUserIsAdmin);
@@ -1696,7 +1705,7 @@ const syncMemberProfile = async (user, source, profile = {}) => {
   const approvalData = approvalDoc?.exists() ? approvalDoc.data() : null;
   const normalizedEmail = String(user.email || "").trim().toLowerCase();
   const legacyApprovedMembers =
-    normalizedEmail
+    currentUserIsAdmin && normalizedEmail
       ? await getDocs(query(collection(db, "members"), where("email", "==", normalizedEmail)))
       : null;
 
@@ -5186,10 +5195,21 @@ const handleAuthSubmit = async (event) => {
         : await signInWithEmailAndPassword(readyAuth, email, password);
 
     currentUser = credential.user;
-    await syncMemberProfile(credential.user, authMode === "signup" ? "signup" : "signin", authMode === "signup" ? signupProfile : {});
-    await ensureBootstrapAdminDoc(credential.user);
-    await loadAdminStatus(credential.user);
-    await loadCurrentMemberStatus(credential.user);
+    let profileSyncFailed = false;
+
+    try {
+      await ensureBootstrapAdminDoc(credential.user);
+      await loadAdminStatus(credential.user);
+      await syncMemberProfile(
+        credential.user,
+        authMode === "signup" ? "signup" : "signin",
+        authMode === "signup" ? signupProfile : {},
+      );
+      await loadCurrentMemberStatus(credential.user);
+    } catch (error) {
+      profileSyncFailed = true;
+      console.error("Post-login profile sync failed:", error);
+    }
     writeAuthSnapshot(credential.user, currentUserIsAdmin);
     updateLoginButtons();
     updateAuthView();
@@ -5200,7 +5220,14 @@ const handleAuthSubmit = async (event) => {
       await refreshMembersDashboardSafe({ force: true });
     }
 
-    setHint(authMode === "signup" ? "帳號建立完成，已自動登入。你現在可以報名參加社團。" : "登入成功，已更新社員狀態。", "success");
+    setHint(
+      profileSyncFailed
+        ? "登入成功，但社員資料暫時無法同步；你仍可保持登入並稍後再試。"
+        : authMode === "signup"
+          ? "帳號建立完成，已自動登入。你現在可以報名參加社團。"
+          : "登入成功，已更新社員狀態。",
+      profileSyncFailed ? "error" : "success",
+    );
     event.target.reset();
   } catch (error) {
     setHint(getFriendlyAuthError(error), "error");
