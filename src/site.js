@@ -2566,59 +2566,91 @@ const downloadMembersExcel = (members = []) => {
 
 const renderMembersExportToolbar = (members = []) => {
   const content = document.querySelector("[data-members-content]");
-  const summary = document.querySelector("[data-members-summary]");
-  if (!content || !summary) {
+  const filterCard = content?.querySelector(".member-filter-card");
+  if (!content || !filterCard) {
     return;
   }
 
   const filteredMembers = getFilteredMembersForExport(members);
-  let toolbar = content.querySelector("[data-members-export-toolbar]");
-  if (!toolbar) {
-    summary.insertAdjacentHTML(
+  const filterLabel = `${memberFilters.year === "all" ? "全部學年度" : getAcademicYearLabel(memberFilters.year)} / ${
+    memberFilters.term === "all" ? "全部學期" : getAcademicTermLabel(memberFilters.term)
+  }`;
+  let tableCard = content.querySelector("[data-members-table-card]");
+  if (!tableCard) {
+    filterCard.insertAdjacentHTML(
       "afterend",
       `
-        <section class="content-card is-tight member-filter-card" data-members-export-toolbar>
-          <div class="member-filter-header">
-            <div>
-              <p class="section-kicker">Export</p>
-              <h3 class="content-title">匯出社員名單</h3>
-              <p class="content-copy" data-members-export-copy></p>
-            </div>
-            <div class="page-actions">
-              <button class="button-secondary" data-members-export type="button">匯出 Excel</button>
-            </div>
-          </div>
-        </section>
+        <section class="content-card is-tight member-table-card" data-members-table-card></section>
       `,
     );
-    toolbar = content.querySelector("[data-members-export-toolbar]");
+    tableCard = content.querySelector("[data-members-table-card]");
   }
 
-  const copy = toolbar?.querySelector("[data-members-export-copy]");
-  const button = toolbar?.querySelector("[data-members-export]");
-  if (copy) {
-    copy.textContent = `會匯出目前篩選條件下的社員名單，共 ${filteredMembers.length} 筆。`;
+  if (!tableCard) {
+    return;
   }
 
-  if (button instanceof HTMLButtonElement) {
-    button.disabled = filteredMembers.length === 0;
-    if (button.dataset.bound !== "true") {
-      button.dataset.bound = "true";
-      button.addEventListener("click", () => {
-        const exportMembers = getFilteredMembersForExport(
-          mergeMembersWithApprovedApplications(membersDashboardCache.members, membersDashboardCache.applications),
-        );
-        if (exportMembers.length === 0) {
-          window.alert("目前沒有可匯出的社員資料。");
-          return;
-        }
-
-        downloadMembersExcel(exportMembers);
-      });
-    }
+  if (filteredMembers.length === 0) {
+    tableCard.innerHTML = `
+      <div class="member-filter-header">
+        <div>
+          <p class="section-kicker">Members</p>
+          <h3 class="content-title">篩選結果名單</h3>
+          <p class="content-copy">目前篩選：${escapeHtml(filterLabel)}，共 0 筆。</p>
+        </div>
+      </div>
+      <p class="content-copy member-table-empty">目前沒有符合這個學年度與學期的社員資料。</p>
+    `;
+    return;
   }
+
+  const rows = filteredMembers
+    .map((member, index) => {
+      const isFormalMember = isFormalMemberRecord(member);
+      const membershipStatus = isFormalMember ? "正式社員" : "待繳社費";
+      const paymentStatus = member.paymentStatus === "paid" || isFormalMember ? "社費已繳" : "社費未繳";
+      return `
+        <tr>
+          <td>${String(index + 1).padStart(2, "0")}</td>
+          <td>${escapeHtml(member.name || "未填姓名")}</td>
+          <td>${escapeHtml(member.studentId || "未填學號")}</td>
+          <td>${escapeHtml(member.department || member.school || "未填寫")}</td>
+          <td>${escapeHtml(member.email || "未填寫")}</td>
+          <td>${escapeHtml(member.phone || "未填寫")}</td>
+          <td><span class="member-row-status">${escapeHtml(membershipStatus)}</span></td>
+          <td>${escapeHtml(paymentStatus)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  tableCard.innerHTML = `
+    <div class="member-filter-header">
+      <div>
+        <p class="section-kicker">Members</p>
+        <h3 class="content-title">篩選結果名單</h3>
+        <p class="content-copy">目前篩選：${escapeHtml(filterLabel)}，共 ${filteredMembers.length} 筆。</p>
+      </div>
+    </div>
+    <div class="member-table-wrap">
+      <table class="member-table">
+        <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col">姓名</th>
+            <th scope="col">學號</th>
+            <th scope="col">系級</th>
+            <th scope="col">Gmail</th>
+            <th scope="col">聯絡電話</th>
+            <th scope="col">社員狀態</th>
+            <th scope="col">社費狀態</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
 };
-
 const renderMembersList = (members = []) => {
   const list = document.querySelector("[data-members-list]");
   if (!list) {

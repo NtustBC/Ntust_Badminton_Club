@@ -1519,6 +1519,57 @@ img {
   font-weight: 800;
   box-shadow: 0 12px 26px rgba(15, 76, 129, 0.08);
 }
+.member-table-card {
+  margin-top: 24px;
+}
+
+.member-table-wrap {
+  width: 100%;
+  margin-top: 20px;
+  overflow-x: auto;
+  border: 1px solid rgba(15, 76, 129, 0.1);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.member-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+  color: var(--ink);
+  font-size: 0.94rem;
+}
+
+.member-table th,
+.member-table td {
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(15, 76, 129, 0.08);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.member-table th {
+  background: rgba(15, 76, 129, 0.06);
+  color: var(--brand);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.member-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.member-table td:nth-child(5) {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.member-table-empty {
+  margin: 20px 0 0;
+}
 
 .member-summary-grid {
   display: grid;
