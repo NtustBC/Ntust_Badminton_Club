@@ -64,7 +64,7 @@ const ensureFirebaseModules = async () => {
 };
 
 const body = document.body;
-const pageName = body.dataset.page || "";
+let pageName = body.dataset.page || "";
 const menuButton = document.querySelector("[data-menu-toggle]");
 const mobileNav = document.querySelector("[data-mobile-nav]");
 const languageSelects = document.querySelectorAll("[data-language-select]");
@@ -129,6 +129,7 @@ let membersDashboardCache = {
   loadWarnings: [],
   loaded: false,
 };
+let membersDashboardLoadPromise = null;
 let classSignupPageState = {
   loaded: false,
   sessions: [],
@@ -323,9 +324,6 @@ const loginModalMarkup = `
           <p class="auth-status-label">社員狀態</p>
           <p class="auth-status-email" data-auth-email></p>
           <p class="login-note" data-auth-status-hint></p>
-          <div class="auth-status-actions">
-            <a class="button-secondary auth-admin-link" data-auth-admin-link href="./members.html" hidden>前往管理頁</a>
-          </div>
         </div>
 
         <form class="form-grid" data-login-form id="login-form" novalidate>
@@ -835,6 +833,8 @@ const updateAdminNavigation = () => {
       mobileGrid.append(link);
     }
   }
+
+  prefetchSpaPage("./members.html");
 };
 
 const updateLoginButtons = () => {
@@ -851,7 +851,7 @@ const membershipStatusCopy = {
   admin: {
     label: "管理員",
     meaning: "目前具有管理員權限。",
-    action: "進入管理頁",
+    action: "",
   },  non_member: {
     label: "非社員",
     meaning: "目前不是正式社員。",
@@ -1040,7 +1040,6 @@ const getLoginModalElements = () => {
     statusCard: loginModal.querySelector("[data-auth-status]"),
     statusEmail: loginModal.querySelector("[data-auth-email]"),
     statusHint: loginModal.querySelector("[data-auth-status-hint]"),
-    adminLink: loginModal.querySelector("[data-auth-admin-link]"),
     closeButtons: loginModal.querySelectorAll("[data-close-login]"),
   };
 };
@@ -1150,7 +1149,7 @@ const setAuthMode = (mode) => {
 };
 
 const updateAuthView = () => {
-  const { loginModal, loginForm, statusCard, statusEmail, statusHint, adminLink, authSubmit, authSwitch } =
+  const { loginModal, loginForm, statusCard, statusEmail, statusHint, authSubmit, authSwitch } =
     getLoginModalElements();
 
   if (currentUser) {
@@ -1164,10 +1163,7 @@ const updateAuthView = () => {
       <span class="member-status-badge">${escapeHtml(statusCopy.label)}</span>
       <span>${escapeHtml(currentUser.email || "")}</span>
     `;
-    statusHint.textContent = currentUserIsAdmin ? "你目前有管理員權限，可以進入管理頁。" : `${statusCopy.meaning}｜${statusCopy.action}`;
-    adminLink.hidden = false;
-    adminLink.href = currentUserIsAdmin ? "./members.html" : currentMemberStatus === "formal_member" ? "./class-signup.html" : "./club-signup.html";
-    adminLink.textContent = currentUserIsAdmin ? "進入管理頁" : statusCopy.action;
+    statusHint.textContent = currentUserIsAdmin ? "你目前有管理員權限。" : `${statusCopy.meaning}｜${statusCopy.action}`;
     authSubmit.textContent = signedInCopy.buttonLabel;
     authSubmit.dataset.authAction = "signout";
     authSubmit.removeAttribute("form");
@@ -1180,7 +1176,6 @@ const updateAuthView = () => {
   loginForm.hidden = false;
   statusCard.hidden = true;
   authSwitch.hidden = false;
-  adminLink.hidden = true;
   statusEmail.textContent = "";
   statusHint.textContent = "";
   authSubmit.textContent = authCopy[authMode].submitLabel;
@@ -3098,24 +3093,45 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
 
   try {
     if (force || !membersDashboardCache.loaded) {
-      const dashboardWarnings = [];
-      const [members, classSessions, classSessionSignups, announcements, faqs] = await Promise.all([
-        loadWithFallback("社員名單", dashboardWarnings, () => getCollectionEntries("members"), []),
-        loadWithFallback("社課日期", dashboardWarnings, () => getCollectionEntries(CLASS_SESSION_COLLECTION), []),
-        loadWithFallback("社課報名", dashboardWarnings, () => getCollectionEntries(CLASS_SIGNUP_COLLECTION), []),
-        loadWithFallback("公告", dashboardWarnings, () => getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION), []),
-        loadWithFallback("FAQ", dashboardWarnings, () => getCollectionEntries(FAQ_COLLECTION), []),
-      ]);
+      if (!membersDashboardLoadPromise) {
+        membersDashboardLoadPromise = (async () => {
+          const dashboardWarnings = [];
+          const supportingDataPromise = Promise.all([
+            loadWithFallback("社課日期", dashboardWarnings, () => getCollectionEntries(CLASS_SESSION_COLLECTION), []),
+            loadWithFallback("社課報名", dashboardWarnings, () => getCollectionEntries(CLASS_SIGNUP_COLLECTION), []),
+            loadWithFallback("公告", dashboardWarnings, () => getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION), []),
+            loadWithFallback("FAQ", dashboardWarnings, () => getCollectionEntries(FAQ_COLLECTION), []),
+          ]);
+          const members = await loadWithFallback("社員名單", dashboardWarnings, () => getCollectionEntries("members"), []);
 
-      membersDashboardCache = {
-        members,
-        classSessions,
-        classSessionSignups,
-        announcements,
-        faqs,
-        loadWarnings: dashboardWarnings,
-        loaded: true,
-      };
+          membersDashboardCache = {
+            ...membersDashboardCache,
+            members,
+            loadWarnings: dashboardWarnings,
+            loaded: false,
+          };
+
+          const earlyDisplayMembers = mergeMembersWithApprovedApplications(members);
+          renderMembersSummary(earlyDisplayMembers);
+          renderMembersExportToolbar(earlyDisplayMembers);
+          renderMembersList(earlyDisplayMembers);
+
+          const [classSessions, classSessionSignups, announcements, faqs] = await supportingDataPromise;
+          membersDashboardCache = {
+            members,
+            classSessions,
+            classSessionSignups,
+            announcements,
+            faqs,
+            loadWarnings: dashboardWarnings,
+            loaded: true,
+          };
+        })().finally(() => {
+          membersDashboardLoadPromise = null;
+        });
+      }
+
+      await membersDashboardLoadPromise;
     }
 
     const displayMembers = mergeMembersWithApprovedApplications(membersDashboardCache.members);
@@ -5646,10 +5662,18 @@ const bindOpenButtons = () => {
   rememberLoginButtonLabels();
 
   getLoginButtons().forEach((button) => {
+    if (button.dataset.openLoginBound === "true") {
+      return;
+    }
+    button.dataset.openLoginBound = "true";
     button.addEventListener("click", () => openLoginModal(button));
   });
 
   getApplicationButtons().forEach((button) => {
+    if (button.dataset.openApplicationBound === "true") {
+      return;
+    }
+    button.dataset.openApplicationBound = "true";
     button.addEventListener("click", () => openApplicationModal(button));
   });
 };
@@ -5687,6 +5711,10 @@ const initLanguageSwitcher = () => {
 
 const initFaqAccordion = () => {
   document.querySelectorAll("[data-faq-accordion]").forEach((group) => {
+    if (group.dataset.accordionBound === "true") {
+      return;
+    }
+    group.dataset.accordionBound = "true";
     const items = Array.from(group.querySelectorAll(".faq-item"));
 
     items.forEach((item) => {
@@ -5832,6 +5860,202 @@ const initPublicBoardAutoRefresh = () => {
   });
 };
 
+const SPA_PAGE_FILES = new Set([
+  "index.html",
+  "about.html",
+  "club-signup.html",
+  "class-signup.html",
+  "notices.html",
+  "faq.html",
+  "members.html",
+  "privacy.html",
+]);
+const spaPageCache = new Map();
+let spaNavigationPromise = null;
+let renderedSpaPath = window.location.pathname;
+
+const getSpaPageFile = (url) => {
+  const file = url.pathname.split("/").filter(Boolean).pop() || "index.html";
+  return file.toLowerCase();
+};
+
+const isSpaPageUrl = (url) => url.origin === window.location.origin && SPA_PAGE_FILES.has(getSpaPageFile(url));
+
+const loadSpaPageDocument = (url) => {
+  const cacheKey = url.pathname;
+  if (spaPageCache.has(cacheKey)) {
+    return spaPageCache.get(cacheKey);
+  }
+
+  const request = fetch(url.pathname, {
+    headers: { "X-Requested-With": "spa-navigation" },
+  })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`頁面載入失敗 (${response.status})`);
+      }
+      return response.text();
+    })
+    .then((html) => new DOMParser().parseFromString(html, "text/html"))
+    .catch((error) => {
+      spaPageCache.delete(cacheKey);
+      throw error;
+    });
+
+  spaPageCache.set(cacheKey, request);
+  return request;
+};
+
+function prefetchSpaPage(href) {
+  try {
+    const url = new URL(href, window.location.href);
+    if (isSpaPageUrl(url) && url.pathname !== window.location.pathname) {
+      void loadSpaPageDocument(url).catch(() => {});
+    }
+  } catch {
+    // Ignore malformed links and let the browser handle them normally.
+  }
+}
+
+const syncSpaNavigationState = (targetUrl) => {
+  document.querySelectorAll(".site-nav a[href], .mobile-nav a[href]").forEach((link) => {
+    const linkUrl = new URL(link.href, window.location.href);
+    if (linkUrl.pathname === targetUrl.pathname) {
+      link.setAttribute("aria-current", "page");
+    } else {
+      link.removeAttribute("aria-current");
+    }
+  });
+};
+
+const activateCurrentPage = async () => {
+  bindOpenButtons();
+  bindAcademicYearSetting();
+  initFaqAccordion();
+  initMembersAutoRefresh();
+  initPublicBoardAutoRefresh();
+  syncGlobalNavigationLabels();
+  updateLoginButtons();
+
+  if (pageName === "members") {
+    await refreshMembersDashboardSafe();
+  } else if (pageName === "class-signup") {
+    await refreshClassSignupPageSafe();
+  } else if (pageName === "notices") {
+    await refreshAnnouncementsPageSafe();
+  } else if (pageName === "faq") {
+    await refreshFaqPageSafe();
+  }
+};
+
+const navigateSpa = async (target, { replace = false } = {}) => {
+  const targetUrl = new URL(target, window.location.href);
+  if (!isSpaPageUrl(targetUrl)) {
+    window.location.assign(targetUrl.href);
+    return;
+  }
+
+  if (targetUrl.pathname === renderedSpaPath) {
+    if (targetUrl.hash) {
+      document.querySelector(targetUrl.hash)?.scrollIntoView({ behavior: "smooth" });
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    return;
+  }
+
+  if (spaNavigationPromise) {
+    await spaNavigationPromise;
+  }
+
+  spaNavigationPromise = (async () => {
+    body.classList.add("spa-navigating");
+    closeMobileNav();
+
+    try {
+      const nextDocument = await loadSpaPageDocument(targetUrl);
+      const nextMain = nextDocument.querySelector("main.page-main");
+      const currentMain = document.querySelector("main.page-main");
+      if (!nextMain || !currentMain) {
+        throw new Error("找不到頁面主要內容。");
+      }
+
+      currentMain.replaceWith(document.importNode(nextMain, true));
+      renderedSpaPath = targetUrl.pathname;
+      pageName = nextDocument.body?.dataset.page || getSpaPageFile(targetUrl).replace(/\.html$/, "");
+      body.dataset.page = pageName;
+      document.title = nextDocument.title || document.title;
+      const nextDescription = nextDocument.querySelector('meta[name="description"]')?.content || "";
+      const description = document.querySelector('meta[name="description"]');
+      if (description && nextDescription) {
+        description.content = nextDescription;
+      }
+
+      if (replace) {
+        window.history.replaceState({ spa: true }, "", targetUrl.href);
+      } else {
+        window.history.pushState({ spa: true }, "", targetUrl.href);
+      }
+
+      syncSpaNavigationState(targetUrl);
+      await activateCurrentPage();
+
+      if (targetUrl.hash) {
+        document.querySelector(targetUrl.hash)?.scrollIntoView();
+      } else {
+        window.scrollTo({ top: 0 });
+      }
+    } catch (error) {
+      console.warn("SPA navigation failed; falling back to a full page load.", error);
+      window.location.assign(targetUrl.href);
+    } finally {
+      body.classList.remove("spa-navigating");
+      spaNavigationPromise = null;
+    }
+  })();
+
+  await spaNavigationPromise;
+};
+
+const initSpaNavigation = () => {
+  document.addEventListener("click", (event) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+
+    const link = event.target.closest("a[href]");
+    if (!link || link.target || link.hasAttribute("download")) {
+      return;
+    }
+
+    const targetUrl = new URL(link.href, window.location.href);
+    if (!isSpaPageUrl(targetUrl)) {
+      return;
+    }
+
+    event.preventDefault();
+    void navigateSpa(targetUrl);
+  });
+
+  document.addEventListener("pointerover", (event) => {
+    const link = event.target.closest("a[href]");
+    if (link) {
+      prefetchSpaPage(link.href);
+    }
+  });
+
+  document.addEventListener("focusin", (event) => {
+    const link = event.target.closest("a[href]");
+    if (link) {
+      prefetchSpaPage(link.href);
+    }
+  });
+
+  window.addEventListener("popstate", () => {
+    void navigateSpa(window.location.href, { replace: true });
+  });
+};
+
 const init = async () => {
   primeAuthStateFromSnapshot();
   ensureLoginModal();
@@ -5855,6 +6079,7 @@ const init = async () => {
   initLanguageSwitcher();
   initFaqAccordion();
   initKeybindings();
+  initSpaNavigation();
   initMembersAutoRefresh();
   initPublicBoardAutoRefresh();
   setAuthMode("signin");
@@ -5867,15 +6092,7 @@ const init = async () => {
     await loadCurrentTermSettings();
   }
 
-  if (pageName === "members") {
-    await refreshMembersDashboardSafe();
-  } else if (pageName === "class-signup") {
-    await refreshClassSignupPageSafe();
-  } else if (pageName === "notices") {
-    await refreshAnnouncementsPageSafe();
-  } else if (pageName === "faq") {
-    await refreshFaqPageSafe();
-  }
+  await activateCurrentPage();
 };
 
 void init();

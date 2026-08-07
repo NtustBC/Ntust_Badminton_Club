@@ -316,6 +316,12 @@ img {
 .page-main {
   flex: 1 0 auto;
   padding: 56px 0 72px;
+  transition: opacity 140ms ease;
+}
+
+body.spa-navigating .page-main {
+  pointer-events: none;
+  opacity: 0.55;
 }
 
 .page-hero {
