@@ -1639,15 +1639,116 @@ body.spa-navigating .page-main {
 }
 
 .member-payment-cell {
-  min-width: 180px;
+  min-width: 230px;
   flex-direction: column;
+  align-items: stretch;
+}
+
+.member-payment-state {
+  display: flex;
   align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 76, 129, 0.12);
+  border-radius: 14px;
+  background: rgba(248, 251, 255, 0.96);
+}
+
+.member-payment-state-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: #8295aa;
+  box-shadow: 0 0 0 4px rgba(130, 149, 170, 0.12);
+}
+
+.member-payment-state-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.member-payment-state-copy strong {
+  color: var(--ink);
+  font-size: 0.94rem;
+  line-height: 1.35;
+}
+
+.member-payment-state-copy small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.member-payment-state.is-pending {
+  border-color: rgba(23, 108, 181, 0.18);
+  background: linear-gradient(135deg, rgba(235, 245, 255, 0.98), rgba(248, 251, 255, 0.98));
+}
+
+.member-payment-state.is-pending .member-payment-state-dot {
+  background: #2378bf;
+  box-shadow: 0 0 0 4px rgba(35, 120, 191, 0.12);
+}
+
+.member-payment-state.is-confirmed {
+  border-color: rgba(30, 139, 92, 0.2);
+  background: linear-gradient(135deg, rgba(235, 250, 242, 0.98), rgba(248, 255, 251, 0.98));
+}
+
+.member-payment-state.is-confirmed .member-payment-state-dot {
+  background: #1e8b5c;
+  box-shadow: 0 0 0 4px rgba(30, 139, 92, 0.12);
+}
+
+.member-payment-state.is-confirmed .member-payment-state-copy strong {
+  color: #166b47;
 }
 
 .member-payment-confirm {
-  min-height: 38px;
-  padding-inline: 12px;
-  font-size: 0.84rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgba(15, 76, 129, 0.18);
+  border-radius: 13px;
+  background: var(--brand);
+  color: #fff;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(15, 76, 129, 0.16);
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.member-payment-confirm span {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 0.75rem;
+}
+
+.member-payment-confirm:hover,
+.member-payment-confirm:focus-visible {
+  transform: translateY(-1px);
+  background: var(--brand-deep);
+  box-shadow: 0 14px 28px rgba(15, 76, 129, 0.22);
+  outline: none;
+}
+
+.member-payment-confirm:disabled {
+  cursor: wait;
+  opacity: 0.65;
+  transform: none;
 }
 
 .membership-payment-setting-card {
@@ -2905,6 +3006,20 @@ button.admin-calendar-day:focus-visible {
   font-weight: 700;
 }
 
+.admin-calendar-date-time-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid rgba(15, 76, 129, 0.1);
+  border-radius: var(--radius-md);
+  background: rgba(248, 251, 255, 0.88);
+}
+
+.admin-calendar-date-time-grid [hidden] {
+  display: none;
+}
+
 .admin-signup-window-presets {
   display: flex;
   flex-wrap: wrap;
@@ -3234,6 +3349,11 @@ button.admin-calendar-day:focus-visible {
   .transfer-account-card p {
     display: grid;
     gap: 4px;
+  }
+
+  .admin-calendar-date-time-grid {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px;
   }
 
   .header-inner {

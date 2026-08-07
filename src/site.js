@@ -115,6 +115,7 @@ let currentMemberStatus = "non_member";
 let currentMemberProfile = null;
 let configuredAcademicYear = "";
 let configuredAcademicTerm = "";
+let configuredAcademicPeriodKey = "";
 let membershipPaymentSettings = {
   bankName: "",
   bankCode: "",
@@ -656,7 +657,6 @@ const adminClassCalendarModalMarkup = `
         <div class="admin-calendar-modal-list" data-admin-calendar-modal-list></div>
         <form class="form-grid admin-calendar-event-form" data-admin-calendar-event-form>
           <input name="eventId" type="hidden" value="" />
-          <input name="date" type="hidden" value="" />
           <p class="admin-calendar-form-state" data-admin-calendar-form-state>這一天還沒有內容，直接填寫下方欄位即可新增。</p>
           <div class="form-field">
             <label for="admin-calendar-event-type">類型</label>
@@ -669,9 +669,23 @@ const adminClassCalendarModalMarkup = `
             <label for="admin-calendar-event-title">標題</label>
             <input id="admin-calendar-event-title" name="title" type="text" placeholder="例如：雙打練習 / 場地異動" />
           </div>
-          <div class="form-field">
-            <label for="admin-calendar-event-time">時間</label>
-            <input id="admin-calendar-event-time" name="timeLabel" type="text" placeholder="例如：19:00 - 21:00" />
+          <div class="admin-calendar-date-time-grid">
+            <div class="form-field">
+              <label for="admin-calendar-event-date">開始日期</label>
+              <input id="admin-calendar-event-date" name="date" type="date" required />
+            </div>
+            <div class="form-field" data-announcement-end-date-field hidden>
+              <label for="admin-calendar-event-end-date">結束日期</label>
+              <input id="admin-calendar-event-end-date" name="endDate" type="date" />
+            </div>
+            <div class="form-field">
+              <label for="admin-calendar-event-start-time">開始時間（選填）</label>
+              <input id="admin-calendar-event-start-time" name="startTime" step="300" type="time" />
+            </div>
+            <div class="form-field">
+              <label for="admin-calendar-event-end-time">結束時間（選填）</label>
+              <input id="admin-calendar-event-end-time" name="endTime" step="300" type="time" />
+            </div>
           </div>
           <div class="form-field">
             <label for="admin-calendar-event-location">地點</label>
@@ -910,7 +924,16 @@ const getClassSessionDateLabel = (session) => {
   const weekdayLabel = getWeekdayLabel(session.weekday);
   return [dateLabel, weekdayLabel].filter(Boolean).join(" / ");
 };
-const getClassSessionTimeLabel = (session) => String(session.timeLabel || session.time || "").trim();
+const buildEventTimeLabel = (startTime, endTime, legacyLabel = "") => {
+  const start = String(startTime || "").trim();
+  const end = String(endTime || "").trim();
+  return start && end ? `${start} - ${end}` : String(legacyLabel || "").trim();
+};
+const getLegacyTimeParts = (value = "") => {
+  const matches = String(value).match(/(\d{1,2}:\d{2})\s*(?:-|–|~|至)\s*(\d{1,2}:\d{2})/);
+  return matches ? { startTime: matches[1].padStart(5, "0"), endTime: matches[2].padStart(5, "0") } : { startTime: "", endTime: "" };
+};
+const getClassSessionTimeLabel = (session) => buildEventTimeLabel(session.startTime, session.endTime, session.timeLabel || session.time);
 const isBootstrapAdminEmail = (email) => email.trim().toLowerCase() === bootstrapAdminEmailNormalized;
 
 const rememberLoginButtonLabels = () => {
@@ -1758,7 +1781,8 @@ const closeApplicationSuccessModal = () => {
 };
 
 const getAdminCalendarAnnouncementId = (announcement = {}) => String(announcement.id || announcement.announcementId || "").trim();
-const getAnnouncementTimeLabel = (announcement = {}) => String(announcement.timeLabel || announcement.time || "").trim();
+const getAnnouncementTimeLabel = (announcement = {}) =>
+  buildEventTimeLabel(announcement.startTime, announcement.endTime, announcement.timeLabel || announcement.time);
 const getAnnouncementNote = (announcement = {}) => String(announcement.body || announcement.note || announcement.reminder || "").trim();
 const getAnnouncementDateKey = (announcement = {}) => {
   const explicitDate = String(announcement.date || "").trim();
@@ -1772,6 +1796,37 @@ const getAnnouncementDateKey = (announcement = {}) => {
   }
 
   return formatDateInputValue(new Date(createdAtMs));
+};
+
+const getAnnouncementEndDateKey = (announcement = {}) => {
+  const startDate = getAnnouncementDateKey(announcement);
+  const explicitEndDate = String(announcement.endDate || "").trim();
+  return parseDateKey(explicitEndDate) && explicitEndDate >= startDate ? explicitEndDate : startDate;
+};
+
+const isDateWithinAnnouncement = (dateKey, announcement = {}) => {
+  const startDate = getAnnouncementDateKey(announcement);
+  const endDate = getAnnouncementEndDateKey(announcement);
+  return Boolean(startDate && dateKey >= startDate && dateKey <= endDate);
+};
+
+const getAnnouncementDateKeys = (announcement = {}, maxDays = 370) => {
+  const start = parseDateKey(getAnnouncementDateKey(announcement));
+  const endKey = getAnnouncementEndDateKey(announcement);
+  if (!start || !endKey) {
+    return [];
+  }
+  const keys = [];
+  const cursor = new Date(start);
+  while (keys.length < maxDays) {
+    const key = formatDateInputValue(cursor);
+    if (key > endKey) {
+      break;
+    }
+    keys.push(key);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return keys;
 };
 
 const getAdminCalendarEventsForDate = (dateKey) => {
@@ -1788,7 +1843,7 @@ const getAdminCalendarEventsForDate = (dateKey) => {
     }));
 
   const announcementEvents = membersDashboardCache.announcements
-    .filter((announcement) => getAnnouncementDateKey(announcement) === dateKey)
+    .filter((announcement) => isDateWithinAnnouncement(dateKey, announcement))
     .map((announcement) => ({
       type: "announcement",
       id: getAdminCalendarAnnouncementId(announcement),
@@ -2099,10 +2154,14 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   form.reset();
   const eventId = event?.id || "";
   form.querySelector("[name='eventId']").value = eventId;
-  form.querySelector("[name='date']").value = dateKey;
+  const sourceDate = event?.source?.date || event?.source?.sessionDate || dateKey;
+  form.querySelector("[name='date']").value = sourceDate;
   form.querySelector("[name='eventType']").value = event?.type || "class";
   form.querySelector("[name='title']").value = event?.title || "";
-  form.querySelector("[name='timeLabel']").value = event?.timeLabel || "";
+  const legacyTimeParts = getLegacyTimeParts(event?.timeLabel || "");
+  form.querySelector("[name='endDate']").value = event?.type === "announcement" ? event.source?.endDate || sourceDate : "";
+  form.querySelector("[name='startTime']").value = event?.source?.startTime || legacyTimeParts.startTime;
+  form.querySelector("[name='endTime']").value = event?.source?.endTime || legacyTimeParts.endTime;
   form.querySelector("[name='location']").value = event?.location || event?.source?.location || "";
   form.querySelector("[name='note']").value = event?.note || "";
   form.querySelector("[name='signupOpenAt']").value = event?.type === "class" ? formatDateTimeLocalValue(event.source?.signupOpenAt) : "";
@@ -2124,11 +2183,15 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   const signupToggle = form.querySelector(".admin-calendar-signup-toggle");
   const signupSettings = form.querySelector("[data-admin-calendar-signup-settings]");
   const signupFieldsHidden = (event?.type || "class") !== "class";
+  const announcementEndDateField = form.querySelector("[data-announcement-end-date-field]");
   if (signupToggle) {
     signupToggle.hidden = signupFieldsHidden;
   }
   if (signupSettings) {
     signupSettings.hidden = signupFieldsHidden;
+  }
+  if (announcementEndDateField) {
+    announcementEndDateField.hidden = !signupFieldsHidden;
   }
 
   if (deleteButton) {
@@ -2225,7 +2288,7 @@ const openAdminClassCalendarModal = (dateKey, trigger = null) => {
             <button class="admin-calendar-event-chip is-${escapeHtml(event.type)}" data-admin-calendar-event-edit type="button" data-event-type="${escapeHtml(event.type)}" data-event-id="${escapeHtml(event.id)}">
               <span>${escapeHtml(typeLabel)}</span>
               <strong>${escapeHtml(event.title)}</strong>
-              <small>${escapeHtml(event.timeLabel || "未填時間")}${event.location ? ` · ${escapeHtml(event.location)}` : ""}</small>
+              <small>${event.timeLabel ? escapeHtml(event.timeLabel) : "不指定時間"}${event.location ? ` · ${escapeHtml(event.location)}` : ""}</small>
             </button>
           `;
         })
@@ -2487,6 +2550,17 @@ const getDefaultAcademicTerm = (date = new Date()) => {
   return month >= 8 || month <= 1 ? "上學期" : "下學期";
 };
 
+const getAcademicPeriodForDate = (date = new Date()) => {
+  const month = date.getMonth() + 1;
+  const academicYear = String(month >= 8 ? date.getFullYear() - 1911 : date.getFullYear() - 1912);
+  const term = month >= 2 && month < 8 ? "下學期" : "上學期";
+  return {
+    academicYear,
+    term,
+    key: `${academicYear}-${term}`,
+  };
+};
+
 const getConfiguredAcademicTerm = () =>
   DEFAULT_TERMS.slice(0, 2).includes(configuredAcademicTerm) ? configuredAcademicTerm : getDefaultAcademicTerm();
 
@@ -2500,6 +2574,7 @@ const loadCurrentTermSettings = async () => {
     const settingsData = settingsDoc.exists() ? settingsDoc.data() : {};
     const academicYear = String(settingsData?.academicYear || "").trim();
     const term = String(settingsData?.term || "").trim();
+    configuredAcademicPeriodKey = String(settingsData?.academicPeriodKey || "").trim();
     if (isValidAcademicYearValue(academicYear)) {
       configuredAcademicYear = academicYear;
       saveAdminAcademicYears(Array.from(new Set([academicYear, ...getStoredAdminAcademicYears()])).sort((a, b) => Number(b) - Number(a)));
@@ -2523,6 +2598,75 @@ const loadCurrentTermSettings = async () => {
   } catch (error) {
     console.warn("Load current term settings failed:", error);
   }
+};
+
+const applyAcademicPeriodRolloverIfNeeded = async () => {
+  if (!db || !currentUserIsAdmin) {
+    return false;
+  }
+
+  const targetPeriod = getAcademicPeriodForDate();
+  if (configuredAcademicPeriodKey === targetPeriod.key) {
+    return false;
+  }
+
+  const membersSnapshot = await getDocs(collection(db, "members"));
+  const formalMembers = membersSnapshot.docs.filter(
+    (snapshot) => getManagedMembershipStatus(snapshot.data()) === "formal_member",
+  );
+
+  for (let index = 0; index < formalMembers.length; index += 200) {
+    const batch = writeBatch(db);
+    formalMembers.slice(index, index + 200).forEach((snapshot) => {
+      const member = snapshot.data();
+      batch.set(
+        snapshot.ref,
+        {
+          membershipStatus: "former_member",
+          status: "former_member",
+          membershipIntent: "not_join",
+          paymentStatus: "unpaid",
+          paymentMethod: "none",
+          cashPaymentSlot: "",
+          transferAt: "",
+          transferLastFive: "",
+          academicYear: targetPeriod.academicYear,
+          term: targetPeriod.term,
+          formerMemberAt: serverTimestamp(),
+          academicPeriodRolloverAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      const email = String(member.email || "").trim().toLowerCase();
+      if (email) {
+        batch.delete(getApprovalDocRef(email));
+      }
+    });
+    await batch.commit();
+  }
+
+  await setDoc(
+    getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC),
+    {
+      academicYear: targetPeriod.academicYear,
+      term: targetPeriod.term,
+      academicPeriodKey: targetPeriod.key,
+      academicPeriodStartedAt: serverTimestamp(),
+      academicPeriodUpdatedBy: currentUser?.uid || "",
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+  configuredAcademicYear = targetPeriod.academicYear;
+  configuredAcademicTerm = targetPeriod.term;
+  configuredAcademicPeriodKey = targetPeriod.key;
+  memberFilters.year = targetPeriod.academicYear;
+  memberFilters.term = targetPeriod.term;
+  membersDashboardCache.loaded = false;
+  syncAcademicYearSetting();
+  patchMembersFilterUI();
+  return true;
 };
 
 const buildAcademicYearOptions = () => {
@@ -3252,15 +3396,24 @@ const renderMembersExportToolbar = (members = []) => {
       const managedStatus = getManagedMembershipStatus(member);
       const membershipIntent = getMembershipIntentFromProfile(member);
       const paymentMethod = member.paymentMethod || (membershipIntent === "join" ? "later" : "none");
-      const paymentDetails = [
-        getPaymentMethodLabel(paymentMethod),
+      const paymentConfirmed = member.paymentStatus === "paid" || managedStatus === "formal_member" || managedStatus === "admin";
+      const paymentMeta = [
         paymentMethod === "cash" ? getCashPaymentSlotLabel(member.cashPaymentSlot) : "",
         paymentMethod === "transfer" && member.transferLastFive ? `末五碼 ${member.transferLastFive}` : "",
         paymentMethod === "transfer" && member.transferAt ? member.transferAt.replace("T", " ") : "",
       ].filter(Boolean);
+      const paymentTitle = paymentConfirmed
+        ? "已確認收款"
+        : membershipIntent === "join"
+          ? getPaymentMethodLabel(paymentMethod)
+          : "未申請社員";
+      const paymentStateClass = paymentConfirmed ? "is-confirmed" : membershipIntent === "join" ? "is-pending" : "is-neutral";
+      const paymentMetaCopy = paymentConfirmed
+        ? `${getPaymentMethodLabel(paymentMethod)}${paymentMeta.length ? `・${paymentMeta.join("・")}` : ""}`
+        : paymentMeta.join("・") || (membershipIntent === "join" ? "等待社員完成付款" : "本學期未提出申請");
       const confirmPaymentButton =
         membershipIntent === "join" && managedStatus !== "formal_member" && managedStatus !== "admin"
-          ? `<button class="button-secondary member-payment-confirm" data-member-action="toggle-membership-payment" data-member-id="${escapeHtml(member.id)}" data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}" data-payment-status="paid" type="button">確認收款</button>`
+          ? `<button class="member-payment-confirm" data-member-action="toggle-membership-payment" data-member-id="${escapeHtml(member.id)}" data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}" data-payment-status="paid" type="button"><span aria-hidden="true">✓</span>確認已收款</button>`
           : "";
       return `
         <tr>
@@ -3270,7 +3423,18 @@ const renderMembersExportToolbar = (members = []) => {
           <td>${escapeHtml(member.department || member.school || "未填寫")}</td>
           <td>${escapeHtml(member.email || "未填寫")}</td>
           <td>${escapeHtml(member.phone || "未填寫")}</td>
-          <td><div class="member-payment-cell"><span>${escapeHtml(paymentDetails.join("／"))}</span>${confirmPaymentButton}</div></td>
+          <td>
+            <div class="member-payment-cell">
+              <div class="member-payment-state ${paymentStateClass}">
+                <span class="member-payment-state-dot" aria-hidden="true"></span>
+                <span class="member-payment-state-copy">
+                  <strong>${escapeHtml(paymentTitle)}</strong>
+                  <small>${escapeHtml(paymentMetaCopy)}</small>
+                </span>
+              </div>
+              ${confirmPaymentButton}
+            </div>
+          </td>
           <td>
             <select
               class="member-status-select"
@@ -3817,7 +3981,7 @@ function renderClassCalendarBoard(sessions = []) {
             <div>
               <p class="section-kicker">${escapeHtml(getWeekdayLabel(session.weekday) || "可報名社課")}</p>
               <h3 class="content-title">${escapeHtml(getClassSessionDateLabel(session))}</h3>
-              <p class="content-copy">${escapeHtml(getClassSessionTimeLabel(session) || "時間待定")} ・ ${escapeHtml(session.title || "社課")}</p>
+              <p class="content-copy">${escapeHtml([getClassSessionTimeLabel(session), session.title || "社課"].filter(Boolean).join(" ・ "))}</p>
               ${session.location ? `<p class="content-copy">地點：${escapeHtml(session.location)}</p>` : ""}
             </div>
             <span class="member-row-status">開放報名</span>
@@ -3944,7 +4108,7 @@ function renderClassSessionBoard(sessions = []) {
             <div>
               <p class="section-kicker">${escapeHtml(getWeekdayLabel(session.weekday) || "社課")}</p>
               <h3 class="content-title">${escapeHtml(session.title || "社課")}</h3>
-              <p class="content-copy">${escapeHtml(getClassSessionDateLabel(session))} ・ ${escapeHtml(getClassSessionTimeLabel(session) || "時間待定")}</p>
+              <p class="content-copy">${escapeHtml([getClassSessionDateLabel(session), getClassSessionTimeLabel(session)].filter(Boolean).join(" ・ "))}</p>
             </div>
             <span class="member-row-status">${escapeHtml(statusLabel)}</span>
           </div>
@@ -3999,7 +4163,7 @@ function renderClassRosterBoard(sessions = []) {
             <div>
               <p class="section-kicker">${escapeHtml(getWeekdayLabel(session.weekday) || "社課")}</p>
               <h3 class="content-title">${escapeHtml(session.title || "社課名單")}</h3>
-              <p class="content-copy">${escapeHtml(getClassSessionDateLabel(session))} ・ ${escapeHtml(getClassSessionTimeLabel(session) || "時間待定")}</p>
+              <p class="content-copy">${escapeHtml([getClassSessionDateLabel(session), getClassSessionTimeLabel(session)].filter(Boolean).join(" ・ "))}</p>
             </div>
             <span class="member-row-status">${escapeHtml(`${signups.length} 人報名`)}</span>
           </div>
@@ -4308,16 +4472,16 @@ function renderAnnouncementsBoard(announcements = []) {
   const todayKey = formatDateInputValue(new Date());
 
   const announcementsByDate = datedAnnouncements.reduce((acc, announcement) => {
-    const date = parseDateKey(announcement.dateKey);
-    if (!date || date.getFullYear() !== year || date.getMonth() !== month) {
-      return acc;
-    }
-
-    if (!acc[announcement.dateKey]) {
-      acc[announcement.dateKey] = [];
-    }
-
-    acc[announcement.dateKey].push(announcement);
+    getAnnouncementDateKeys(announcement).forEach((dateKey) => {
+      const date = parseDateKey(dateKey);
+      if (!date || date.getFullYear() !== year || date.getMonth() !== month) {
+        return;
+      }
+      if (!acc[dateKey]) {
+        acc[dateKey] = [];
+      }
+      acc[dateKey].push(announcement);
+    });
     return acc;
   }, {});
 
@@ -4342,7 +4506,7 @@ function renderAnnouncementsBoard(announcements = []) {
             .map(
               (announcement) => `
                 <span class="admin-calendar-day-badge is-announcement">
-                  ${escapeHtml(announcement.timeLabel || announcement.time || "公告")}
+                  ${escapeHtml(getAnnouncementTimeLabel(announcement) || "公告")}
                 </span>
                 <strong class="announcement-calendar-title">${escapeHtml(announcement.title || "公告")}</strong>
                 <small class="announcement-calendar-note">${escapeHtml(announcement.body || announcement.message || announcement.reminder || "")}</small>
@@ -4403,7 +4567,7 @@ function renderAnnouncementsBoard(announcements = []) {
     button.addEventListener("click", () => {
       const dateKey = button.dataset.dateKey || "";
       const events = announcementPageState.announcements
-        .filter((announcement) => getAnnouncementDateKey(announcement) === dateKey)
+        .filter((announcement) => isDateWithinAnnouncement(dateKey, announcement))
         .map((announcement) => ({
           type: "announcement",
           id: getAdminCalendarAnnouncementId(announcement),
@@ -4661,7 +4825,14 @@ function renderAdminAnnouncements(announcements = []) {
           <summary class="class-announcement-summary">
             <div class="class-announcement-summary-main">
               <div class="notice-meta">
-                <span>${escapeHtml(announcement.date || formatTimestamp(announcement.createdAt))}</span>
+                <span>${escapeHtml(
+                  getAnnouncementDateKey(announcement)
+                    ? getAnnouncementEndDateKey(announcement) !== getAnnouncementDateKey(announcement)
+                      ? `${getAnnouncementDateKey(announcement)} ～ ${getAnnouncementEndDateKey(announcement)}`
+                      : getAnnouncementDateKey(announcement)
+                    : formatTimestamp(announcement.createdAt),
+                )}</span>
+                ${getAnnouncementTimeLabel(announcement) ? `<span>${escapeHtml(getAnnouncementTimeLabel(announcement))}</span>` : ""}
                 <span>${escapeHtml(announcement.reminder || "公告")}</span>
               </div>
               <h3 class="notice-title">${escapeHtml(announcement.title || "公告")}</h3>
@@ -5251,7 +5422,7 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
                   <p class="member-row-index">${escapeHtml(session.title || "社團報名")}</p>
                   <p class="member-row-status">${limit ? `上限 ${limit} 人` : "不限人數"}</p>
                 </div>
-                <p class="member-row-email">${escapeHtml(getClassSessionDateLabel(session))} / ${escapeHtml(getClassSessionTimeLabel(session) || "時間待定")}</p>
+                <p class="member-row-email">${escapeHtml([getClassSessionDateLabel(session), getClassSessionTimeLabel(session)].filter(Boolean).join(" / "))}</p>
                 <div class="member-list">
                   ${sortedSignups
                     .map((signup, index) => {
@@ -5307,10 +5478,7 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
     const sessionDate = parseDateKey(session.date || session.sessionDate || "");
     return sessionDate && sessionDate.getFullYear() === year && sessionDate.getMonth() === month;
   });
-  const monthAnnouncements = membersDashboardCache.announcements.filter((announcement) => {
-    const announcementDate = parseDateKey(getAnnouncementDateKey(announcement));
-    return announcementDate && announcementDate.getFullYear() === year && announcementDate.getMonth() === month;
-  });
+  const monthAnnouncements = membersDashboardCache.announcements;
 
   const sessionsByDate = monthSessions.reduce((acc, session) => {
     const dateKey = String(session.date || session.sessionDate || "").trim();
@@ -5326,16 +5494,16 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
     return acc;
   }, {});
   const announcementsByDate = monthAnnouncements.reduce((acc, announcement) => {
-    const dateKey = getAnnouncementDateKey(announcement);
-    if (!dateKey) {
-      return acc;
-    }
-
-    if (!acc[dateKey]) {
-      acc[dateKey] = [];
-    }
-
-    acc[dateKey].push(announcement);
+    getAnnouncementDateKeys(announcement).forEach((dateKey) => {
+      const date = parseDateKey(dateKey);
+      if (!date || date.getFullYear() !== year || date.getMonth() !== month) {
+        return;
+      }
+      if (!acc[dateKey]) {
+        acc[dateKey] = [];
+      }
+      acc[dateKey].push(announcement);
+    });
     return acc;
   }, {});
 
@@ -5481,12 +5649,29 @@ function bindAdminClassCalendarActions() {
     form.querySelector("[name='eventType']")?.addEventListener("change", (event) => {
       const signupToggle = form.querySelector(".admin-calendar-signup-toggle");
       const signupSettings = form.querySelector("[data-admin-calendar-signup-settings]");
+      const announcementEndDateField = form.querySelector("[data-announcement-end-date-field]");
       const signupFieldsHidden = event.target.value !== "class";
       if (signupToggle) {
         signupToggle.hidden = signupFieldsHidden;
       }
       if (signupSettings) {
         signupSettings.hidden = signupFieldsHidden;
+      }
+      if (announcementEndDateField) {
+        announcementEndDateField.hidden = !signupFieldsHidden;
+      }
+      if (signupFieldsHidden) {
+        const startDate = form.querySelector("[name='date']")?.value || "";
+        const endDateInput = form.querySelector("[name='endDate']");
+        if (endDateInput instanceof HTMLInputElement && !endDateInput.value) {
+          endDateInput.value = startDate;
+        }
+      }
+    });
+    form.querySelector("[name='date']")?.addEventListener("change", (event) => {
+      const endDateInput = form.querySelector("[name='endDate']");
+      if (endDateInput instanceof HTMLInputElement && (!endDateInput.value || endDateInput.value < event.target.value)) {
+        endDateInput.value = event.target.value;
       }
     });
     form.querySelectorAll("[data-signup-window-preset]").forEach((button) => {
@@ -5621,7 +5806,10 @@ async function handleAdminCalendarEventSubmit(event) {
   const date = String(form.querySelector("[name='date']")?.value || "").trim();
   const eventType = String(form.querySelector("[name='eventType']")?.value || form.dataset.editingType || "class").trim();
   const title = String(form.querySelector("[name='title']")?.value || "").trim();
-  const timeLabel = String(form.querySelector("[name='timeLabel']")?.value || "").trim();
+  const endDate = eventType === "announcement" ? String(form.querySelector("[name='endDate']")?.value || date).trim() : date;
+  const startTime = String(form.querySelector("[name='startTime']")?.value || "").trim();
+  const endTime = String(form.querySelector("[name='endTime']")?.value || "").trim();
+  const timeLabel = buildEventTimeLabel(startTime, endTime);
   const location = String(form.querySelector("[name='location']")?.value || "").trim();
   const note = String(form.querySelector("[name='note']")?.value || "").trim() || "無";
   const signupRequired = Boolean(form.querySelector("[name='signupRequired']")?.checked);
@@ -5631,8 +5819,24 @@ async function handleAdminCalendarEventSubmit(event) {
   const signupLimit = Number(form.querySelector("[name='signupLimit']")?.value || 0);
   const weekday = getWeekdayKeyFromDateValue(date);
 
-  if (!date || !title || !timeLabel || !location) {
-    window.alert("請先填寫標題、時間與地點。");
+  if (!date || !title || !location) {
+    window.alert("請先填寫標題、日期與地點。");
+    return;
+  }
+
+  if ((startTime && !endTime) || (!startTime && endTime)) {
+    window.alert("開始時間與結束時間請一起填寫，或兩者都留空。");
+    return;
+  }
+
+  if (eventType === "announcement" && endDate < date) {
+    window.alert("公告結束日期不能早於開始日期。");
+    form.querySelector("[name='endDate']")?.focus();
+    return;
+  }
+
+  if (startTime && endTime && date === endDate && startTime >= endTime) {
+    window.alert("結束時間必須晚於開始時間。");
     return;
   }
 
@@ -5652,7 +5856,10 @@ async function handleAdminCalendarEventSubmit(event) {
         announcementRef,
         {
           date,
+          endDate,
           title,
+          startTime,
+          endTime,
           timeLabel,
           location,
           reminder: note,
@@ -5672,6 +5879,8 @@ async function handleAdminCalendarEventSubmit(event) {
           date,
           weekday,
           title,
+          startTime,
+          endTime,
           timeLabel,
           location,
           description: note,
@@ -5932,6 +6141,7 @@ const handleAuthSubmit = async (event) => {
     if (pageName === "members") {
       membersDashboardCache.loaded = false;
       await loadCurrentTermSettings();
+      await applyAcademicPeriodRolloverIfNeeded();
       await refreshMembersDashboardSafe({ force: true });
     }
 
@@ -6280,7 +6490,9 @@ const syncAcademicYearSetting = () => {
   input.value = getDefaultAdminAcademicYear();
   termSelect.value = getConfiguredAcademicTerm();
   if (hint) {
-    hint.textContent = currentUserIsAdmin ? "輸入後會加入下方學年度篩選選單。" : "登入管理員後可以設定目前學年度。";
+    hint.textContent = currentUserIsAdmin
+      ? "2/1、8/1 後首次開啟管理頁會自動切換學期並將社員轉為前社員；也可以手動調整。"
+      : "登入管理員後可以設定目前學年度。";
   }
 };
 
@@ -6324,6 +6536,7 @@ const bindAcademicYearSetting = () => {
         {
           academicYear: value,
           term,
+          academicPeriodKey: `${value}-${term}`,
           updatedAt: serverTimestamp(),
           updatedBy: currentUser?.uid || "",
           updatedByEmail: currentUser?.email || "",
@@ -6333,6 +6546,7 @@ const bindAcademicYearSetting = () => {
       saveAdminAcademicYears(years);
       configuredAcademicYear = value;
       configuredAcademicTerm = term;
+      configuredAcademicPeriodKey = `${value}-${term}`;
       memberFilters.year = value;
       memberFilters.term = term;
       patchMembersFilterUI();
@@ -6854,6 +7068,7 @@ const init = async () => {
   if (firebaseConfigured && needsFirebaseOnLoad) {
     await ensureAuthReady();
     await loadCurrentTermSettings();
+    await applyAcademicPeriodRolloverIfNeeded();
   }
 
   await activateCurrentPage();
