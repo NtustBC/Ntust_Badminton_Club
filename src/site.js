@@ -2550,9 +2550,13 @@ const mergeMembersWithApprovedApplications = (members = [], applications = []) =
       return !existingKeys.has(member.id) && !existingKeys.has(emailKey);
     });
 
-  return [...members.map((member) => ({ ...member, origin: "members" })), ...approvedApplicationMembers].sort(
-    (a, b) => getTimestampMs(a.submittedAt || a.createdAt || a.approvedAt) - getTimestampMs(b.submittedAt || b.createdAt || b.approvedAt),
-  );
+  return [...members.map((member) => ({ ...member, origin: "members" })), ...approvedApplicationMembers]
+    .filter((member) => !isBootstrapAdminEmail(String(member.email || "")))
+    .sort(
+      (a, b) =>
+        getTimestampMs(a.submittedAt || a.createdAt || a.approvedAt) -
+        getTimestampMs(b.submittedAt || b.createdAt || b.approvedAt),
+    );
 };
 
 const getFilteredMembersForExport = (members = []) => members.filter(matchesMemberFilter);
