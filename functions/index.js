@@ -250,17 +250,26 @@ exports.upsertClassSessionSignup = onCall({ region: REGION }, async (request) =>
   if (!sessionId) throw new HttpsError("invalid-argument", "缺少社課場次。");
 
   const firestore = admin.firestore();
+  const authEmail = normalizedEmail(request.auth.token?.email);
   const sessionRef = firestore.collection("classSessions").doc(sessionId);
   const memberRef = firestore.collection("members").doc(uid);
   const signupRef = firestore.collection("classSessionSignups").doc(`${sessionId}-${uid}`);
   const statsRef = firestore.collection("classSessionStats").doc(sessionId);
-  const [sessionSnapshot, memberSnapshot, statsSnapshot] = await Promise.all([sessionRef.get(), memberRef.get(), statsRef.get()]);
+  const adminRef = firestore.collection("admins").doc(uid);
+  const approvalRef = firestore.collection("signupApprovals").doc(authEmail);
+  const [sessionSnapshot, memberSnapshot, statsSnapshot, adminSnapshot, approvalSnapshot] = await Promise.all([
+    sessionRef.get(),
+    memberRef.get(),
+    statsRef.get(),
+    adminRef.get(),
+    approvalRef.get(),
+  ]);
   if (!sessionSnapshot.exists) throw new HttpsError("not-found", "找不到這場社課。");
   if (!memberSnapshot.exists) throw new HttpsError("failed-precondition", "請先完成個人資料。");
   const session = sessionSnapshot.data();
   const member = memberSnapshot.data();
-  const isAdmin = normalizedEmail(request.auth.token?.email) === BOOTSTRAP_ADMIN_EMAIL || (await firestore.collection("admins").doc(uid).get()).exists;
-  const isFormalMember = member.membershipStatus === "formal_member" || member.status === "formal_member";
+  const isAdmin = authEmail === BOOTSTRAP_ADMIN_EMAIL || adminSnapshot.exists;
+  const isFormalMember = member.membershipStatus === "formal_member" || member.status === "formal_member" || approvalSnapshot.exists;
   if (!isAdmin && !isFormalMember && session.allowNonMembers !== true) throw new HttpsError("permission-denied", "本場社課僅限正式社員報名。");
   if (session.signupRequired !== true) throw new HttpsError("failed-precondition", "這場社課不需要報名。");
   const now = Date.now();

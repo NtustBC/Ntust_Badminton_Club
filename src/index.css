@@ -2828,7 +2828,18 @@ button.admin-calendar-day:focus-visible {
 }
 
 .admin-calendar-modal-dialog {
-  width: min(780px, calc(100% - 28px));
+  width: min(880px, calc(100% - 28px));
+  max-height: min(92vh, 960px);
+  border: 1px solid rgba(15, 76, 129, 0.1);
+  box-shadow: 0 34px 90px rgba(10, 34, 61, 0.24);
+}
+
+.admin-calendar-modal-dialog .modal-header {
+  background: linear-gradient(135deg, rgba(239, 247, 255, 0.98), rgba(255, 255, 255, 0.98));
+}
+
+.admin-calendar-modal-dialog .modal-body {
+  background: #f7f9fc;
 }
 
 .admin-calendar-modal-list {
@@ -2837,6 +2848,8 @@ button.admin-calendar-day:focus-visible {
 }
 
 .admin-calendar-event-form {
+  display: grid;
+  gap: 16px;
   margin-top: 18px;
   padding-top: 18px;
   border-top: 1px solid rgba(15, 76, 129, 0.1);
@@ -2849,6 +2862,64 @@ button.admin-calendar-day:focus-visible {
   background: linear-gradient(180deg, rgba(234, 242, 251, 0.96), rgba(245, 248, 252, 0.96));
   color: var(--ink);
   line-height: 1.7;
+}
+
+.admin-calendar-form-section {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid rgba(15, 76, 129, 0.1);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(15, 76, 129, 0.06);
+}
+
+.admin-calendar-form-section[hidden] {
+  display: none;
+}
+
+.admin-calendar-section-heading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(15, 76, 129, 0.09);
+}
+
+.admin-calendar-section-heading > span {
+  display: grid;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--brand), #287bc1);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  box-shadow: 0 8px 18px rgba(15, 76, 129, 0.18);
+}
+
+.admin-calendar-section-heading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-calendar-section-heading strong {
+  color: var(--ink);
+  font-size: 1.02rem;
+}
+
+.admin-calendar-section-heading small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.admin-calendar-primary-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.42fr) minmax(0, 1.58fr);
+  gap: 16px;
 }
 
 .admin-calendar-event-form .form-field label,
@@ -2999,21 +3070,66 @@ button.admin-calendar-day:focus-visible {
 }
 
 .admin-calendar-signup-toggle {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(15, 76, 129, 0.12);
+  border-radius: 14px;
+  background: rgba(247, 250, 253, 0.9);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.admin-calendar-signup-toggle input {
+  width: 19px;
+  height: 19px;
+  accent-color: var(--brand);
+}
+
+.admin-calendar-signup-toggle > span {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-calendar-signup-toggle small {
   color: var(--muted);
-  font-weight: 700;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.admin-calendar-signup-toggle.is-primary {
+  border-color: rgba(15, 76, 129, 0.2);
+  background: linear-gradient(135deg, rgba(234, 242, 251, 0.92), rgba(247, 251, 255, 0.98));
+}
+
+.admin-calendar-signup-settings {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 16px;
+  background: #f7f9fc;
+}
+
+.admin-calendar-signup-settings[hidden] {
+  display: none;
+}
+
+.admin-calendar-signup-time-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.admin-calendar-limit-field {
+  max-width: 260px;
 }
 
 .admin-calendar-date-time-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
-  padding: 18px;
-  border: 1px solid rgba(15, 76, 129, 0.1);
-  border-radius: var(--radius-md);
-  background: rgba(248, 251, 255, 0.88);
+  padding: 0;
 }
 
 .admin-calendar-date-time-grid [hidden] {
@@ -3036,6 +3152,12 @@ button.admin-calendar-day:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+  position: sticky;
+  bottom: -1px;
+  z-index: 2;
+  margin: 0 -4px -4px;
+  padding: 14px 4px 4px;
+  background: linear-gradient(180deg, rgba(247, 249, 252, 0), #f7f9fc 28%);
 }
 
 .admin-calendar-form-actions > * {
@@ -3353,7 +3475,21 @@ button.admin-calendar-day:focus-visible {
 
   .admin-calendar-date-time-grid {
     grid-template-columns: minmax(0, 1fr);
-    padding: 14px;
+    padding: 0;
+  }
+
+  .admin-calendar-primary-grid,
+  .admin-calendar-signup-time-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-calendar-form-section {
+    padding: 18px;
+    border-radius: 16px;
+  }
+
+  .admin-calendar-limit-field {
+    max-width: none;
   }
 
   .header-inner {

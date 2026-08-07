@@ -677,70 +677,98 @@ const adminClassCalendarModalMarkup = `
         <form class="form-grid admin-calendar-event-form" data-admin-calendar-event-form>
           <input name="eventId" type="hidden" value="" />
           <p class="admin-calendar-form-state" data-admin-calendar-form-state>這一天還沒有內容，直接填寫下方欄位即可新增。</p>
-          <div class="form-field">
-            <label for="admin-calendar-event-type">類型</label>
-            <select id="admin-calendar-event-type" name="eventType">
-              <option value="class">社課</option>
-              <option value="announcement">公告</option>
-            </select>
-          </div>
-          <div class="form-field">
-            <label for="admin-calendar-event-title">標題</label>
-            <input id="admin-calendar-event-title" name="title" type="text" placeholder="例如：雙打練習 / 場地異動" />
-          </div>
-          <div class="admin-calendar-date-time-grid">
+          <section class="admin-calendar-form-section">
+            <div class="admin-calendar-section-heading">
+              <span>01</span>
+              <div><strong>內容資訊</strong><small>選擇類型並填寫顯示名稱</small></div>
+            </div>
+            <div class="admin-calendar-primary-grid">
+              <div class="form-field">
+                <label for="admin-calendar-event-type">類型</label>
+                <select id="admin-calendar-event-type" name="eventType">
+                  <option value="class">社課</option>
+                  <option value="announcement">公告</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="admin-calendar-event-title">標題</label>
+                <input id="admin-calendar-event-title" name="title" type="text" placeholder="例如：雙打練習 / 場地異動" />
+              </div>
+            </div>
+          </section>
+          <section class="admin-calendar-form-section">
+            <div class="admin-calendar-section-heading">
+              <span>02</span>
+              <div><strong>日期與時間</strong><small>設定活動時段與進行地點</small></div>
+            </div>
+            <div class="admin-calendar-date-time-grid">
+              <div class="form-field">
+                <label for="admin-calendar-event-date">開始日期</label>
+                <input id="admin-calendar-event-date" name="date" type="date" required />
+              </div>
+              <div class="form-field" data-announcement-end-date-field hidden>
+                <label for="admin-calendar-event-end-date">結束日期</label>
+                <input id="admin-calendar-event-end-date" name="endDate" type="date" />
+              </div>
+              <div class="form-field">
+                <label for="admin-calendar-event-start-time">開始時間（選填）</label>
+                <input id="admin-calendar-event-start-time" name="startTime" step="300" type="time" />
+              </div>
+              <div class="form-field">
+                <label for="admin-calendar-event-end-time">結束時間（選填）</label>
+                <input id="admin-calendar-event-end-time" name="endTime" step="300" type="time" />
+              </div>
+            </div>
             <div class="form-field">
-              <label for="admin-calendar-event-date">開始日期</label>
-              <input id="admin-calendar-event-date" name="date" type="date" required />
+              <label for="admin-calendar-event-location">地點</label>
+              <input id="admin-calendar-event-location" name="location" type="text" placeholder="例如：臺科大體育館 2F" required />
             </div>
-            <div class="form-field" data-announcement-end-date-field hidden>
-              <label for="admin-calendar-event-end-date">結束日期</label>
-              <input id="admin-calendar-event-end-date" name="endDate" type="date" />
-            </div>
-            <div class="form-field">
-              <label for="admin-calendar-event-start-time">開始時間（選填）</label>
-              <input id="admin-calendar-event-start-time" name="startTime" step="300" type="time" />
+          </section>
+          <section class="admin-calendar-form-section">
+            <div class="admin-calendar-section-heading">
+              <span>03</span>
+              <div><strong>補充說明</strong><small>填寫參加者需要知道的資訊</small></div>
             </div>
             <div class="form-field">
-              <label for="admin-calendar-event-end-time">結束時間（選填）</label>
-              <input id="admin-calendar-event-end-time" name="endTime" step="300" type="time" />
+              <label for="admin-calendar-event-note">備註</label>
+              <textarea id="admin-calendar-event-note" name="note" rows="4" placeholder="例如：請自備球拍與飲用水；若無補充可填無"></textarea>
             </div>
-          </div>
-          <div class="form-field">
-            <label for="admin-calendar-event-location">地點</label>
-            <input id="admin-calendar-event-location" name="location" type="text" placeholder="例如：臺科大體育館 2F" required />
-          </div>
-          <div class="form-field">
-            <label for="admin-calendar-event-note">備註</label>
-            <textarea id="admin-calendar-event-note" name="note" rows="4" placeholder="可以填無"></textarea>
-          </div>
-          <label class="admin-calendar-signup-toggle">
-            <input name="signupRequired" type="checkbox" checked />
-            社課需要報名
-          </label>
-          <div class="admin-calendar-signup-settings" data-admin-calendar-signup-settings>
-            <label class="admin-calendar-signup-toggle">
-              <input name="allowNonMembers" type="checkbox" />
-              開放非社員報名參加
+          </section>
+          <section class="admin-calendar-form-section admin-calendar-signup-panel" data-admin-calendar-signup-panel>
+            <div class="admin-calendar-section-heading">
+              <span>04</span>
+              <div><strong>報名設定</strong><small>設定資格、開放時間與名額</small></div>
+            </div>
+            <label class="admin-calendar-signup-toggle is-primary">
+              <input name="signupRequired" type="checkbox" checked />
+              <span><strong>社課需要報名</strong><small>開啟後，社員需先完成線上報名</small></span>
             </label>
-            <div class="form-field">
-              <label for="admin-calendar-signup-open">報名開始</label>
-              <input id="admin-calendar-signup-open" name="signupOpenAt" step="900" type="datetime-local" />
+            <div class="admin-calendar-signup-settings" data-admin-calendar-signup-settings>
+              <label class="admin-calendar-signup-toggle">
+                <input name="allowNonMembers" type="checkbox" />
+                <span><strong>開放非社員報名</strong><small>未具正式社員資格的帳號也能參加</small></span>
+              </label>
+              <div class="admin-calendar-signup-time-grid">
+                <div class="form-field">
+                  <label for="admin-calendar-signup-open">報名開始</label>
+                  <input id="admin-calendar-signup-open" name="signupOpenAt" step="900" type="datetime-local" />
+                </div>
+                <div class="form-field">
+                  <label for="admin-calendar-signup-close">報名截止</label>
+                  <input id="admin-calendar-signup-close" name="signupCloseAt" step="900" type="datetime-local" />
+                </div>
+              </div>
+              <div class="admin-signup-window-presets" aria-label="快速設定報名時間">
+                <button class="button-secondary" data-signup-window-preset="previous-week" type="button">前一週週三至週五</button>
+                <button class="button-secondary" data-signup-window-preset="now" type="button">現在開始</button>
+                <button class="button-secondary" data-signup-window-preset="clear" type="button">清除時間</button>
+              </div>
+              <div class="form-field admin-calendar-limit-field">
+                <label for="admin-calendar-signup-limit">人數上限</label>
+                <input id="admin-calendar-signup-limit" name="signupLimit" min="1" placeholder="不填則不限" type="number" />
+              </div>
             </div>
-            <div class="form-field">
-              <label for="admin-calendar-signup-close">報名截止</label>
-              <input id="admin-calendar-signup-close" name="signupCloseAt" step="900" type="datetime-local" />
-            </div>
-            <div class="admin-signup-window-presets" aria-label="快速設定報名時間">
-              <button class="button-secondary" data-signup-window-preset="previous-week" type="button">前一週週三至週五</button>
-              <button class="button-secondary" data-signup-window-preset="now" type="button">現在開始</button>
-              <button class="button-secondary" data-signup-window-preset="clear" type="button">清除時間</button>
-            </div>
-            <div class="form-field">
-              <label for="admin-calendar-signup-limit">人數上限</label>
-              <input id="admin-calendar-signup-limit" name="signupLimit" min="1" placeholder="不填則不限" type="number" />
-            </div>
-          </div>
+          </section>
           <div class="admin-calendar-form-actions">
             <button class="button-primary" data-admin-calendar-save type="submit">儲存</button>
             <button class="button-secondary" data-admin-calendar-delete type="button">刪除</button>
@@ -2362,6 +2390,7 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   }
   const signupToggle = form.querySelector(".admin-calendar-signup-toggle");
   const signupSettings = form.querySelector("[data-admin-calendar-signup-settings]");
+  const signupPanel = form.querySelector("[data-admin-calendar-signup-panel]");
   const signupFieldsHidden = (event?.type || "class") !== "class";
   const announcementEndDateField = form.querySelector("[data-announcement-end-date-field]");
   if (signupToggle) {
@@ -2369,6 +2398,9 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   }
   if (signupSettings) {
     signupSettings.hidden = signupFieldsHidden;
+  }
+  if (signupPanel) {
+    signupPanel.hidden = signupFieldsHidden;
   }
   if (announcementEndDateField) {
     announcementEndDateField.hidden = !signupFieldsHidden;
@@ -4503,6 +4535,7 @@ async function handleClassSignupSubmit(event) {
     await refreshClassSignupPageSafe({ force: true });
   } catch (error) {
     console.error("Class signup submit failed:", error);
+    window.alert(`社課報名失敗：${error?.message || "請稍後再試一次。"}`);
   } finally {
     submitButton.disabled = false;
   }
@@ -5809,6 +5842,7 @@ function bindAdminClassCalendarActions() {
     form.querySelector("[name='eventType']")?.addEventListener("change", (event) => {
       const signupToggle = form.querySelector(".admin-calendar-signup-toggle");
       const signupSettings = form.querySelector("[data-admin-calendar-signup-settings]");
+      const signupPanel = form.querySelector("[data-admin-calendar-signup-panel]");
       const announcementEndDateField = form.querySelector("[data-announcement-end-date-field]");
       const signupFieldsHidden = event.target.value !== "class";
       if (signupToggle) {
@@ -5816,6 +5850,9 @@ function bindAdminClassCalendarActions() {
       }
       if (signupSettings) {
         signupSettings.hidden = signupFieldsHidden;
+      }
+      if (signupPanel) {
+        signupPanel.hidden = signupFieldsHidden;
       }
       if (announcementEndDateField) {
         announcementEndDateField.hidden = !signupFieldsHidden;
