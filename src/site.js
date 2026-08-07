@@ -104,7 +104,7 @@ let auth = null;
 let db = null;
 let currentUser = null;
 let currentUserIsAdmin = false;
-let currentMemberStatus = "not_applied";
+let currentMemberStatus = "non_member";
 let currentMemberProfile = null;
 let configuredAcademicYear = "";
 let authMode = "signin";
@@ -116,7 +116,6 @@ let membersAutoRefreshTimer = null;
 let publicPageAutoRefreshTimer = null;
 let membersDashboardCache = {
   members: [],
-  applications: [],
   classSessions: [],
   classSessionSignups: [],
   announcements: [],
@@ -199,7 +198,7 @@ const primeAuthStateFromSnapshot = () => {
   if (!snapshot?.signedIn) {
     currentUser = null;
     currentUserIsAdmin = false;
-    currentMemberStatus = "not_applied";
+    currentMemberStatus = "non_member";
     currentMemberProfile = null;
     return;
   }
@@ -209,7 +208,7 @@ const primeAuthStateFromSnapshot = () => {
     email: snapshot.email,
   };
   currentUserIsAdmin = snapshot.isAdmin;
-  currentMemberStatus = "not_applied";
+  currentMemberStatus = "non_member";
   currentMemberProfile = null;
 };
 
@@ -782,65 +781,61 @@ const updateLoginButtons = () => {
   syncMembersPageHero();
 
   getLoginButtons().forEach((button) => {
-    button.textContent = currentUser ? "帳號狀態" : button.dataset.defaultLabel;
+    button.textContent = currentUser ? getMembershipStatusCopy(currentMemberStatus).label : button.dataset.defaultLabel;
   });
 };
 
 const membershipStatusCopy = {
-  not_applied: {
-    label: "尚未申請",
-    meaning: "帳號已建立，可以登入並報名參加社團。",
-    action: "前往報名",
+  non_member: {
+    label: "非社員",
+    meaning: "目前不是正式社員。",
+    action: "查看加入方式",
   },
-  pending_payment: {
-    label: "待繳費",
-    meaning: "已註冊入社資料，請依通知完成一次性社費繳納。",
-    action: "查看繳費方式",
-  },
-  payment_checking: {
-    label: "款項確認中",
-    meaning: "已回報繳費，等待幹部確認款項。",
-    action: "查看處理進度",
+  former_member: {
+    label: "前社員",
+    meaning: "目前為前社員，正式社員功能尚未開放。",
+    action: "查看重新加入方式",
   },
   formal_member: {
-    label: "正式社員",
-    meaning: "幹部已確認款項，社員專屬功能已開放。",
+    label: "社員",
+    meaning: "已完成繳費，正式社員功能已開放。",
     action: "進入社員專區",
-  },
-  expired: {
-    label: "資格到期",
-    meaning: "本學期尚未續費，社員專屬功能暫停開放。",
-    action: "查看續費方式",
   },
 };
 
-const getMembershipStatusCopy = (status) => membershipStatusCopy[status] || membershipStatusCopy.not_applied;
-const isOfficialMemberStatus = () => currentUserIsAdmin || currentMemberStatus === "formal_member";
+const getManagedMembershipStatus = (value = "") => {
+  const explicitStatus = String(
+    typeof value === "object" && value !== null ? value.membershipStatus || value.status || "" : value,
+  )
+    .trim()
+    .toLowerCase();
+
+  if (["formal_member", "formal", "approved", "member"].includes(explicitStatus)) {
+    return "formal_member";
+  }
+
+  if (["former_member", "former", "expired", "qualification_expired"].includes(explicitStatus)) {
+    return "former_member";
+  }
+
+  return "non_member";
+};
+
+const getMembershipStatusCopy = (status) => membershipStatusCopy[getManagedMembershipStatus(status)];
+const isOfficialMemberStatus = () => currentUserIsAdmin || getManagedMembershipStatus(currentMemberStatus) === "formal_member";
 
 const normalizeMembershipStatus = (memberData = null, approvalData = null) => {
   const explicitStatus = String(memberData?.membershipStatus || memberData?.status || "").trim().toLowerCase();
 
-  if (["expired", "qualification_expired"].includes(explicitStatus)) {
-    return "expired";
+  if (explicitStatus) {
+    return getManagedMembershipStatus(explicitStatus);
   }
 
-  if (["payment_checking", "payment-confirming", "payment_confirming", "confirming"].includes(explicitStatus)) {
-    return "payment_checking";
-  }
-
-  if (["pending_payment", "pending-payment", "pending", "applied"].includes(explicitStatus)) {
-    return "pending_payment";
-  }
-
-  if (approvalData || ["formal_member", "formal", "approved"].includes(explicitStatus)) {
-    return "formal_member";
-  }
-
-  return "not_applied";
+  return approvalData ? "formal_member" : "non_member";
 };
 
 const loadCurrentMemberStatus = async (user) => {
-  currentMemberStatus = "not_applied";
+  currentMemberStatus = "non_member";
   currentMemberProfile = null;
 
   if (!db || !user?.uid) {
@@ -1076,7 +1071,7 @@ const updateAuthView = () => {
     authSwitch.hidden = true;
     const statusCopy = getMembershipStatusCopy(currentMemberStatus);
     statusEmail.innerHTML = `
-      <span class="member-status-badge">${escapeHtml(currentUserIsAdmin ? "管理員" : statusCopy.label)}</span>
+      <span class="member-status-badge">${escapeHtml(statusCopy.label)}</span>
       <span>${escapeHtml(currentUser.email || "")}</span>
     `;
     statusHint.textContent = currentUserIsAdmin ? "你目前有管理員權限，可以進入管理頁。" : `${statusCopy.meaning}｜${statusCopy.action}`;
@@ -1159,7 +1154,7 @@ const ensureAuthReady = async () => {
     onAuthStateChanged(auth, async (user) => {
       currentUser = user;
       currentUserIsAdmin = false;
-      currentMemberStatus = "not_applied";
+      currentMemberStatus = "non_member";
       currentMemberProfile = null;
       membersDashboardCache.loaded = false;
       membersDashboardCache.loadWarnings = [];
@@ -2116,110 +2111,6 @@ const getApplicationTermOptionsMarkup = (selectedValue) =>
     return `<option value="${escapeHtml(value)}"${selected}>${escapeHtml(getAcademicTermLabel(value))}</option>`;
   }).join("");
 
-const bindApplicationActionButtons = (applicationList) => {
-  applicationList.querySelectorAll("[data-application-action]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const id = button.dataset.applicationId;
-      const action = button.dataset.applicationAction;
-      const applicationRef = doc(db, "applications", id);
-      const currentDoc = await getDoc(applicationRef);
-
-      if (!currentDoc.exists()) {
-        return;
-      }
-
-      const yearSelect = applicationList.querySelector(`[data-application-year][data-application-id="${id}"]`);
-      const termSelect = applicationList.querySelector(`[data-application-term][data-application-id="${id}"]`);
-      const data = currentDoc.data();
-      const controls = applicationList.querySelectorAll(`[data-application-id="${id}"]`);
-
-      if (action === "delete") {
-        const confirmed = window.confirm("Delete this application?");
-        if (!confirmed) {
-          return;
-        }
-
-        controls.forEach((control) => {
-          control.disabled = true;
-        });
-        await syncApprovalFromApplication(id, { ...data, reviewStatus: "rejected", approved: false });
-        await deleteDoc(applicationRef);
-        const approvedMemberDoc = await getDoc(getApprovedMemberDocRef(id));
-        if (approvedMemberDoc.exists()) {
-          await deleteDoc(getApprovedMemberDocRef(id));
-        }
-        await refreshMembersDashboardSafe({ force: true });
-        return;
-      }
-
-      if (action === "save-meta") {
-        const controls = applicationList.querySelectorAll(`[data-application-id="${id}"]`);
-        controls.forEach((control) => {
-          control.disabled = true;
-        });
-
-        try {
-          const nextData = {
-            academicYear: yearSelect?.value || "未設定",
-            term: termSelect?.value || "未設定",
-            approved: true,
-            reviewStatus: "approved",
-            updatedAt: serverTimestamp(),
-          };
-
-          await updateDoc(applicationRef, nextData);
-          const updatedDoc = await getDoc(applicationRef);
-          const updatedData = updatedDoc.data();
-
-          await syncApprovalFromApplication(id, updatedData);
-          await syncMemberRecordFromApplication(updatedData, id);
-          await deleteDoc(applicationRef);
-          await refreshMembersDashboardSafe({ force: true });
-          focusApprovedMember(id, updatedData);
-          window.alert("學年度與學期已儲存，並已加入社員名單。");
-        } catch (error) {
-          console.error("Save application meta failed:", error);
-          window.alert(`儲存失敗：${error?.message || "請稍後再試一次。"}`);
-        } finally {
-          controls.forEach((control) => {
-            control.disabled = false;
-          });
-        }
-        return;
-      }
-
-      const nextData = {
-        academicYear: yearSelect?.value || "未設定",
-        term: termSelect?.value || "未設定",
-        updatedAt: serverTimestamp(),
-      };
-
-      nextData.approved = true;
-      nextData.reviewStatus = "approved";
-
-      controls.forEach((control) => {
-        control.disabled = true;
-      });
-
-      try {
-        await updateDoc(applicationRef, nextData);
-        const updatedDoc = await getDoc(applicationRef);
-        const updatedData = updatedDoc.data();
-        await syncApprovalFromApplication(id, updatedData);
-        await syncMemberRecordFromApplication(updatedData, id);
-        await deleteDoc(applicationRef);
-        await refreshMembersDashboardSafe({ force: true });
-
-        focusApprovedMember(id, updatedData);
-      } finally {
-        controls.forEach((control) => {
-          control.disabled = false;
-        });
-      }
-    });
-  });
-};
-
 const focusApprovedMember = (applicationId, application) => {
   const list = document.querySelector("[data-members-list]");
   if (!list) {
@@ -2305,8 +2196,7 @@ const shouldAutoRefreshMembersDashboard = () => {
   const activeElement = document.activeElement;
   if (
     activeElement &&
-    (activeElement.closest("[data-application-list]") ||
-      activeElement.closest("[data-members-list]") ||
+    (activeElement.closest("[data-members-list]") ||
       activeElement.closest("[data-class-session-calendar]") ||
       activeElement.closest("[data-announcement-admin-list]") ||
       activeElement.closest("[data-class-session-form]") ||
@@ -2336,86 +2226,6 @@ const startMembersDashboardAutoRefresh = () => {
 
     await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
   }, MEMBERS_DASHBOARD_REFRESH_MS);
-};
-
-const renderApplicationReviewList = async (applications = []) => {
-  const applicationList = document.querySelector("[data-application-list]");
-  if (!applicationList) {
-    return;
-  }
-
-  const filteredApplications = applications.filter(
-    (application) => matchesMemberFilter(application) && getApplicationReviewStatus(application) !== "approved",
-  );
-
-  if (filteredApplications.length === 0) {
-    applicationList.innerHTML = `
-      <article class="content-card is-tight">
-        <h3 class="content-title">目前沒有符合條件的申請</h3>
-        <p class="content-copy">調整上方學年度或學期篩選後，再看看有沒有資料。</p>
-      </article>
-    `;
-    return;
-  }
-
-  applicationList.innerHTML = filteredApplications
-    .map((application) => {
-      const academicYear = application.academicYear || String(Math.max(getRocAcademicYear(), MIN_ACADEMIC_YEAR));
-      const term = application.term || "未設定";
-      const reviewStatus = getApplicationReviewStatus(application);
-      const approved = reviewStatus === "approved";
-      const rejected = reviewStatus === "rejected";
-      const statusLabel =
-        reviewStatus === "approved" ? "已同意" : reviewStatus === "rejected" ? "已不同意" : "pending";
-
-      return `
-        <article class="member-row">
-          <div class="member-row-top">
-            <p class="member-row-index">社員申請</p>
-            <p class="member-row-status">${statusLabel}</p>
-          </div>
-          <p class="member-row-email">${escapeHtml(application.name || "未填姓名")} / ${escapeHtml(application.email || "未填信箱")}</p>
-          <div class="member-row-meta">
-            <span>學號：${escapeHtml(application.studentId || "未填寫")}</span>
-            <span>系別：${escapeHtml(application.department || application.school || "未填寫")}</span>
-            <span>電話：${escapeHtml(application.phone || "未填寫")}</span>
-            <span>送出時間：${escapeHtml(formatTimestamp(application.submittedAt))}</span>
-            <span>備註：${escapeHtml(application.note || "無")}</span>
-          </div>
-          <div class="member-row-controls">
-            <div class="form-field">
-              <label for="application-year-${escapeHtml(application.id)}">學年度</label>
-              <select id="application-year-${escapeHtml(application.id)}" data-application-year data-application-id="${escapeHtml(application.id)}">
-                ${getApplicationYearOptionsMarkup(academicYear)}
-              </select>
-            </div>
-            <div class="form-field">
-              <label for="application-term-${escapeHtml(application.id)}">學期</label>
-              <select id="application-term-${escapeHtml(application.id)}" data-application-term data-application-id="${escapeHtml(application.id)}">
-                ${getApplicationTermOptionsMarkup(term)}
-              </select>
-            </div>
-          </div>
-          <div class="application-actions">
-            <button class="button-secondary application-toggle ${approved ? "is-active" : ""}" data-application-action="approve" data-application-id="${escapeHtml(application.id)}" type="button">
-              ${approved ? "已同意" : "同意"}
-            </button>
-            <button class="button-secondary application-toggle ${rejected ? "is-active" : ""}" data-application-action="reject" data-application-id="${escapeHtml(application.id)}" type="button">
-              ${rejected ? "已不同意" : "不同意"}
-            </button>
-            <button class="button-secondary application-save" data-application-action="save-meta" data-application-id="${escapeHtml(application.id)}" type="button">
-              儲存學期資料
-            </button>
-            <button class="button-secondary application-save" data-application-action="delete" data-application-id="${escapeHtml(application.id)}" type="button">
-              刪除資料
-            </button>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-
-  bindApplicationActionButtons(applicationList);
 };
 
 const bindMemberActionButtons = (memberList) => {
@@ -2533,31 +2343,15 @@ const createMemberFromApprovedApplication = (application) => ({
   origin: "applications",
 });
 
-const mergeMembersWithApprovedApplications = (members = [], applications = []) => {
-  const existingKeys = new Set(
-    members.flatMap((member) => [
-      member.id,
-      member.applicationId ? getMemberIdFromApplication(member.applicationId) : "",
-      String(member.email || "").trim().toLowerCase(),
-    ]),
-  );
-
-  const approvedApplicationMembers = applications
-    .filter((application) => getApplicationReviewStatus(application) === "approved")
-    .map(createMemberFromApprovedApplication)
-    .filter((member) => {
-      const emailKey = String(member.email || "").trim().toLowerCase();
-      return !existingKeys.has(member.id) && !existingKeys.has(emailKey);
-    });
-
-  return [...members.map((member) => ({ ...member, origin: "members" })), ...approvedApplicationMembers]
+const mergeMembersWithApprovedApplications = (members = []) =>
+  members
+    .map((member) => ({ ...member, origin: "members" }))
     .filter((member) => !isBootstrapAdminEmail(String(member.email || "")))
     .sort(
       (a, b) =>
         getTimestampMs(a.submittedAt || a.createdAt || a.approvedAt) -
         getTimestampMs(b.submittedAt || b.createdAt || b.approvedAt),
     );
-};
 
 const getFilteredMembersForExport = (members = []) => members.filter(matchesMemberFilter);
 
@@ -2583,7 +2377,7 @@ const buildMembersExportWorkbook = (members = []) => {
     member.email || "",
     getAcademicYearLabel(member.academicYear || "未設定"),
     getAcademicTermLabel(member.term || "未設定"),
-    member.status || "active",
+    getMembershipStatusCopy(member).label,
     member.origin === "applications" ? "申請通過" : "社員資料",
     formatTimestamp(member.createdAt),
     formatTimestamp(member.lastLoginAt),
@@ -2643,6 +2437,85 @@ const downloadMembersExcel = (members = []) => {
   window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
 };
 
+const getMemberStatusOptionsMarkup = (status) => {
+  const selectedStatus = getManagedMembershipStatus(status);
+  return [
+    { value: "non_member", label: "非社員" },
+    { value: "former_member", label: "前社員" },
+    { value: "formal_member", label: "社員" },
+  ]
+    .map(
+      (option) =>
+        `<option value="${option.value}"${option.value === selectedStatus ? " selected" : ""}>${option.label}</option>`,
+    )
+    .join("");
+};
+
+const bindMemberStatusSelects = (container) => {
+  container.querySelectorAll("[data-member-status-select]").forEach((select) => {
+    select.addEventListener("change", async () => {
+      const memberId = String(select.dataset.memberId || "").trim();
+      const email = String(select.dataset.memberEmail || "").trim().toLowerCase();
+      const previousStatus = getManagedMembershipStatus(select.dataset.currentStatus || "non_member");
+      const nextStatus = getManagedMembershipStatus(select.value);
+      if (!memberId || nextStatus === previousStatus) {
+        return;
+      }
+
+      const isFormalMember = nextStatus === "formal_member";
+      const isFormerMember = nextStatus === "former_member";
+      select.disabled = true;
+
+      try {
+        await setDoc(
+          getMemberDocRef(memberId),
+          {
+            membershipStatus: nextStatus,
+            status: nextStatus,
+            paymentStatus: isFormalMember ? "paid" : "unpaid",
+            paidAt: isFormalMember ? serverTimestamp() : null,
+            formerMemberAt: isFormerMember ? serverTimestamp() : null,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+
+        if (email) {
+          if (isFormalMember) {
+            await setDoc(
+              getApprovalDocRef(email),
+              {
+                email,
+                status: "approved",
+                approvedAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              },
+              { merge: true },
+            );
+          } else {
+            const approvalDoc = await getDoc(getApprovalDocRef(email));
+            if (approvalDoc.exists()) {
+              await deleteDoc(getApprovalDocRef(email));
+            }
+          }
+        }
+
+        await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+        openActionSuccessModal({
+          title: "社員狀態已更新",
+          copy: `${email || "這筆帳號"} 已設定為「${getMembershipStatusCopy(nextStatus).label}」。`,
+        });
+      } catch (error) {
+        console.error("Update member status failed:", error);
+        select.value = previousStatus;
+        window.alert(`社員狀態更新失敗：${error?.message || "請稍後再試一次。"}`);
+      } finally {
+        select.disabled = false;
+      }
+    });
+  });
+};
+
 const renderMembersExportToolbar = (members = []) => {
   const content = document.querySelector("[data-members-content]");
   const filterCard = content?.querySelector(".member-filter-card");
@@ -2678,16 +2551,14 @@ const renderMembersExportToolbar = (members = []) => {
           <p class="content-copy">目前篩選：${escapeHtml(filterLabel)}，共 0 筆。</p>
         </div>
       </div>
-      <p class="content-copy member-table-empty">目前沒有符合這個學年度與學期的社員資料。</p>
+      <p class="content-copy member-table-empty">目前沒有符合這個學年度與學期的帳號資料。</p>
     `;
     return;
   }
 
   const rows = filteredMembers
     .map((member, index) => {
-      const isFormalMember = isFormalMemberRecord(member);
-      const membershipStatus = isFormalMember ? "正式社員" : "待繳社費";
-      const paymentStatus = member.paymentStatus === "paid" || isFormalMember ? "社費已繳" : "社費未繳";
+      const managedStatus = getManagedMembershipStatus(member);
       return `
         <tr>
           <td>${String(index + 1).padStart(2, "0")}</td>
@@ -2696,8 +2567,18 @@ const renderMembersExportToolbar = (members = []) => {
           <td>${escapeHtml(member.department || member.school || "未填寫")}</td>
           <td>${escapeHtml(member.email || "未填寫")}</td>
           <td>${escapeHtml(member.phone || "未填寫")}</td>
-          <td><span class="member-row-status">${escapeHtml(membershipStatus)}</span></td>
-          <td>${escapeHtml(paymentStatus)}</td>
+          <td>
+            <select
+              class="member-status-select"
+              data-member-status-select
+              data-member-id="${escapeHtml(member.id)}"
+              data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}"
+              data-current-status="${escapeHtml(managedStatus)}"
+              aria-label="設定 ${escapeHtml(member.name || member.email || "帳號")} 的社員狀態"
+            >
+              ${getMemberStatusOptionsMarkup(managedStatus)}
+            </select>
+          </td>
         </tr>
       `;
     })
@@ -2708,7 +2589,7 @@ const renderMembersExportToolbar = (members = []) => {
       <div>
         <p class="section-kicker">Members</p>
         <h3 class="content-title">篩選結果名單</h3>
-        <p class="content-copy">目前篩選：${escapeHtml(filterLabel)}，共 ${filteredMembers.length} 筆。</p>
+        <p class="content-copy">目前篩選：${escapeHtml(filterLabel)}，共 ${filteredMembers.length} 筆。可直接從下拉選單變更社員狀態。</p>
       </div>
     </div>
     <div class="member-table-wrap">
@@ -2722,13 +2603,14 @@ const renderMembersExportToolbar = (members = []) => {
             <th scope="col">Gmail</th>
             <th scope="col">聯絡電話</th>
             <th scope="col">社員狀態</th>
-            <th scope="col">社費狀態</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
   `;
+
+  bindMemberStatusSelects(tableCard);
 };
 const renderMembersList = (members = []) => {
   const list = document.querySelector("[data-members-list]");
@@ -2736,13 +2618,13 @@ const renderMembersList = (members = []) => {
     return;
   }
 
-  const filteredMembers = members.filter(matchesMemberFilter);
+  const filteredMembers = members.filter((member) => matchesMemberFilter(member) && isFormalMemberRecord(member));
 
   if (filteredMembers.length === 0) {
     list.innerHTML = `
       <article class="content-card is-tight">
         <h3 class="content-title">目前沒有符合條件的社員資料</h3>
-        <p class="content-copy">可以調整篩選，或等社員建立帳號後再查看。</p>
+        <p class="content-copy">只有已繳費並設定為「社員」的正式社員會顯示在這裡。</p>
       </article>
     `;
     return;
@@ -2750,14 +2632,7 @@ const renderMembersList = (members = []) => {
 
   list.innerHTML = filteredMembers
     .map((member, index) => {
-      const isFormalMember = isFormalMemberRecord(member);
-      const memberStatusLabel = isFormalMember ? "正式社員" : "待繳社費";
-      const membershipAction =
-        member.origin === "members"
-          ? `<button class="button-secondary application-save" data-member-action="toggle-membership-payment" data-member-origin="members" data-member-id="${escapeHtml(member.id)}" data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}" data-payment-status="${isFormalMember ? "unpaid" : "paid"}" type="button">
-                ${isFormalMember ? "取消正式社員" : "標記社費已繳"}
-              </button>`
-          : "";
+      const memberStatusLabel = "社員";
       return `
         <article
           class="member-row member-row-expandable"
@@ -2795,7 +2670,6 @@ const renderMembersList = (members = []) => {
               <span>最近登入：${escapeHtml(formatTimestamp(member.lastLoginAt))}</span>
             </div>
             <div class="application-actions member-actions">
-              ${membershipAction}
               <button class="button-secondary application-save" data-member-action="delete" data-member-origin="${escapeHtml(member.origin || "members")}" data-member-id="${escapeHtml(member.origin === "applications" ? member.applicationId : member.id)}" data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}" data-member-application-id="${escapeHtml(member.applicationId || "")}" type="button">
                 刪除社員資料
               </button>
@@ -2810,22 +2684,22 @@ const renderMembersList = (members = []) => {
   bindMemberActionButtons(list);
 };
 
-const renderMembersSummary = (members = [], applications = []) => {
+const renderMembersSummary = (members = []) => {
   const summary = document.querySelector("[data-members-summary]");
   if (!summary) {
     return;
   }
 
   const filteredMembers = members.filter(matchesMemberFilter);
-  const pendingApplications = applications.filter((application) => getApplicationReviewStatus(application) === "pending");
+  const formalMembers = filteredMembers.filter(isFormalMemberRecord);
 
   summary.innerHTML = `
     <article class="member-stat">
-      <p class="member-stat-label">待處理申請</p>
-      <p class="member-stat-value">${pendingApplications.length}</p>
+      <p class="member-stat-label">正式社員數</p>
+      <p class="member-stat-value">${formalMembers.length}</p>
     </article>
     <article class="member-stat">
-      <p class="member-stat-label">符合篩選社員數</p>
+      <p class="member-stat-label">符合篩選帳號數</p>
       <p class="member-stat-value">${filteredMembers.length}</p>
     </article>
     <article class="member-stat">
@@ -2910,9 +2784,8 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
   const content = document.querySelector("[data-members-content]");
   const summary = document.querySelector("[data-members-summary]");
   const list = document.querySelector("[data-members-list]");
-  const applicationList = document.querySelector("[data-application-list]");
 
-  if (!gate || !content || !summary || !list || !applicationList) {
+  if (!gate || !content || !summary || !list) {
     return;
   }
 
@@ -2956,9 +2829,8 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
   try {
     if (force || !membersDashboardCache.loaded) {
       const dashboardWarnings = [];
-      const [members, applications, classSessions, classSessionSignups, announcements, faqs] = await Promise.all([
+      const [members, classSessions, classSessionSignups, announcements, faqs] = await Promise.all([
         loadWithFallback("社員名單", dashboardWarnings, () => getCollectionEntries("members"), []),
-        loadWithFallback("待審核申請", dashboardWarnings, () => getCollectionEntries("applications"), []),
         loadWithFallback("社課日期", dashboardWarnings, () => getCollectionEntries(CLASS_SESSION_COLLECTION), []),
         loadWithFallback("社課報名", dashboardWarnings, () => getCollectionEntries(CLASS_SIGNUP_COLLECTION), []),
         loadWithFallback("公告", dashboardWarnings, () => getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION), []),
@@ -2967,7 +2839,6 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
 
       membersDashboardCache = {
         members,
-        applications,
         classSessions,
         classSessionSignups,
         announcements,
@@ -2977,12 +2848,9 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
       };
     }
 
-    const displayMembers = mergeMembersWithApprovedApplications(
-      membersDashboardCache.members,
-      membersDashboardCache.applications,
-    );
+    const displayMembers = mergeMembersWithApprovedApplications(membersDashboardCache.members);
 
-    renderMembersSummary(displayMembers, membersDashboardCache.applications);
+    renderMembersSummary(displayMembers);
     renderMembersExportToolbar(displayMembers);
     if (membersDashboardCache.loadWarnings.length > 0) {
       summary.insertAdjacentHTML(
@@ -2994,7 +2862,6 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
         }),
       );
     }
-    await renderApplicationReviewList(membersDashboardCache.applications);
     renderMembersList(displayMembers);
     renderAdminClassCalendarCompact(membersDashboardCache.classSessions, membersDashboardCache.classSessionSignups);
     renderAdminAnnouncements(membersDashboardCache.announcements);
@@ -3011,12 +2878,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
         <p class="content-copy">請確認 Firestore 規則與集合欄位設定是否正確。</p>
       </article>
     `;
-    applicationList.innerHTML = `
-      <article class="content-card is-tight">
-        <h3 class="content-title">申請資料讀取失敗</h3>
-        <p class="content-copy">${escapeHtml(error?.message || "請稍後再試一次。")}</p>
-      </article>
-    `;
+
     list.innerHTML = `
       <article class="content-card is-tight">
         <h3 class="content-title">社員資料讀取失敗</h3>
@@ -3107,7 +2969,7 @@ function getSessionSignupLimit(session = {}) {
 }
 
 function isFormalMemberRecord(member = {}) {
-  return member.membershipStatus === "formal_member" || member.status === "formal_member";
+  return getManagedMembershipStatus(member) === "formal_member";
 }
 
 function isFormalMemberSignup(signup = {}, member = null) {

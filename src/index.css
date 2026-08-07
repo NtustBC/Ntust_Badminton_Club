@@ -1611,6 +1611,30 @@ img {
   word-break: break-word;
 }
 
+.member-status-select {
+  min-width: 112px;
+  padding: 10px 34px 10px 12px;
+  border: 1px solid rgba(15, 76, 129, 0.16);
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.member-status-select:hover,
+.member-status-select:focus {
+  outline: none;
+  border-color: rgba(15, 76, 129, 0.34);
+  box-shadow: 0 8px 20px rgba(15, 76, 129, 0.1);
+}
+
+.member-status-select:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .member-table-empty {
   margin: 20px 0 0;
 }
