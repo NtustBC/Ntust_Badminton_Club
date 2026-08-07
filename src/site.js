@@ -1926,6 +1926,18 @@ const getAdminCalendarAnnouncementId = (announcement = {}) => String(announcemen
 const getAnnouncementTimeLabel = (announcement = {}) =>
   buildEventTimeLabel(announcement.startTime, announcement.endTime, announcement.timeLabel || announcement.time);
 const getAnnouncementNote = (announcement = {}) => String(announcement.body || announcement.note || announcement.reminder || "").trim();
+const getNoticeEventType = (entry = {}) => (entry.calendarEventType === "class" ? "class" : "announcement");
+const normalizeClassSessionAsNotice = (session = {}) => ({
+  ...session,
+  id: `class-${getClassSessionId(session)}`,
+  date: String(session.date || session.sessionDate || "").trim(),
+  endDate: String(session.date || session.sessionDate || "").trim(),
+  title: session.title || "社課",
+  body: session.description || session.reminder || "請查看社課日期與內容。",
+  reminder: "社課",
+  calendarEventType: "class",
+  sourceSessionId: getClassSessionId(session),
+});
 const getAnnouncementDateKey = (announcement = {}) => {
   const explicitDate = String(announcement.date || "").trim();
   if (parseDateKey(explicitDate)) {
@@ -4605,10 +4617,10 @@ function renderAnnouncementsBoard(announcements = []) {
           ${dayAnnouncements
             .map(
               (announcement) => `
-                <span class="admin-calendar-day-badge is-announcement">
-                  ${escapeHtml(getAnnouncementTimeLabel(announcement) || "公告")}
+                <span class="admin-calendar-day-badge${getNoticeEventType(announcement) === "announcement" ? " is-announcement" : ""}">
+                  ${escapeHtml(getAnnouncementTimeLabel(announcement) || (getNoticeEventType(announcement) === "class" ? "社課" : "公告"))}
                 </span>
-                <strong class="announcement-calendar-title">${escapeHtml(announcement.title || "公告")}</strong>
+                <strong class="announcement-calendar-title">${escapeHtml(announcement.title || (getNoticeEventType(announcement) === "class" ? "社課" : "公告"))}</strong>
                 <small class="announcement-calendar-note">${escapeHtml(announcement.body || announcement.message || announcement.reminder || "")}</small>
               `,
             )
@@ -4631,14 +4643,14 @@ function renderAnnouncementsBoard(announcements = []) {
         <div>
           <p class="section-kicker">Calendar</p>
           <h3 class="content-title">${escapeHtml(monthLabel)}</h3>
-          <p class="section-description">公告會依照日期顯示在行事曆上，有異動時可以直接看當天內容。</p>
+          <p class="section-description">社課與公告會依照日期顯示，有異動時可以直接查看當天內容。</p>
         </div>
         <div class="admin-calendar-nav">
           <button class="button-secondary" data-announcement-calendar-prev type="button">上個月</button>
           <button class="button-secondary" data-announcement-calendar-next type="button">下個月</button>
         </div>
       </div>
-      ${monthAnnouncementCount === 0 ? `<p class="admin-calendar-empty-board">這個月份目前沒有公告。</p>` : ""}
+      ${monthAnnouncementCount === 0 ? `<p class="admin-calendar-empty-board">這個月份目前沒有社課或公告。</p>` : ""}
       <div class="admin-calendar-weekdays">
         ${dayLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
       </div>
@@ -4669,9 +4681,9 @@ function renderAnnouncementsBoard(announcements = []) {
       const events = announcementPageState.announcements
         .filter((announcement) => isDateWithinAnnouncement(dateKey, announcement))
         .map((announcement) => ({
-          type: "announcement",
+          type: getNoticeEventType(announcement),
           id: getAdminCalendarAnnouncementId(announcement),
-          title: announcement.title || "公告",
+          title: announcement.title || (getNoticeEventType(announcement) === "class" ? "社課" : "公告"),
           timeLabel: getAnnouncementTimeLabel(announcement),
           location: announcement.location || "",
           note: getAnnouncementNote(announcement),
@@ -4682,7 +4694,7 @@ function renderAnnouncementsBoard(announcements = []) {
         title: parsedDate
           ? parsedDate.toLocaleDateString("zh-TW", { year: "numeric", month: "long", day: "numeric" })
           : dateKey,
-        subtitle: `${getWeekdayLabel(DATE_WEEKDAY_ORDER[parsedDate?.getDay?.() ?? 0] || "")} · ${events.length} 則公告`,
+        subtitle: `${getWeekdayLabel(DATE_WEEKDAY_ORDER[parsedDate?.getDay?.() ?? 0] || "")} · ${events.length} 筆內容`,
         events,
       });
     });
@@ -4712,13 +4724,24 @@ async function refreshAnnouncementsPageSafe({ force = false } = {}) {
   try {
     const loadWarnings = [];
     if (force || !announcementPageState.loaded) {
-      const announcements = await loadWithFallback(
-        "公告",
-        loadWarnings,
-        () => getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION),
-        [],
-      );
-      announcementPageState.announcements = announcements;
+      const [announcements, sessions] = await Promise.all([
+        loadWithFallback(
+          "公告",
+          loadWarnings,
+          () => getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION),
+          [],
+        ),
+        loadWithFallback(
+          "社課",
+          loadWarnings,
+          () => getCollectionEntries(CLASS_SESSION_COLLECTION),
+          [],
+        ),
+      ]);
+      announcementPageState.announcements = [
+        ...announcements.map((entry) => ({ ...entry, calendarEventType: "announcement" })),
+        ...sessions.map(normalizeClassSessionAsNotice),
+      ];
       announcementPageState.loadWarnings = loadWarnings;
       announcementPageState.loaded = true;
     }
@@ -4729,7 +4752,7 @@ async function refreshAnnouncementsPageSafe({ force = false } = {}) {
         "afterbegin",
         buildLoadWarningMarkup({
           title: "部分資料載入失敗",
-          copy: "目前部分公告資料無法讀取，下面仍會顯示已載入的公告。",
+          copy: "目前部分社課或公告資料無法讀取，下面仍會顯示已載入的內容。",
           details: announcementPageState.loadWarnings,
         }),
       );
