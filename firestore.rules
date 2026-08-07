@@ -103,11 +103,11 @@ service cloud.firestore {
     match /classPublicRosters/{rosterId} {
       allow read: if true;
       allow create: if isSignedIn()
-        && request.resource.data.keys().hasOnly(["sessionId", "userId", "name", "studentId", "createdAt", "updatedAt"])
+        && request.resource.data.keys().hasOnly(["sessionId", "userId", "maskedName", "studentId", "createdAt", "updatedAt"])
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.sessionId is string
-        && request.resource.data.name is string
-        && request.resource.data.name.size() <= 100
+        && request.resource.data.maskedName is string
+        && request.resource.data.maskedName.size() <= 100
         && request.resource.data.studentId is string
         && request.resource.data.studentId.size() <= 30
         && (isAdmin() || hasFormalMemberRecord() || classSessionAllowsNonMembers(request.resource.data.sessionId));
@@ -116,7 +116,9 @@ service cloud.firestore {
         && resource.data.userId == request.auth.uid
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.sessionId == resource.data.sessionId
-        && request.resource.data.keys().hasOnly(["sessionId", "userId", "name", "studentId", "createdAt", "updatedAt"])
+        && request.resource.data.keys().hasOnly(["sessionId", "userId", "maskedName", "studentId", "createdAt", "updatedAt"])
+        && request.resource.data.maskedName is string
+        && request.resource.data.maskedName.size() <= 100
         && (hasFormalMemberRecord() || classSessionAllowsNonMembers(resource.data.sessionId))
       );
       allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);

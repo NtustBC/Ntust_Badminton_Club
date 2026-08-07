@@ -437,12 +437,13 @@ body.spa-navigating .page-main {
 
 .academic-year-setting-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.7fr) auto;
   gap: 12px;
   margin-top: 10px;
 }
 
-.academic-year-setting-row input {
+.academic-year-setting-row input,
+.academic-year-setting-row select {
   min-height: 58px;
   padding: 0 18px;
   border: 1px solid rgba(15, 76, 129, 0.14);
@@ -453,7 +454,8 @@ body.spa-navigating .page-main {
   font-weight: 700;
 }
 
-.academic-year-setting-row input:focus {
+.academic-year-setting-row input:focus,
+.academic-year-setting-row select:focus {
   outline: none;
   border-color: rgba(15, 76, 129, 0.3);
   box-shadow: 0 0 0 4px rgba(15, 76, 129, 0.08);
@@ -2154,6 +2156,32 @@ body.spa-navigating .page-main {
   width: 100%;
 }
 
+.class-signup-modal-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 6px;
+  border-radius: 18px;
+  background: rgba(15, 76, 129, 0.06);
+}
+
+.class-signup-modal-tab {
+  min-height: 46px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.class-signup-modal-tab.is-active {
+  background: #fff;
+  color: var(--brand);
+  box-shadow: 0 8px 22px rgba(15, 76, 129, 0.1);
+}
+
 .class-signup-modal-form-shell .class-signup-form,
 .class-signup-modal-form-shell .class-session-note,
 .class-signup-modal-form-shell .class-session-locked {
@@ -2738,6 +2766,18 @@ button.admin-calendar-day:focus-visible {
   font-weight: 700;
 }
 
+.admin-signup-window-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.admin-signup-window-presets .button-secondary {
+  min-height: 42px;
+  padding-inline: 14px;
+  font-size: 0.88rem;
+}
+
 .admin-calendar-form-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2933,6 +2973,10 @@ button.admin-calendar-day:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .member-filter-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .class-signup-profile,
   .class-signup-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3037,6 +3081,10 @@ button.admin-calendar-day:focus-visible {
 @media (max-width: 759px) {
   .container {
     width: min(1240px, calc(100% - 24px));
+  }
+
+  .academic-year-setting-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .header-inner {

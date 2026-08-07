@@ -114,6 +114,7 @@ let currentUserIsAdmin = false;
 let currentMemberStatus = "non_member";
 let currentMemberProfile = null;
 let configuredAcademicYear = "";
+let configuredAcademicTerm = "";
 let authMode = "signin";
 let authReadyPromise = null;
 let lastLoginTrigger = null;
@@ -224,6 +225,7 @@ const primeAuthStateFromSnapshot = () => {
 const memberFilters = {
   year: "all",
   term: "all",
+  query: "",
 };
 
 const authCopy = {
@@ -586,11 +588,16 @@ const adminClassCalendarModalMarkup = `
             </label>
             <div class="form-field">
               <label for="admin-calendar-signup-open">報名開始</label>
-              <input id="admin-calendar-signup-open" name="signupOpenAt" type="datetime-local" />
+              <input id="admin-calendar-signup-open" name="signupOpenAt" step="900" type="datetime-local" />
             </div>
             <div class="form-field">
               <label for="admin-calendar-signup-close">報名截止</label>
-              <input id="admin-calendar-signup-close" name="signupCloseAt" type="datetime-local" />
+              <input id="admin-calendar-signup-close" name="signupCloseAt" step="900" type="datetime-local" />
+            </div>
+            <div class="admin-signup-window-presets" aria-label="快速設定報名時間">
+              <button class="button-secondary" data-signup-window-preset="week" type="button">前 7 天至前 1 天</button>
+              <button class="button-secondary" data-signup-window-preset="now" type="button">現在開始</button>
+              <button class="button-secondary" data-signup-window-preset="clear" type="button">清除時間</button>
             </div>
             <div class="form-field">
               <label for="admin-calendar-signup-limit">人數上限</label>
@@ -714,8 +721,8 @@ const formatDateTimeLocalValue = (value) => {
     return value.slice(0, 16);
   }
 
-  if (typeof value?.toDate === "function") {
-    const date = value.toDate();
+  if (value instanceof Date || typeof value?.toDate === "function") {
+    const date = value instanceof Date ? value : value.toDate();
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
   }
 
@@ -1648,6 +1655,7 @@ const renderClassSignupModalContent = (sessionId) => {
 
   const { ownSignup, approvalData, canSignup, isSignupSession, signupOpen, statusLabel } = getPublicClassSignupModalState(session);
   const sessionSignups = getSessionSignups(sessionId);
+  const activeTab = calendarModal.dataset.activeTab === "roster" ? "roster" : "signup";
   const signupsMarkup = buildPublicSignupListMarkup(session, sessionSignups);
   const formMarkup = isSignupSession
     ? buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup, signupOpen)
@@ -1678,10 +1686,14 @@ const renderClassSignupModalContent = (sessionId) => {
         <p class="admin-calendar-modal-session-copy">${escapeHtml(session.description || session.reminder || "這一天有社課安排，請依照時間參與。")}</p>
         ${session.reminder ? `<p class="class-session-reminder">提醒：${escapeHtml(session.reminder)}</p>` : ""}
       </article>
-      <section class="class-signup-modal-form-shell">
+      <div class="class-signup-modal-tabs" role="tablist" aria-label="社課報名內容">
+        <button class="class-signup-modal-tab${activeTab === "signup" ? " is-active" : ""}" data-class-signup-tab="signup" type="button" role="tab" aria-selected="${activeTab === "signup"}">報名</button>
+        <button class="class-signup-modal-tab${activeTab === "roster" ? " is-active" : ""}" data-class-signup-tab="roster" type="button" role="tab" aria-selected="${activeTab === "roster"}">名單（${sessionSignups.length}）</button>
+      </div>
+      <section class="class-signup-modal-form-shell" data-class-signup-panel="signup"${activeTab === "signup" ? "" : " hidden"}>
         ${formMarkup}
       </section>
-      <section class="class-signup-modal-form-shell">
+      <section class="class-signup-modal-form-shell" data-class-signup-panel="roster"${activeTab === "roster" ? "" : " hidden"}>
         <h3 class="content-title">報名名單</h3>
         ${signupsMarkup}
       </section>
@@ -1689,6 +1701,24 @@ const renderClassSignupModalContent = (sessionId) => {
   `;
 
   bindClassSignupBoardEvents();
+  bindClassSignupModalTabs(calendarModal);
+};
+
+const bindClassSignupModalTabs = (calendarModal) => {
+  calendarModal.querySelectorAll("[data-class-signup-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextTab = button.dataset.classSignupTab === "roster" ? "roster" : "signup";
+      calendarModal.dataset.activeTab = nextTab;
+      calendarModal.querySelectorAll("[data-class-signup-tab]").forEach((tabButton) => {
+        const isActive = tabButton.dataset.classSignupTab === nextTab;
+        tabButton.classList.toggle("is-active", isActive);
+        tabButton.setAttribute("aria-selected", String(isActive));
+      });
+      calendarModal.querySelectorAll("[data-class-signup-panel]").forEach((panel) => {
+        panel.hidden = panel.dataset.classSignupPanel !== nextTab;
+      });
+    });
+  });
 };
 
 const openClassSignupModal = (sessionId, trigger = null) => {
@@ -1698,6 +1728,7 @@ const openClassSignupModal = (sessionId, trigger = null) => {
   }
 
   lastClassSignupTrigger = trigger || null;
+  calendarModal.dataset.activeTab = "signup";
   renderClassSignupModalContent(sessionId);
   calendarModal.hidden = false;
   body.classList.add("modal-open");
@@ -1719,6 +1750,7 @@ const closeClassSignupModal = () => {
 
   calendarModal.hidden = true;
   calendarModal.dataset.sessionId = "";
+  calendarModal.dataset.activeTab = "";
   body.classList.remove("modal-open");
 
   if (lastClassSignupTrigger instanceof HTMLElement) {
@@ -1858,6 +1890,43 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   form.dataset.editingId = eventId;
 };
 
+const applySignupWindowPreset = (form, preset) => {
+  const openInput = form.querySelector("[name='signupOpenAt']");
+  const closeInput = form.querySelector("[name='signupCloseAt']");
+  if (!(openInput instanceof HTMLInputElement) || !(closeInput instanceof HTMLInputElement)) {
+    return;
+  }
+
+  if (preset === "clear") {
+    openInput.value = "";
+    closeInput.value = "";
+    return;
+  }
+
+  if (preset === "now") {
+    const now = new Date();
+    now.setSeconds(0, 0);
+    now.setMinutes(Math.ceil(now.getMinutes() / 15) * 15);
+    openInput.value = formatDateTimeLocalValue(now);
+    return;
+  }
+
+  const sessionDate = parseDateKey(form.querySelector("[name='date']")?.value || "");
+  if (!sessionDate) {
+    window.alert("請先選擇社課日期。");
+    return;
+  }
+
+  const signupOpen = new Date(sessionDate);
+  signupOpen.setDate(signupOpen.getDate() - 7);
+  signupOpen.setHours(12, 0, 0, 0);
+  const signupClose = new Date(sessionDate);
+  signupClose.setDate(signupClose.getDate() - 1);
+  signupClose.setHours(23, 45, 0, 0);
+  openInput.value = formatDateTimeLocalValue(signupOpen);
+  closeInput.value = formatDateTimeLocalValue(signupClose);
+};
+
 const openAdminClassCalendarModal = (dateKey, trigger = null) => {
   const { calendarModal, title, subtitle, list, form } = getAdminClassCalendarModalElements();
   lastAdminClassCalendarTrigger = trigger || null;
@@ -1963,7 +2032,7 @@ const syncMemberProfile = async (user, source, profile = {}) => {
     payload.school = profile.department || "";
     payload.phone = profile.phone || "";
     payload.academicYear = getConfiguredAcademicYear();
-    payload.term = "未設定";
+    payload.term = getConfiguredAcademicTerm();
     payload.membershipStatus = "pending_payment";
     payload.status = "pending_payment";
     payload.paymentStatus = "unpaid";
@@ -2142,6 +2211,14 @@ const getConfiguredAcademicYear = () => {
   return storedYears[0] || String(Math.max(getRocAcademicYear(), MIN_ACADEMIC_YEAR));
 };
 
+const getDefaultAcademicTerm = (date = new Date()) => {
+  const month = date.getMonth() + 1;
+  return month >= 8 || month <= 1 ? "上學期" : "下學期";
+};
+
+const getConfiguredAcademicTerm = () =>
+  DEFAULT_TERMS.slice(0, 2).includes(configuredAcademicTerm) ? configuredAcademicTerm : getDefaultAcademicTerm();
+
 const loadCurrentTermSettings = async () => {
   if (!db) {
     return;
@@ -2149,10 +2226,15 @@ const loadCurrentTermSettings = async () => {
 
   try {
     const settingsDoc = await getDoc(getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC));
-    const academicYear = settingsDoc.exists() ? String(settingsDoc.data()?.academicYear || "").trim() : "";
+    const settingsData = settingsDoc.exists() ? settingsDoc.data() : {};
+    const academicYear = String(settingsData?.academicYear || "").trim();
+    const term = String(settingsData?.term || "").trim();
     if (isValidAcademicYearValue(academicYear)) {
       configuredAcademicYear = academicYear;
       saveAdminAcademicYears(Array.from(new Set([academicYear, ...getStoredAdminAcademicYears()])).sort((a, b) => Number(b) - Number(a)));
+    }
+    if (DEFAULT_TERMS.slice(0, 2).includes(term)) {
+      configuredAcademicTerm = term;
     }
   } catch (error) {
     console.warn("Load current term settings failed:", error);
@@ -2183,7 +2265,15 @@ const getAcademicYearLabel = (value) => {
   return `${value} 學年度`;
 };
 
-const getAcademicTermLabel = (value) => value || "未設定";
+const getAcademicTermLabel = (value) => {
+  if (value === "上學期") {
+    return "第一學期";
+  }
+  if (value === "下學期") {
+    return "第二學期";
+  }
+  return value || "未設定";
+};
 
 const matchesMemberFilter = (entry) => {
   const yearValue = entry.academicYear || "未設定";
@@ -2191,12 +2281,33 @@ const matchesMemberFilter = (entry) => {
 
   const yearMatch = memberFilters.year === "all" || yearValue === memberFilters.year;
   const termMatch = memberFilters.term === "all" || termValue === memberFilters.term;
-  return yearMatch && termMatch;
+  const queryValue = memberFilters.query.trim().toLocaleLowerCase("zh-TW");
+  const queryMatch =
+    !queryValue ||
+    [entry.name, entry.studentId, entry.department, entry.school, entry.email, entry.gmail, entry.phone]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase("zh-TW")
+      .includes(queryValue);
+  return yearMatch && termMatch && queryMatch;
+};
+
+const renderFilteredMemberViews = () => {
+  if (!membersDashboardCache.loaded) {
+    void refreshMembersDashboardSafe();
+    return;
+  }
+
+  const displayMembers = mergeMembersWithApprovedApplications(membersDashboardCache.members);
+  renderMembersSummary(displayMembers);
+  renderMembersExportToolbar(displayMembers);
+  renderMembersList(displayMembers);
 };
 
 const initMembersFilters = () => {
   const yearSelect = document.querySelector("[data-filter-year]");
   const termSelect = document.querySelector("[data-filter-term]");
+  const queryInput = document.querySelector("[data-filter-query]");
 
   if (!yearSelect || !termSelect || yearSelect.dataset.initialized === "true") {
     return;
@@ -2204,12 +2315,17 @@ const initMembersFilters = () => {
 
   yearSelect.addEventListener("change", () => {
     memberFilters.year = yearSelect.value;
-    void refreshMembersDashboardSafe();
+    renderFilteredMemberViews();
   });
 
   termSelect.addEventListener("change", () => {
     memberFilters.term = termSelect.value;
-    void refreshMembersDashboardSafe();
+    renderFilteredMemberViews();
+  });
+
+  queryInput?.addEventListener("input", () => {
+    memberFilters.query = queryInput.value;
+    renderFilteredMemberViews();
   });
 
   yearSelect.dataset.initialized = "true";
@@ -2218,6 +2334,11 @@ const initMembersFilters = () => {
 const patchMembersFilterUI = () => {
   const yearSelect = document.querySelector("[data-filter-year]");
   const termSelect = document.querySelector("[data-filter-term]");
+  const queryInput = document.querySelector("[data-filter-query]");
+
+  if (queryInput instanceof HTMLInputElement && queryInput.value !== memberFilters.query) {
+    queryInput.value = memberFilters.query;
+  }
 
   if (yearSelect) {
     yearSelect.innerHTML = buildAdminAcademicYearOptions()
@@ -3319,6 +3440,24 @@ function getSessionSignups(sessionId) {
   return limit && index >= limit ? "waitlisted" : "accepted";
 }
 
+function maskPublicName(value) {
+  const characters = Array.from(String(value || "").trim());
+  if (characters.length === 0) {
+    return "未填姓名";
+  }
+  if (characters.length === 1) {
+    return `${characters[0]}O`;
+  }
+  if (characters.length === 2) {
+    return `${characters[0]}O`;
+  }
+  return `${characters[0]}${"O".repeat(characters.length - 2)}${characters.at(-1)}`;
+}
+
+function getPublicRosterDisplayName(entry = {}) {
+  return String(entry.maskedName || "").trim() || maskPublicName(entry.name);
+}
+
 function buildPublicSignupListMarkup(session, signups = []) {
   const sessionId = getClassSessionId(session);
   const sortedSignups = [...signups].sort((a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt));
@@ -3338,7 +3477,7 @@ function buildPublicSignupListMarkup(session, signups = []) {
             <div class="class-roster-item">
               <span class="class-roster-index">#${String(index + 1).padStart(2, "0")}</span>
               <div>
-                <p class="class-roster-name">${escapeHtml(signup.name || "未填姓名")} / ${escapeHtml(signup.studentId || "未填學號")}</p>
+                <p class="class-roster-name">${escapeHtml(getPublicRosterDisplayName(signup))} / ${escapeHtml(signup.studentId || "未填學號")}</p>
               </div>
             </div>
           `,
@@ -3568,7 +3707,7 @@ function renderClassRosterBoard(sessions = []) {
                 (entry, index) => `
                   <div class="class-roster-item">
                     <span class="class-roster-index">#${String(index + 1).padStart(2, "0")}</span>
-                    <p class="class-roster-name">${escapeHtml(entry.studentId || "未填學號")}　${escapeHtml(entry.name || "未填姓名")}</p>
+                    <p class="class-roster-name">${escapeHtml(entry.studentId || "未填學號")}　${escapeHtml(getPublicRosterDisplayName(entry))}</p>
                   </div>
                 `,
               )
@@ -3717,7 +3856,7 @@ async function handleClassSignupSubmit(event) {
         sessionId,
         userId: currentUser.uid,
         email: currentUser.email || "",
-        name: name || currentMemberProfile?.name || currentUser.email || "",
+        maskedName: maskPublicName(name || currentMemberProfile?.name || currentUser.email || ""),
         studentId: studentId || currentMemberProfile?.studentId || "",
         note,
         membershipStatusAtSignup: currentMembershipStatus,
@@ -3731,7 +3870,6 @@ async function handleClassSignupSubmit(event) {
         createdAt: ownExistingSignup?.createdAt || serverTimestamp(),
         updatedAt: serverTimestamp(),
       },
-      { merge: true },
     );
     batch.set(
       publicRosterRef,
@@ -5048,6 +5186,9 @@ function bindAdminClassCalendarActions() {
         signupSettings.hidden = signupFieldsHidden;
       }
     });
+    form.querySelectorAll("[data-signup-window-preset]").forEach((button) => {
+      button.addEventListener("click", () => applySignupWindowPreset(form, button.dataset.signupWindowPreset || "week"));
+    });
   }
 
   if (deleteButton && deleteButton.dataset.initialized !== "true") {
@@ -5189,6 +5330,12 @@ async function handleAdminCalendarEventSubmit(event) {
 
   if (!date || !title || !timeLabel || !location) {
     window.alert("請先填寫標題、時間與地點。");
+    return;
+  }
+
+  if (signupRequired && signupOpenAt && signupCloseAt && getDateTimeLocalMs(signupOpenAt) >= getDateTimeLocalMs(signupCloseAt)) {
+    window.alert("報名截止時間必須晚於報名開始時間。");
+    form.querySelector("[name='signupCloseAt']")?.focus();
     return;
   }
 
@@ -5538,7 +5685,7 @@ const handleApplicationSubmit = async (event) => {
       note,
       applicationType,
       academicYear: getConfiguredAcademicYear(),
-      term: "未設定",
+      term: getConfiguredAcademicTerm(),
       approved: false,
       reviewStatus: "pending",
       submittedAt: serverTimestamp(),
@@ -5736,13 +5883,15 @@ const getDefaultAdminAcademicYear = () => getConfiguredAcademicYear();
 const syncAcademicYearSetting = () => {
   const form = document.querySelector("[data-academic-year-setting]");
   const input = document.querySelector("[data-current-academic-year-input]");
+  const termSelect = document.querySelector("[data-current-academic-term]");
   const hint = document.querySelector("[data-current-academic-year-hint]");
-  if (!(form instanceof HTMLFormElement) || !(input instanceof HTMLInputElement)) {
+  if (!(form instanceof HTMLFormElement) || !(input instanceof HTMLInputElement) || !(termSelect instanceof HTMLSelectElement)) {
     return;
   }
 
   form.hidden = !currentUserIsAdmin;
   input.value = getDefaultAdminAcademicYear();
+  termSelect.value = getConfiguredAcademicTerm();
   if (hint) {
     hint.textContent = currentUserIsAdmin ? "輸入後會加入下方學年度篩選選單。" : "登入管理員後可以設定目前學年度。";
   }
@@ -5751,8 +5900,9 @@ const syncAcademicYearSetting = () => {
 const bindAcademicYearSetting = () => {
   const form = document.querySelector("[data-academic-year-setting]");
   const input = document.querySelector("[data-current-academic-year-input]");
+  const termSelect = document.querySelector("[data-current-academic-term]");
   const hint = document.querySelector("[data-current-academic-year-hint]");
-  if (!(form instanceof HTMLFormElement) || !(input instanceof HTMLInputElement) || form.dataset.bound === "true") {
+  if (!(form instanceof HTMLFormElement) || !(input instanceof HTMLInputElement) || !(termSelect instanceof HTMLSelectElement) || form.dataset.bound === "true") {
     return;
   }
 
@@ -5760,11 +5910,19 @@ const bindAcademicYearSetting = () => {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const value = input.value.trim();
+    const term = termSelect.value;
     if (!isValidAcademicYearValue(value)) {
       if (hint) {
         hint.textContent = "請輸入 2 到 3 位數的民國學年度，例如 115。";
       }
       input.focus();
+      return;
+    }
+    if (!DEFAULT_TERMS.slice(0, 2).includes(term)) {
+      if (hint) {
+        hint.textContent = "請選擇第一學期或第二學期。";
+      }
+      termSelect.focus();
       return;
     }
 
@@ -5778,6 +5936,7 @@ const bindAcademicYearSetting = () => {
         getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC),
         {
           academicYear: value,
+          term,
           updatedAt: serverTimestamp(),
           updatedBy: currentUser?.uid || "",
           updatedByEmail: currentUser?.email || "",
@@ -5786,15 +5945,17 @@ const bindAcademicYearSetting = () => {
       );
       saveAdminAcademicYears(years);
       configuredAcademicYear = value;
+      configuredAcademicTerm = term;
       memberFilters.year = value;
+      memberFilters.term = term;
       patchMembersFilterUI();
       void refreshMembersDashboardSafe();
       if (hint) {
-        hint.textContent = `已設定目前學年度為 ${value} 學年度。`;
+        hint.textContent = `已設定目前學期為 ${value} 學年度 ${getAcademicTermLabel(term)}。`;
       }
       openActionSuccessModal({
         title: "儲存成功",
-        copy: `目前學年度已設定為 ${value} 學年度。`,
+        copy: `目前學期已設定為 ${value} 學年度 ${getAcademicTermLabel(term)}。`,
       });
     } catch (error) {
       console.error("Save academic year setting failed:", error);
