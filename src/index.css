@@ -1388,7 +1388,8 @@ body.spa-navigating .page-main {
   font-weight: 700;
 }
 
-.form-field input {
+.form-field input,
+.form-field select {
   width: 100%;
   min-height: 52px;
   padding: 0 16px;
@@ -1401,7 +1402,8 @@ body.spa-navigating .page-main {
     box-shadow 160ms ease;
 }
 
-.form-field input:focus {
+.form-field input:focus,
+.form-field select:focus {
   outline: none;
   border-color: rgba(15, 76, 129, 0.28);
   box-shadow: 0 0 0 4px rgba(15, 76, 129, 0.08);
@@ -1412,7 +1414,7 @@ body.spa-navigating .page-main {
 }
 
 .auth-modal-dialog {
-  width: min(480px, calc(100% - 28px));
+  width: min(720px, calc(100% - 28px));
 }
 
 [data-password-reset-form] {
@@ -1513,6 +1515,143 @@ body.spa-navigating .page-main {
   border: 1px solid rgba(15, 76, 129, 0.1);
   border-radius: var(--radius-md);
   background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(241, 246, 252, 0.94));
+}
+
+.membership-choice-fieldset {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 18px;
+  border: 1px solid rgba(15, 76, 129, 0.12);
+  border-radius: var(--radius-md);
+  background: rgba(248, 251, 255, 0.82);
+}
+
+.membership-choice-fieldset legend {
+  padding: 0 8px;
+  color: var(--brand);
+  font-weight: 800;
+}
+
+.membership-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.membership-choice-grid.is-three-column {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.membership-choice-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 72px;
+  padding: 14px;
+  border: 1px solid rgba(15, 76, 129, 0.12);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  cursor: pointer;
+}
+
+.membership-choice-option:has(input:checked) {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(15, 76, 129, 0.08);
+}
+
+.membership-choice-option input {
+  flex: 0 0 auto;
+  margin-top: 4px;
+}
+
+.membership-choice-option span {
+  display: grid;
+  gap: 4px;
+}
+
+.membership-choice-option small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.membership-payment-fields,
+.membership-payment-panel,
+.account-membership-form,
+.account-membership-summary {
+  display: grid;
+  gap: 14px;
+}
+
+.membership-payment-fields[hidden],
+.membership-payment-panel[hidden],
+.account-membership-form[hidden] {
+  display: none;
+}
+
+.membership-payment-panel {
+  padding: 18px;
+  border-radius: var(--radius-md);
+  background: rgba(15, 76, 129, 0.05);
+}
+
+.transfer-account-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+}
+
+.transfer-account-card p {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0;
+}
+
+.transfer-account-card span,
+.account-membership-summary span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.membership-payment-reminder {
+  margin: 0;
+  padding: 14px 16px;
+  border-left: 4px solid var(--brand);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  line-height: 1.7;
+}
+
+.account-membership-form {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(15, 76, 129, 0.12);
+}
+
+.account-membership-actions,
+.member-payment-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.member-payment-cell {
+  min-width: 180px;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.member-payment-confirm {
+  min-height: 38px;
+  padding-inline: 12px;
+  font-size: 0.84rem;
+}
+
+.membership-payment-setting-card {
+  margin-top: 24px;
 }
 
 .auth-status-label {
@@ -3085,6 +3224,16 @@ button.admin-calendar-day:focus-visible {
 
   .academic-year-setting-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .membership-choice-grid,
+  .membership-choice-grid.is-three-column {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .transfer-account-card p {
+    display: grid;
+    gap: 4px;
   }
 
   .header-inner {

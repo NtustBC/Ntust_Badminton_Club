@@ -48,13 +48,25 @@ service cloud.firestore {
       allow create: if isAdmin() || (
         isSignedIn() &&
         request.auth.uid == userId &&
-        (!request.resource.data.keys().hasAny(["membershipStatus", "status"]) || request.resource.data.membershipStatus in ["not_applied", "pending_payment"]) &&
-        (!request.resource.data.keys().hasAny(["paymentStatus"]) || request.resource.data.paymentStatus == "unpaid")
+        request.resource.data.membershipStatus in ["not_applied", "pending_payment"] &&
+        request.resource.data.status == request.resource.data.membershipStatus &&
+        request.resource.data.paymentStatus == "unpaid"
       );
       allow update: if isAdmin() || (
         isSignedIn() &&
         request.auth.uid == userId &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(["membershipStatus", "status", "paymentStatus", "paidAt", "approvedAt"])
+        (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(["membershipStatus", "status", "paymentStatus", "paidAt", "approvedAt", "paymentConfirmedAt", "paymentConfirmedBy"]) ||
+          (
+            resource.data.membershipStatus != "formal_member" &&
+            resource.data.status != "formal_member" &&
+            resource.data.paymentStatus != "paid" &&
+            request.resource.data.membershipStatus in ["not_applied", "pending_payment"] &&
+            request.resource.data.status == request.resource.data.membershipStatus &&
+            request.resource.data.paymentStatus == "unpaid" &&
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(["paidAt", "approvedAt", "paymentConfirmedAt", "paymentConfirmedBy"])
+          )
+        )
       );
       allow delete: if isAdmin();
     }

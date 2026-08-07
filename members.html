@@ -123,6 +123,46 @@
             <div data-members-content hidden>
               <div class="member-summary-grid" data-members-summary></div>
 
+              <section class="content-card is-tight membership-payment-setting-card">
+                <div class="member-filter-header">
+                  <div>
+                    <p class="section-kicker">Membership Payment</p>
+                    <h3 class="content-title">入社繳費資訊</h3>
+                    <p class="content-copy">這些資料會顯示在註冊及帳號資訊的轉帳／現金付款介面。</p>
+                  </div>
+                </div>
+                <form class="form-grid membership-payment-setting-form" data-membership-payment-setting-form>
+                  <div class="class-signup-profile">
+                    <div class="form-field">
+                      <label for="payment-bank-name">銀行名稱</label>
+                      <input id="payment-bank-name" name="bankName" placeholder="例如：中華郵政" type="text" />
+                    </div>
+                    <div class="form-field">
+                      <label for="payment-bank-code">銀行代碼</label>
+                      <input id="payment-bank-code" name="bankCode" inputmode="numeric" placeholder="例如：700" type="text" />
+                    </div>
+                    <div class="form-field">
+                      <label for="payment-account-name">帳戶名稱</label>
+                      <input id="payment-account-name" name="accountName" type="text" />
+                    </div>
+                    <div class="form-field">
+                      <label for="payment-account-number">轉帳帳號</label>
+                      <input id="payment-account-number" name="accountNumber" inputmode="numeric" type="text" />
+                    </div>
+                    <div class="form-field">
+                      <label for="payment-cash-office">社辦現金繳費說明</label>
+                      <input id="payment-cash-office" name="cashOfficeLabel" placeholder="例如：每週三中午 12:20–13:10 社辦" type="text" />
+                    </div>
+                    <div class="form-field">
+                      <label for="payment-cash-class">社課現金繳費說明</label>
+                      <input id="payment-cash-class" name="cashClassLabel" placeholder="例如：每週五社課現場" type="text" />
+                    </div>
+                  </div>
+                  <p class="login-note" data-membership-payment-setting-hint></p>
+                  <button class="button-primary" data-membership-payment-setting-save type="submit">儲存繳費資訊</button>
+                </form>
+              </section>
+
               <section class="content-card is-tight member-filter-card">
                 <div class="member-filter-header">
                   <div>

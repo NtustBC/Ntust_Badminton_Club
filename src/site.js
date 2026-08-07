@@ -115,6 +115,14 @@ let currentMemberStatus = "non_member";
 let currentMemberProfile = null;
 let configuredAcademicYear = "";
 let configuredAcademicTerm = "";
+let membershipPaymentSettings = {
+  bankName: "",
+  bankCode: "",
+  accountName: "",
+  accountNumber: "",
+  cashOfficeLabel: "中午至社辦繳費",
+  cashClassLabel: "社課現場繳費",
+};
 let authMode = "signin";
 let authReadyPromise = null;
 let lastLoginTrigger = null;
@@ -237,9 +245,9 @@ const authCopy = {
   },
   signup: {
     title: "建立帳號",
-    subtitle: "註冊時請一併填寫入社資料；帳號建立後即可登入並送出報名。",
+    subtitle: "先建立帳號，再決定本學期是否申請社員資格。",
     submitLabel: "建立帳號",
-    hint: "請填寫完整入社資料。註冊後可登入報名，社費一次繳清後成為正式社員。",
+    hint: "選擇申請社員時，請一併填寫付款方式；幹部確認款項後才會成為正式社員。",
   },
 };
 
@@ -328,6 +336,8 @@ const loginModalMarkup = `
           <p class="auth-status-label">社員狀態</p>
           <p class="auth-status-email" data-auth-email></p>
           <p class="login-note" data-auth-status-hint></p>
+          <div class="account-membership-summary" data-account-membership-summary></div>
+          <button class="button-secondary" data-edit-account-membership type="button">查看／修改本學期申請</button>
         </div>
 
         <form class="form-grid" data-login-form id="login-form" novalidate>
@@ -375,8 +385,102 @@ const loginModalMarkup = `
               <label for="signup-phone">聯絡電話</label>
               <input id="signup-phone" name="phone" placeholder="09xx-xxx-xxx" type="tel" autocomplete="tel" />
             </div>
+            <fieldset class="membership-choice-fieldset">
+              <legend>本學期是否申請成為社員？</legend>
+              <p class="login-note">建立帳號不等於取得社員資格，只有選擇申請並經幹部確認收款後才會成為社員。</p>
+              <div class="membership-choice-grid">
+                <label class="membership-choice-option">
+                  <input name="membershipIntent" type="radio" value="join" />
+                  <span><strong>是，我要申請社員</strong><small>接著選擇繳費方式</small></span>
+                </label>
+                <label class="membership-choice-option">
+                  <input name="membershipIntent" type="radio" value="not_join" checked />
+                  <span><strong>否，只建立帳號</strong><small>帳號狀態會是非社員</small></span>
+                </label>
+              </div>
+            </fieldset>
+            <div class="membership-payment-fields" data-membership-payment-fields hidden>
+              <fieldset class="membership-choice-fieldset">
+                <legend>選擇付款方式</legend>
+                <div class="membership-choice-grid is-three-column">
+                  <label class="membership-choice-option">
+                    <input name="paymentMethod" type="radio" value="cash" />
+                    <span><strong>現金</strong><small>社辦或社課繳費</small></span>
+                  </label>
+                  <label class="membership-choice-option">
+                    <input name="paymentMethod" type="radio" value="transfer" />
+                    <span><strong>轉帳</strong><small>轉帳後提供核對資料</small></span>
+                  </label>
+                  <label class="membership-choice-option">
+                    <input name="paymentMethod" type="radio" value="later" />
+                    <span><strong>稍後付款</strong><small>可在帳號資訊中補填</small></span>
+                  </label>
+                </div>
+              </fieldset>
+              <div class="membership-payment-panel" data-cash-payment-panel hidden>
+                <div class="form-field">
+                  <label for="signup-cash-slot">預計現金繳費場合</label>
+                  <select id="signup-cash-slot" name="cashPaymentSlot">
+                    <option value="">請選擇</option>
+                    <option data-cash-office-option value="office_lunch">中午至社辦繳費</option>
+                    <option data-cash-class-option value="class">社課現場繳費</option>
+                  </select>
+                </div>
+              </div>
+              <div class="membership-payment-panel" data-transfer-payment-panel hidden>
+                <div class="transfer-account-card" data-transfer-account-card></div>
+                <div class="class-signup-profile">
+                  <div class="form-field">
+                    <label for="signup-transfer-at">轉帳日期與時間</label>
+                    <input id="signup-transfer-at" name="transferAt" step="60" type="datetime-local" />
+                  </div>
+                  <div class="form-field">
+                    <label for="signup-transfer-last-five">轉出帳號末五碼</label>
+                    <input id="signup-transfer-last-five" name="transferLastFive" inputmode="numeric" maxlength="5" pattern="[0-9]{5}" placeholder="12345" type="text" />
+                  </div>
+                </div>
+                <p class="membership-payment-reminder">轉帳後請務必確認交易成功，並自行保留成功畫面的截圖，直到幹部完成核對。</p>
+              </div>
+            </div>
           </div>
           <p class="login-note" data-login-hint>${authCopy.signin.hint}</p>
+        </form>
+
+        <form class="form-grid account-membership-form" data-account-membership-form hidden>
+          <div class="section-kicker">本學期社員申請</div>
+          <fieldset class="membership-choice-fieldset">
+            <legend>本學期是否申請成為社員？</legend>
+            <div class="membership-choice-grid">
+              <label class="membership-choice-option"><input name="membershipIntent" type="radio" value="join" /><span><strong>是</strong><small>申請社員資格</small></span></label>
+              <label class="membership-choice-option"><input name="membershipIntent" type="radio" value="not_join" /><span><strong>否</strong><small>維持非社員</small></span></label>
+            </div>
+          </fieldset>
+          <div class="membership-payment-fields" data-membership-payment-fields hidden>
+            <fieldset class="membership-choice-fieldset">
+              <legend>付款方式</legend>
+              <div class="membership-choice-grid is-three-column">
+                <label class="membership-choice-option"><input name="paymentMethod" type="radio" value="cash" /><span><strong>現金</strong></span></label>
+                <label class="membership-choice-option"><input name="paymentMethod" type="radio" value="transfer" /><span><strong>轉帳</strong></span></label>
+                <label class="membership-choice-option"><input name="paymentMethod" type="radio" value="later" /><span><strong>稍後付款</strong></span></label>
+              </div>
+            </fieldset>
+            <div class="membership-payment-panel" data-cash-payment-panel hidden>
+              <div class="form-field"><label>預計現金繳費場合</label><select name="cashPaymentSlot"><option value="">請選擇</option><option data-cash-office-option value="office_lunch">中午至社辦繳費</option><option data-cash-class-option value="class">社課現場繳費</option></select></div>
+            </div>
+            <div class="membership-payment-panel" data-transfer-payment-panel hidden>
+              <div class="transfer-account-card" data-transfer-account-card></div>
+              <div class="class-signup-profile">
+                <div class="form-field"><label>轉帳日期與時間</label><input name="transferAt" step="60" type="datetime-local" /></div>
+                <div class="form-field"><label>轉出帳號末五碼</label><input name="transferLastFive" inputmode="numeric" maxlength="5" pattern="[0-9]{5}" placeholder="12345" type="text" /></div>
+              </div>
+              <p class="membership-payment-reminder">請確認轉帳成功並自行保留截圖，直到幹部完成核對。</p>
+            </div>
+          </div>
+          <p class="login-note" data-account-membership-hint></p>
+          <div class="account-membership-actions">
+            <button class="button-primary" data-account-membership-save type="submit">儲存申請資料</button>
+            <button class="button-secondary" data-account-membership-cancel type="button">取消</button>
+          </div>
         </form>
       </div>
       <div class="modal-footer">
@@ -595,7 +699,7 @@ const adminClassCalendarModalMarkup = `
               <input id="admin-calendar-signup-close" name="signupCloseAt" step="900" type="datetime-local" />
             </div>
             <div class="admin-signup-window-presets" aria-label="快速設定報名時間">
-              <button class="button-secondary" data-signup-window-preset="week" type="button">前 7 天至前 1 天</button>
+              <button class="button-secondary" data-signup-window-preset="previous-week" type="button">前一週週三至週五</button>
               <button class="button-secondary" data-signup-window-preset="now" type="button">現在開始</button>
               <button class="button-secondary" data-signup-window-preset="clear" type="button">清除時間</button>
             </div>
@@ -913,6 +1017,95 @@ const getMembershipStatusCopy = (status) => membershipStatusCopy[getManagedMembe
 const getCurrentMembershipStatus = () => (currentUserIsAdmin ? "admin" : getManagedMembershipStatus(currentMemberStatus));
 const isOfficialMemberStatus = () => currentUserIsAdmin || getManagedMembershipStatus(currentMemberStatus) === "formal_member";
 
+const getPaymentMethodLabel = (value) =>
+  ({ cash: "現金", transfer: "轉帳", later: "稍後付款", none: "未申請" })[String(value || "")] || "尚未選擇";
+
+const getCashPaymentSlotLabel = (value) =>
+  value === "office_lunch"
+    ? membershipPaymentSettings.cashOfficeLabel
+    : value === "class"
+      ? membershipPaymentSettings.cashClassLabel
+      : "尚未選擇";
+
+const getMembershipIntentFromProfile = (profile = {}) =>
+  profile.membershipIntent === "join" || ["pending_payment", "formal_member"].includes(String(profile.membershipStatus || profile.status || ""))
+    ? "join"
+    : "not_join";
+
+const buildTransferAccountMarkup = () => {
+  const hasAccount = membershipPaymentSettings.accountName && membershipPaymentSettings.accountNumber;
+  if (!hasAccount) {
+    return `<p class="content-copy">管理員尚未設定轉帳帳戶，請先選擇「稍後付款」或向幹部確認。</p>`;
+  }
+
+  return `
+    <p><span>銀行</span><strong>${escapeHtml(membershipPaymentSettings.bankName || "未填寫")}（${escapeHtml(membershipPaymentSettings.bankCode || "未填代碼")}）</strong></p>
+    <p><span>戶名</span><strong>${escapeHtml(membershipPaymentSettings.accountName)}</strong></p>
+    <p><span>帳號</span><strong>${escapeHtml(membershipPaymentSettings.accountNumber)}</strong></p>
+  `;
+};
+
+const syncMembershipPaymentForm = (form) => {
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+
+  const intent = form.querySelector("[name='membershipIntent']:checked")?.value || "not_join";
+  const method = form.querySelector("[name='paymentMethod']:checked")?.value || "";
+  const paymentFields = form.querySelector("[data-membership-payment-fields]");
+  const cashPanel = form.querySelector("[data-cash-payment-panel]");
+  const transferPanel = form.querySelector("[data-transfer-payment-panel]");
+  if (paymentFields) {
+    paymentFields.hidden = intent !== "join";
+  }
+  if (cashPanel) {
+    cashPanel.hidden = intent !== "join" || method !== "cash";
+  }
+  if (transferPanel) {
+    transferPanel.hidden = intent !== "join" || method !== "transfer";
+  }
+  form.querySelectorAll("[data-transfer-account-card]").forEach((card) => {
+    card.innerHTML = buildTransferAccountMarkup();
+  });
+  form.querySelectorAll("[data-cash-office-option]").forEach((option) => {
+    option.textContent = membershipPaymentSettings.cashOfficeLabel;
+  });
+  form.querySelectorAll("[data-cash-class-option]").forEach((option) => {
+    option.textContent = membershipPaymentSettings.cashClassLabel;
+  });
+};
+
+const readMembershipPaymentForm = (form) => {
+  const membershipIntent = String(form.querySelector("[name='membershipIntent']:checked")?.value || "not_join");
+  const paymentMethod = membershipIntent === "join" ? String(form.querySelector("[name='paymentMethod']:checked")?.value || "") : "none";
+  return {
+    membershipIntent,
+    paymentMethod,
+    cashPaymentSlot: paymentMethod === "cash" ? String(form.querySelector("[name='cashPaymentSlot']")?.value || "") : "",
+    transferAt: paymentMethod === "transfer" ? String(form.querySelector("[name='transferAt']")?.value || "") : "",
+    transferLastFive: paymentMethod === "transfer" ? String(form.querySelector("[name='transferLastFive']")?.value || "").trim() : "",
+  };
+};
+
+const validateMembershipPaymentData = (data) => {
+  if (data.membershipIntent !== "join") {
+    return "";
+  }
+  if (!data.paymentMethod) {
+    return "請選擇付款方式。";
+  }
+  if (data.paymentMethod === "cash" && !data.cashPaymentSlot) {
+    return "請選擇預計現金繳費場合。";
+  }
+  if (data.paymentMethod === "transfer" && (!membershipPaymentSettings.accountName || !membershipPaymentSettings.accountNumber)) {
+    return "管理員尚未設定轉帳帳戶，請先選擇其他付款方式。";
+  }
+  if (data.paymentMethod === "transfer" && (!data.transferAt || !/^\d{5}$/.test(data.transferLastFive))) {
+    return "請填寫轉帳日期、時間與轉出帳號末五碼。";
+  }
+  return "";
+};
+
 const normalizeMembershipStatus = (memberData = null) => {
   const explicitStatus = String(memberData?.membershipStatus || memberData?.status || "").trim().toLowerCase();
 
@@ -1053,6 +1246,9 @@ const getLoginModalElements = () => {
     signupStudentIdInput: loginModal.querySelector("#signup-student-id"),
     signupDepartmentInput: loginModal.querySelector("#signup-department"),
     signupPhoneInput: loginModal.querySelector("#signup-phone"),
+    accountMembershipForm: loginModal.querySelector("[data-account-membership-form]"),
+    accountMembershipSummary: loginModal.querySelector("[data-account-membership-summary]"),
+    editAccountMembershipButton: loginModal.querySelector("[data-edit-account-membership]"),
     emailInput: loginModal.querySelector("#login-email"),
     passwordInput: loginModal.querySelector("#login-password"),
     statusCard: loginModal.querySelector("[data-auth-status]"),
@@ -1145,14 +1341,24 @@ const setAuthMode = (mode) => {
   loginModal.querySelector("[data-password-reset-trigger]").hidden = mode !== "signin";
   if (signupProfile) {
     signupProfile.hidden = mode !== "signup";
+    syncMembershipPaymentForm(loginModal.querySelector("[data-login-form]"));
   }
   passwordInput.setAttribute("autocomplete", mode === "signup" ? "new-password" : "current-password");
 
   if (mode !== "signup") {
     confirmInput.value = "";
     signupProfile?.querySelectorAll("input").forEach((input) => {
-      input.value = "";
+      if (input.type === "radio" || input.type === "checkbox") {
+        input.checked = false;
+      } else {
+        input.value = "";
+      }
     });
+    const noMembershipOption = signupProfile?.querySelector("[name='membershipIntent'][value='not_join']");
+    if (noMembershipOption instanceof HTMLInputElement) {
+      noMembershipOption.checked = true;
+    }
+    syncMembershipPaymentForm(loginModal.querySelector("[data-login-form]"));
   }
 
   authTabs.forEach((tab) => {
@@ -1166,8 +1372,57 @@ const setAuthMode = (mode) => {
   }
 };
 
+const renderAccountMembershipSummary = (container) => {
+  if (!container) {
+    return;
+  }
+
+  const profile = currentMemberProfile || {};
+  const intent = getMembershipIntentFromProfile(profile);
+  const method = profile.paymentMethod || (intent === "join" ? "later" : "none");
+  const details = [
+    `<span>申請：${intent === "join" ? "本學期申請社員" : "本學期不申請社員"}</span>`,
+    intent === "join" ? `<span>付款方式：${escapeHtml(getPaymentMethodLabel(method))}</span>` : "",
+    method === "cash" ? `<span>預計場合：${escapeHtml(getCashPaymentSlotLabel(profile.cashPaymentSlot))}</span>` : "",
+    method === "transfer" && profile.transferLastFive ? `<span>轉出帳號末五碼：${escapeHtml(profile.transferLastFive)}</span>` : "",
+    intent === "join" ? `<span>款項狀態：${profile.paymentStatus === "paid" ? "已確認" : "待幹部確認"}</span>` : "",
+  ].filter(Boolean);
+  container.innerHTML = details.join("");
+};
+
+const populateAccountMembershipForm = (form) => {
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+
+  const profile = currentMemberProfile || {};
+  const intent = getMembershipIntentFromProfile(profile);
+  const method = profile.paymentMethod || (intent === "join" ? "later" : "none");
+  const intentInput = form.querySelector(`[name='membershipIntent'][value='${intent}']`);
+  const methodInput = form.querySelector(`[name='paymentMethod'][value='${method}']`);
+  if (intentInput instanceof HTMLInputElement) {
+    intentInput.checked = true;
+  }
+  if (methodInput instanceof HTMLInputElement) {
+    methodInput.checked = true;
+  }
+  const cashSlot = form.querySelector("[name='cashPaymentSlot']");
+  const transferAt = form.querySelector("[name='transferAt']");
+  const transferLastFive = form.querySelector("[name='transferLastFive']");
+  if (cashSlot instanceof HTMLSelectElement) {
+    cashSlot.value = profile.cashPaymentSlot || "";
+  }
+  if (transferAt instanceof HTMLInputElement) {
+    transferAt.value = formatDateTimeLocalValue(profile.transferAt || "");
+  }
+  if (transferLastFive instanceof HTMLInputElement) {
+    transferLastFive.value = profile.transferLastFive || "";
+  }
+  syncMembershipPaymentForm(form);
+};
+
 const updateAuthView = () => {
-  const { loginModal, loginForm, statusCard, statusEmail, statusHint, authSubmit, authSwitch } =
+  const { loginModal, loginForm, statusCard, statusEmail, statusHint, authSubmit, authSwitch, accountMembershipForm, accountMembershipSummary, editAccountMembershipButton } =
     getLoginModalElements();
 
   if (currentUser) {
@@ -1175,6 +1430,7 @@ const updateAuthView = () => {
     loginModal.querySelector("[data-auth-subtitle]").textContent = signedInCopy.subtitle;
     loginForm.hidden = true;
     statusCard.hidden = false;
+    accountMembershipForm.hidden = true;
     authSwitch.hidden = true;
     const statusCopy = getMembershipStatusCopy(getCurrentMembershipStatus());
     statusEmail.innerHTML = `
@@ -1182,6 +1438,8 @@ const updateAuthView = () => {
       <span>${escapeHtml(currentUser.email || "")}</span>
     `;
     statusHint.textContent = currentUserIsAdmin ? "你目前有管理員權限。" : `${statusCopy.meaning}｜${statusCopy.action}`;
+    renderAccountMembershipSummary(accountMembershipSummary);
+    editAccountMembershipButton.hidden = currentUserIsAdmin || getCurrentMembershipStatus() === "formal_member";
     authSubmit.textContent = signedInCopy.buttonLabel;
     authSubmit.dataset.authAction = "signout";
     authSubmit.removeAttribute("form");
@@ -1192,6 +1450,7 @@ const updateAuthView = () => {
   loginModal.querySelector(".modal-title").textContent = authCopy[authMode].title;
   loginModal.querySelector("[data-auth-subtitle]").textContent = authCopy[authMode].subtitle;
   loginForm.hidden = false;
+  accountMembershipForm.hidden = true;
   statusCard.hidden = true;
   authSwitch.hidden = false;
   statusEmail.textContent = "";
@@ -1917,11 +2176,15 @@ const applySignupWindowPreset = (form, preset) => {
     return;
   }
 
-  const signupOpen = new Date(sessionDate);
-  signupOpen.setDate(signupOpen.getDate() - 7);
-  signupOpen.setHours(12, 0, 0, 0);
-  const signupClose = new Date(sessionDate);
-  signupClose.setDate(signupClose.getDate() - 1);
+  const daysSinceMonday = (sessionDate.getDay() + 6) % 7;
+  const currentWeekMonday = new Date(sessionDate);
+  currentWeekMonday.setDate(currentWeekMonday.getDate() - daysSinceMonday);
+
+  const signupOpen = new Date(currentWeekMonday);
+  signupOpen.setDate(signupOpen.getDate() - 5);
+  signupOpen.setHours(0, 0, 0, 0);
+  const signupClose = new Date(currentWeekMonday);
+  signupClose.setDate(signupClose.getDate() - 3);
   signupClose.setHours(23, 45, 0, 0);
   openInput.value = formatDateTimeLocalValue(signupOpen);
   closeInput.value = formatDateTimeLocalValue(signupClose);
@@ -2026,6 +2289,8 @@ const syncMemberProfile = async (user, source, profile = {}) => {
   };
 
   if (profile.name || profile.studentId || profile.department || profile.phone) {
+    const membershipIntent = profile.membershipIntent === "join" ? "join" : "not_join";
+    const membershipStatus = membershipIntent === "join" ? "pending_payment" : "not_applied";
     payload.name = profile.name || "";
     payload.studentId = profile.studentId || "";
     payload.department = profile.department || "";
@@ -2033,16 +2298,22 @@ const syncMemberProfile = async (user, source, profile = {}) => {
     payload.phone = profile.phone || "";
     payload.academicYear = getConfiguredAcademicYear();
     payload.term = getConfiguredAcademicTerm();
-    payload.membershipStatus = "pending_payment";
-    payload.status = "pending_payment";
+    payload.membershipIntent = membershipIntent;
+    payload.membershipStatus = membershipStatus;
+    payload.status = membershipStatus;
     payload.paymentStatus = "unpaid";
+    payload.paymentMethod = membershipIntent === "join" ? profile.paymentMethod || "later" : "none";
+    payload.cashPaymentSlot = membershipIntent === "join" && profile.paymentMethod === "cash" ? profile.cashPaymentSlot || "" : "";
+    payload.transferAt = membershipIntent === "join" && profile.paymentMethod === "transfer" ? profile.transferAt || "" : "";
+    payload.transferLastFive = membershipIntent === "join" && profile.paymentMethod === "transfer" ? profile.transferLastFive || "" : "";
+    payload.paymentSubmittedAt = membershipIntent === "join" ? serverTimestamp() : null;
   }
 
   if (!existingDoc.exists()) {
     payload.createdAt = serverTimestamp();
-    payload.status = profile.name ? "pending_payment" : "not_applied";
-    payload.membershipStatus = profile.name ? "pending_payment" : "not_applied";
-    payload.paymentStatus = profile.name ? "unpaid" : "unpaid";
+    payload.status = profile.name && profile.membershipIntent === "join" ? "pending_payment" : "not_applied";
+    payload.membershipStatus = payload.status;
+    payload.paymentStatus = "unpaid";
   }
 
   await setDoc(memberRef, payload, { merge: true });
@@ -2236,6 +2507,19 @@ const loadCurrentTermSettings = async () => {
     if (DEFAULT_TERMS.slice(0, 2).includes(term)) {
       configuredAcademicTerm = term;
     }
+    membershipPaymentSettings = {
+      ...membershipPaymentSettings,
+      bankName: String(settingsData?.membershipPayment?.bankName || "").trim(),
+      bankCode: String(settingsData?.membershipPayment?.bankCode || "").trim(),
+      accountName: String(settingsData?.membershipPayment?.accountName || "").trim(),
+      accountNumber: String(settingsData?.membershipPayment?.accountNumber || "").trim(),
+      cashOfficeLabel:
+        String(settingsData?.membershipPayment?.cashOfficeLabel || "").trim() || membershipPaymentSettings.cashOfficeLabel,
+      cashClassLabel:
+        String(settingsData?.membershipPayment?.cashClassLabel || "").trim() || membershipPaymentSettings.cashClassLabel,
+    };
+    document.querySelectorAll("[data-login-form], [data-account-membership-form]").forEach(syncMembershipPaymentForm);
+    syncMembershipPaymentSettingForm();
   } catch (error) {
     console.warn("Load current term settings failed:", error);
   }
@@ -2582,6 +2866,8 @@ const bindMemberActionButtons = (memberList) => {
               membershipStatus: isPaid ? "formal_member" : "pending_payment",
               status: isPaid ? "formal_member" : "pending_payment",
               paidAt: isPaid ? serverTimestamp() : null,
+              paymentConfirmedAt: isPaid ? serverTimestamp() : null,
+              paymentConfirmedBy: isPaid ? currentUser?.uid || "" : "",
               updatedAt: serverTimestamp(),
             },
             { merge: true },
@@ -2795,6 +3081,8 @@ const bindMemberStatusSelects = (container) => {
         status: nextStatus,
         paymentStatus: isAdmin ? "not_required" : isFormalMember ? "paid" : "unpaid",
         paidAt: isFormalMember ? serverTimestamp() : null,
+        paymentConfirmedAt: isFormalMember ? serverTimestamp() : null,
+        paymentConfirmedBy: isFormalMember ? currentUser?.uid || "" : "",
         formerMemberAt: isFormerMember ? serverTimestamp() : null,
         updatedAt: serverTimestamp(),
       };
@@ -2962,6 +3250,18 @@ const renderMembersExportToolbar = (members = []) => {
   const rows = filteredMembers
     .map((member, index) => {
       const managedStatus = getManagedMembershipStatus(member);
+      const membershipIntent = getMembershipIntentFromProfile(member);
+      const paymentMethod = member.paymentMethod || (membershipIntent === "join" ? "later" : "none");
+      const paymentDetails = [
+        getPaymentMethodLabel(paymentMethod),
+        paymentMethod === "cash" ? getCashPaymentSlotLabel(member.cashPaymentSlot) : "",
+        paymentMethod === "transfer" && member.transferLastFive ? `末五碼 ${member.transferLastFive}` : "",
+        paymentMethod === "transfer" && member.transferAt ? member.transferAt.replace("T", " ") : "",
+      ].filter(Boolean);
+      const confirmPaymentButton =
+        membershipIntent === "join" && managedStatus !== "formal_member" && managedStatus !== "admin"
+          ? `<button class="button-secondary member-payment-confirm" data-member-action="toggle-membership-payment" data-member-id="${escapeHtml(member.id)}" data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}" data-payment-status="paid" type="button">確認收款</button>`
+          : "";
       return `
         <tr>
           <td>${String(index + 1).padStart(2, "0")}</td>
@@ -2970,6 +3270,7 @@ const renderMembersExportToolbar = (members = []) => {
           <td>${escapeHtml(member.department || member.school || "未填寫")}</td>
           <td>${escapeHtml(member.email || "未填寫")}</td>
           <td>${escapeHtml(member.phone || "未填寫")}</td>
+          <td><div class="member-payment-cell"><span>${escapeHtml(paymentDetails.join("／"))}</span>${confirmPaymentButton}</div></td>
           <td>
             <select
               class="member-status-select"
@@ -3015,6 +3316,7 @@ const renderMembersExportToolbar = (members = []) => {
             <th scope="col">系級</th>
             <th scope="col">Gmail</th>
             <th scope="col">聯絡電話</th>
+            <th scope="col">付款資訊</th>
             <th scope="col">社員狀態</th>
             <th scope="col">操作</th>
           </tr>
@@ -3025,6 +3327,7 @@ const renderMembersExportToolbar = (members = []) => {
   `;
 
   bindMemberStatusSelects(tableCard);
+  bindMemberActionButtons(tableCard);
   bindMemberDeleteButtons(tableCard);
 };
 const renderMembersList = (members = []) => {
@@ -5187,7 +5490,7 @@ function bindAdminClassCalendarActions() {
       }
     });
     form.querySelectorAll("[data-signup-window-preset]").forEach((button) => {
-      button.addEventListener("click", () => applySignupWindowPreset(form, button.dataset.signupWindowPreset || "week"));
+      button.addEventListener("click", () => applySignupWindowPreset(form, button.dataset.signupWindowPreset || "previous-week"));
     });
   }
 
@@ -5555,6 +5858,7 @@ const handleAuthSubmit = async (event) => {
     studentId: String(signupStudentIdInput?.value || "").trim(),
     department: String(signupDepartmentInput?.value || "").trim(),
     phone: String(signupPhoneInput?.value || "").trim(),
+    ...readMembershipPaymentForm(event.currentTarget),
   };
 
   if (!firebaseConfigured) {
@@ -5580,6 +5884,14 @@ const handleAuthSubmit = async (event) => {
   if (authMode === "signup" && (!signupProfile.name || !signupProfile.studentId || !signupProfile.department || !signupProfile.phone)) {
     setHint("請完整填寫姓名、學號、系別與聯絡電話。", "error");
     return;
+  }
+
+  if (authMode === "signup") {
+    const paymentValidationMessage = validateMembershipPaymentData(signupProfile);
+    if (paymentValidationMessage) {
+      setHint(paymentValidationMessage, "error");
+      return;
+    }
   }
 
   authSubmit.disabled = true;
@@ -5627,7 +5939,9 @@ const handleAuthSubmit = async (event) => {
       profileSyncFailed
         ? "登入成功，但社員資料暫時無法同步；你仍可保持登入並稍後再試。"
         : authMode === "signup"
-          ? "帳號建立完成，已自動登入。你現在可以報名參加社團。"
+          ? signupProfile.membershipIntent === "join"
+            ? "帳號建立完成，社員申請已送出；幹部確認款項後才會取得社員資格。"
+            : "帳號建立完成，已自動登入；目前狀態為非社員。"
           : "登入成功，已更新社員狀態。",
       profileSyncFailed ? "error" : "success",
     );
@@ -5740,14 +6054,87 @@ const handleSignOut = async () => {
   }
 };
 
+const bindMembershipPaymentFormControls = (form) => {
+  if (!(form instanceof HTMLFormElement) || form.dataset.paymentControlsBound === "true") {
+    return;
+  }
+  form.dataset.paymentControlsBound = "true";
+  form.addEventListener("change", (event) => {
+    if (event.target.matches("[name='membershipIntent'], [name='paymentMethod']")) {
+      syncMembershipPaymentForm(form);
+    }
+  });
+  syncMembershipPaymentForm(form);
+};
+
+const handleAccountMembershipSubmit = async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const hint = form.querySelector("[data-account-membership-hint]");
+  const submitButton = form.querySelector("[data-account-membership-save]");
+  const paymentData = readMembershipPaymentForm(form);
+  const validationMessage = validateMembershipPaymentData(paymentData);
+  if (validationMessage) {
+    setMessageTone(hint, validationMessage, "error");
+    return;
+  }
+  if (!currentUser?.uid || currentMemberProfile?.paymentStatus === "paid") {
+    setMessageTone(hint, "款項已確認，若需變更請聯絡幹部。", "error");
+    return;
+  }
+
+  submitButton.disabled = true;
+  try {
+    const nextMembershipStatus = paymentData.membershipIntent === "join" ? "pending_payment" : "not_applied";
+    await setDoc(
+      getMemberDocRef(currentUser.uid),
+      {
+        membershipIntent: paymentData.membershipIntent,
+        membershipStatus: nextMembershipStatus,
+        status: nextMembershipStatus,
+        paymentStatus: "unpaid",
+        paymentMethod: paymentData.paymentMethod,
+        cashPaymentSlot: paymentData.cashPaymentSlot,
+        transferAt: paymentData.transferAt,
+        transferLastFive: paymentData.transferLastFive,
+        academicYear: getConfiguredAcademicYear(),
+        term: getConfiguredAcademicTerm(),
+        paymentSubmittedAt: paymentData.membershipIntent === "join" ? serverTimestamp() : null,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+    await loadCurrentMemberStatus(currentUser);
+    updateLoginButtons();
+    updateAuthView();
+    setMessageTone(hint, "社員申請資料已更新。", "success");
+  } catch (error) {
+    console.error("Update membership application failed:", error);
+    setMessageTone(hint, `儲存失敗：${error?.message || "請稍後再試一次。"}`, "error");
+  } finally {
+    submitButton.disabled = false;
+  }
+};
+
 const bindLoginModalEvents = () => {
-  const { loginModal, loginForm, authTabs, authSubmit, closeButtons } = getLoginModalElements();
+  const { loginModal, loginForm, authTabs, authSubmit, closeButtons, accountMembershipForm, editAccountMembershipButton } = getLoginModalElements();
 
   authTabs.forEach((tab) => {
     tab.addEventListener("click", () => setAuthMode(tab.dataset.authTab));
   });
 
   loginForm.addEventListener("submit", handleAuthSubmit);
+  bindMembershipPaymentFormControls(loginForm);
+  bindMembershipPaymentFormControls(accountMembershipForm);
+  accountMembershipForm.addEventListener("submit", handleAccountMembershipSubmit);
+  editAccountMembershipButton.addEventListener("click", () => {
+    populateAccountMembershipForm(accountMembershipForm);
+    accountMembershipForm.hidden = false;
+    accountMembershipForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  accountMembershipForm.querySelector("[data-account-membership-cancel]")?.addEventListener("click", () => {
+    accountMembershipForm.hidden = true;
+  });
   authSubmit.addEventListener("click", async () => {
     if (authSubmit.dataset.authAction === "signout") {
       await handleSignOut();
@@ -5966,6 +6353,68 @@ const bindAcademicYearSetting = () => {
       if (submitButton instanceof HTMLButtonElement) {
         submitButton.disabled = false;
       }
+    }
+  });
+};
+
+const syncMembershipPaymentSettingForm = () => {
+  const form = document.querySelector("[data-membership-payment-setting-form]");
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+  Object.entries(membershipPaymentSettings).forEach(([key, value]) => {
+    const field = form.elements.namedItem(key);
+    if (field instanceof HTMLInputElement) {
+      field.value = value;
+    }
+  });
+};
+
+const bindMembershipPaymentSetting = () => {
+  const form = document.querySelector("[data-membership-payment-setting-form]");
+  if (!(form instanceof HTMLFormElement) || form.dataset.bound === "true") {
+    return;
+  }
+  form.dataset.bound = "true";
+  syncMembershipPaymentSettingForm();
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(form);
+    const nextSettings = {
+      bankName: String(formData.get("bankName") || "").trim(),
+      bankCode: String(formData.get("bankCode") || "").trim(),
+      accountName: String(formData.get("accountName") || "").trim(),
+      accountNumber: String(formData.get("accountNumber") || "").replace(/\s+/g, ""),
+      cashOfficeLabel: String(formData.get("cashOfficeLabel") || "").trim(),
+      cashClassLabel: String(formData.get("cashClassLabel") || "").trim(),
+    };
+    const hint = form.querySelector("[data-membership-payment-setting-hint]");
+    const submitButton = form.querySelector("[data-membership-payment-setting-save]");
+    if (!nextSettings.accountName || !nextSettings.accountNumber || !nextSettings.cashOfficeLabel || !nextSettings.cashClassLabel) {
+      setMessageTone(hint, "請至少填寫戶名、轉帳帳號與兩個現金繳費說明。", "error");
+      return;
+    }
+    submitButton.disabled = true;
+    try {
+      await setDoc(
+        getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC),
+        {
+          membershipPayment: nextSettings,
+          updatedAt: serverTimestamp(),
+          updatedBy: currentUser?.uid || "",
+          updatedByEmail: currentUser?.email || "",
+        },
+        { merge: true },
+      );
+      membershipPaymentSettings = nextSettings;
+      document.querySelectorAll("[data-login-form], [data-account-membership-form]").forEach(syncMembershipPaymentForm);
+      setMessageTone(hint, "繳費資訊已儲存。", "success");
+      openActionSuccessModal({ title: "儲存成功", copy: "註冊與帳號資訊頁已套用最新繳費資訊。" });
+    } catch (error) {
+      console.error("Save membership payment settings failed:", error);
+      setMessageTone(hint, `儲存失敗：${error?.message || "請稍後再試一次。"}`, "error");
+    } finally {
+      submitButton.disabled = false;
     }
   });
 };
@@ -6243,6 +6692,7 @@ const syncSpaNavigationState = (targetUrl) => {
 const activateCurrentPage = async () => {
   bindOpenButtons();
   bindAcademicYearSetting();
+  bindMembershipPaymentSetting();
   bindFaqQuestionForm();
   initFaqAccordion();
   initMembersAutoRefresh();
@@ -6387,6 +6837,7 @@ const init = async () => {
   bindClassSignupModalEvents();
   bindOpenButtons();
   bindAcademicYearSetting();
+  bindMembershipPaymentSetting();
   syncGlobalNavigationLabels();
   initMenu();
   initLanguageSwitcher();
