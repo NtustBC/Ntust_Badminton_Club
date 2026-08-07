@@ -270,7 +270,7 @@ const membersPageCopy = {
 };
 
 const authErrorMessages = {
-  "auth/email-already-in-use": "這個信箱已經註冊過了，請直接登入。",
+  "auth/email-already-in-use": "這個信箱已存在於登入系統，即使後台社員名單沒有顯示也無法重複註冊。請切換到登入；成功登入後系統會重新同步社員資料。",
   "auth/invalid-credential": "信箱或密碼不正確，請再確認一次。",
   "auth/invalid-email": "請輸入有效的電子郵件信箱。",
   "auth/missing-password": "請輸入密碼。",
@@ -3181,136 +3181,61 @@ function renderClassCalendarBoard(sessions = []) {
     return;
   }
 
-  const referenceDate = new Date();
-  referenceDate.setDate(1);
-  referenceDate.setMonth(referenceDate.getMonth() + classSignupPageState.monthOffset);
+  const openSignupSessions = [...sessions]
+    .filter((session) => {
+      const isSundaySignup = String(session.weekday || "").toLowerCase() === "sun" && Boolean(session.signupRequired);
+      return isSundaySignup && isClassSignupWindowOpen(session);
+    })
+    .sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
 
-  const year = referenceDate.getFullYear();
-  const month = referenceDate.getMonth();
-  const monthLabel = referenceDate.toLocaleDateString("zh-TW", {
-    year: "numeric",
-    month: "long",
-  });
+  const sessionMarkup = openSignupSessions
+    .map((session) => {
+      const sessionId = getClassSessionId(session);
+      const signupCount = getSessionSignups(sessionId).length;
+      const signupLimit = getSessionSignupLimit(session);
+      const signupCountLabel = signupLimit ? `${signupCount} / ${signupLimit} 人` : `${signupCount} 人已報名`;
 
-  const monthSessions = sessions.filter((session) => {
-    const sessionDate = parseDateKey(session.date || session.sessionDate || "");
-    return sessionDate && sessionDate.getFullYear() === year && sessionDate.getMonth() === month;
-  });
-  const sessionMap = monthSessions.reduce((acc, session) => {
-    const dateKey = String(session.date || session.sessionDate || "").trim();
-    if (!dateKey) {
-      return acc;
-    }
-
-    if (!acc[dateKey]) {
-      acc[dateKey] = [];
-    }
-
-    acc[dateKey].push(session);
-    return acc;
-  }, {});
-
-  const firstDay = new Date(year, month, 1);
-  const offset = firstDay.getDay();
-  const totalDays = new Date(year, month + 1, 0).getDate();
-  const dayLabels = ["日", "一", "二", "三", "四", "五", "六"];
-  const cells = [];
-
-  for (let index = 0; index < offset; index += 1) {
-    cells.push(`<div class="calendar-day is-empty" aria-hidden="true"></div>`);
-  }
-
-  for (let day = 1; day <= totalDays; day += 1) {
-    const date = new Date(year, month, day);
-    const dateKey = formatDateInputValue(date);
-    const daySessions = sessionMap[dateKey] || [];
-    const sessionMarkup = daySessions
-      .map((session) => {
-        const badge = session.signupRequired ? "需報名" : "免報名";
-        return `
-          <span class="calendar-session-pill">
-            <span>${escapeHtml(getWeekdayLabel(session.weekday) || session.weekday || "")}</span>
-            <span>${escapeHtml(getClassSessionTimeLabel(session) || "時間未設定")}</span>
-            <span>${escapeHtml(badge)}</span>
-          </span>
-        `;
-      })
-      .join("");
-
-    const dayButtonTag = daySessions.length > 0 ? "button" : "div";
-    const dayButtonType = daySessions.length > 0 ? ` type="button" data-public-class-calendar-day data-date-key="${escapeHtml(dateKey)}"` : "";
-    cells.push(`
-      <${dayButtonTag} class="calendar-day${daySessions.length > 0 ? " is-session is-clickable" : ""}"${dayButtonType}>
-        <span class="calendar-day-number">${escapeHtml(daySessions.length > 0 ? `${day} / ${daySessions.length} 場` : String(day))}</span>
-        <span class="calendar-day-date">${escapeHtml(`${month + 1}/${day}`)}</span>
-        <div class="calendar-session-list">${sessionMarkup || ""}</div>
-      </${dayButtonTag}>
-    `);
-  }
-
-  while (cells.length % 7 !== 0) {
-    cells.push(`<div class="calendar-day is-empty" aria-hidden="true"></div>`);
-  }
+      return `
+        <button class="content-card is-tight class-signup-date-card" data-open-class-signup-session data-session-id="${escapeHtml(sessionId)}" type="button">
+          <div class="class-session-header">
+            <div>
+              <p class="section-kicker">${escapeHtml(getWeekdayLabel(session.weekday) || "可報名社課")}</p>
+              <h3 class="content-title">${escapeHtml(getClassSessionDateLabel(session))}</h3>
+              <p class="content-copy">${escapeHtml(getClassSessionTimeLabel(session) || "時間待定")} ・ ${escapeHtml(session.title || "社課")}</p>
+            </div>
+            <span class="member-row-status">開放報名</span>
+          </div>
+          <p class="content-copy">${escapeHtml(signupCountLabel)}，點選查看並填寫報名資料。</p>
+        </button>
+      `;
+    })
+    .join("");
 
   container.innerHTML = `
-    <div class="calendar-shell">
+    <div class="calendar-shell class-signup-availability">
       <div class="calendar-header">
         <div>
-          <p class="section-kicker">Calendar</p>
-          <h3 class="content-title">${escapeHtml(monthLabel)}</h3>
-          <p class="section-description">有社課的日期會在日曆上標記，週日會另外顯示可報名的時段。</p>
-        </div>
-        <div class="calendar-nav">
-          <button class="button-secondary" data-class-calendar-prev type="button">上個月</button>
-          <button class="button-secondary" data-class-calendar-next type="button">下個月</button>
+          <p class="section-kicker">Open for Signup</p>
+          <h3 class="content-title">目前可報名的社課日期</h3>
+          <p class="section-description">只顯示目前報名期間已開放的社課。</p>
         </div>
       </div>
-      <div class="calendar-weekdays">
-        ${dayLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
-      </div>
-      <div class="calendar-grid">
-        ${cells.join("")}
-      </div>
+      ${
+        sessionMarkup
+          ? `<div class="class-signup-date-grid">${sessionMarkup}</div>`
+          : `
+            <article class="content-card is-tight">
+              <h3 class="content-title">目前沒有開放報名的社課</h3>
+              <p class="content-copy">有新的報名日期時會顯示在這裡。</p>
+            </article>
+          `
+      }
     </div>
   `;
 
-  container.querySelector("[data-class-calendar-prev]")?.addEventListener("click", () => {
-    classSignupPageState.monthOffset -= 1;
-    renderClassCalendarBoard(classSignupPageState.sessions);
-  });
-
-  container.querySelector("[data-class-calendar-next]")?.addEventListener("click", () => {
-    classSignupPageState.monthOffset += 1;
-    renderClassCalendarBoard(classSignupPageState.sessions);
-  });
-
-  container.querySelectorAll("[data-public-class-calendar-day]").forEach((button) => {
-    if (button.dataset.initialized === "true") {
-      return;
-    }
-
-    button.dataset.initialized = "true";
+  container.querySelectorAll("[data-open-class-signup-session]").forEach((button) => {
     button.addEventListener("click", () => {
-      const dateKey = button.dataset.dateKey || "";
-      const events = classSignupPageState.sessions
-        .filter((session) => String(session.date || session.sessionDate || "").trim() === dateKey)
-        .map((session) => ({
-          type: "class",
-          id: getClassSessionId(session),
-          title: session.title || "社課",
-          timeLabel: getClassSessionTimeLabel(session),
-          note: session.description || session.reminder || "無",
-          source: session,
-        }));
-      const parsedDate = parseDateKey(dateKey);
-      openPublicCalendarModal({
-        title: parsedDate
-          ? parsedDate.toLocaleDateString("zh-TW", { year: "numeric", month: "long", day: "numeric" })
-          : dateKey,
-        subtitle: `${getWeekdayLabel(DATE_WEEKDAY_ORDER[parsedDate?.getDay?.() ?? 0] || "")} · ${events.length} 場社課`,
-        events,
-        includeSignupAction: true,
-      });
+      openClassSignupModal(button.dataset.sessionId || "", button);
     });
   });
 }
@@ -5566,6 +5491,10 @@ const bindAcademicYearSetting = () => {
       if (hint) {
         hint.textContent = `已設定目前學年度為 ${value} 學年度。`;
       }
+      openActionSuccessModal({
+        title: "儲存成功",
+        copy: `目前學年度已設定為 ${value} 學年度。`,
+      });
     } catch (error) {
       console.error("Save academic year setting failed:", error);
       if (hint) {
