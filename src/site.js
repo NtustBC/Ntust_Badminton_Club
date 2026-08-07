@@ -350,8 +350,9 @@ const loginModalMarkup = `
         </div>
 
         <form class="form-grid account-membership-form" data-personal-profile-form hidden>
-          <div class="section-kicker">個人資料</div>
+          <div class="section-kicker">個人化與帳號設定</div>
           <div class="class-signup-profile">
+            <div class="form-field"><label for="profile-display-name">顯示名稱</label><input id="profile-display-name" name="displayName" maxlength="60" type="text" placeholder="顯示在帳號選單中的名稱" /></div>
             <div class="form-field"><label for="profile-name">姓名</label><input id="profile-name" name="name" type="text" autocomplete="name" required /></div>
             <div class="form-field"><label for="profile-student-id">學號</label><input id="profile-student-id" name="studentId" type="text" required /></div>
             <div class="form-field"><label for="profile-department">系別</label><input id="profile-department" name="department" type="text" required /></div>
@@ -364,12 +365,12 @@ const loginModalMarkup = `
               <label><input name="notificationAnnouncements" type="checkbox" /> 社團公告</label>
               <label><input name="notificationClassReminders" type="checkbox" /> 社課提醒與異動</label>
               <label><input name="notificationRegistrationUpdates" type="checkbox" /> 報名與候補狀態</label>
-              <label><input name="notificationEmail" type="checkbox" /> 同意接收 Email 通知</label>
             </div>
           </fieldset>
           <p class="login-note" data-personal-profile-hint></p>
           <div class="account-membership-actions">
             <button class="button-primary" type="submit">儲存個人設定</button>
+            <button class="button-secondary" data-open-membership-settings type="button">社員申請設定</button>
             <button class="button-secondary" data-personal-profile-cancel type="button">取消</button>
           </div>
         </form>
@@ -420,7 +421,7 @@ const loginModalMarkup = `
               <input id="signup-phone" name="phone" placeholder="09xx-xxx-xxx" type="tel" autocomplete="tel" />
             </div>
             <div class="form-field">
-              <label for="signup-verification-code">Email 驗證碼</label>
+              <label for="signup-verification-code">畫面驗證碼</label>
               <div class="verification-code-row">
                 <input id="signup-verification-code" name="verificationCode" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" placeholder="6 位數驗證碼" type="text" autocomplete="one-time-code" />
                 <button class="button-secondary" data-send-registration-code type="button">產生驗證碼</button>
@@ -797,7 +798,6 @@ const notificationModalMarkup = `
         <button class="modal-close" data-close-notifications type="button" aria-label="關閉通知中心"><span aria-hidden="true">+</span></button>
       </div>
       <div class="modal-body"><div class="notification-list" data-notification-list></div></div>
-      <div class="modal-footer"><button class="button-secondary" data-open-notification-settings type="button">通知設定</button></div>
     </div>
   </div>
 `;
@@ -1020,25 +1020,73 @@ const updateLoginButtons = () => {
   syncMembersPageHero();
 
   getLoginButtons().forEach((button) => {
-    button.textContent = currentUser ? getMembershipStatusCopy(getCurrentMembershipStatus()).label : button.dataset.defaultLabel;
+    button.textContent = button.dataset.defaultLabel;
+    button.hidden = Boolean(currentUser);
   });
   document.querySelectorAll("[data-notification-bell]").forEach((button) => { button.hidden = !currentUser; });
+  document.querySelectorAll("[data-account-menu-root]").forEach((root) => {
+    root.hidden = !currentUser;
+    const name = currentMemberProfile?.displayName || currentMemberProfile?.name || getMembershipStatusCopy(getCurrentMembershipStatus()).label;
+    root.querySelector("[data-account-menu-name]").textContent = name;
+    root.querySelector("[data-account-menu-status]").textContent = getMembershipStatusCopy(getCurrentMembershipStatus()).label;
+  });
 };
 
-const installNotificationBells = () => {
+const installHeaderAccountControls = () => {
   document.querySelectorAll(".header-actions").forEach((actions) => {
-    if (actions.querySelector("[data-notification-bell]")) return;
     const login = actions.querySelector(".header-login");
     if (!login) return;
-    const button = document.createElement("button");
-    button.className = "notification-bell";
-    button.type = "button";
-    button.hidden = !currentUser;
-    button.dataset.notificationBell = "true";
-    button.setAttribute("aria-label", "開啟通知中心");
-    button.innerHTML = `<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg><span class="notification-dot" aria-hidden="true"></span>`;
-    actions.insertBefore(button, login);
+    if (!actions.querySelector("[data-notification-bell]")) {
+      const button = document.createElement("button");
+      button.className = "notification-bell";
+      button.type = "button";
+      button.hidden = !currentUser;
+      button.dataset.notificationBell = "true";
+      button.setAttribute("aria-label", "開啟通知中心");
+      button.innerHTML = `<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg><span class="notification-dot" aria-hidden="true"></span>`;
+      actions.insertBefore(button, login);
+    }
+    if (!actions.querySelector("[data-account-menu-root]")) {
+      const root = document.createElement("div");
+      root.className = "account-menu-root";
+      root.hidden = !currentUser;
+      root.dataset.accountMenuRoot = "true";
+      root.innerHTML = `
+        <button class="account-user-button" data-account-menu-toggle type="button" aria-label="開啟帳號選單" aria-expanded="false">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 21a7.5 7.5 0 0 1 15 0"></path></svg>
+        </button>
+        <div class="account-popover" data-account-popover hidden>
+          <div class="account-popover-profile">
+            <span class="account-popover-icon"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 21a7.5 7.5 0 0 1 15 0"></path></svg></span>
+            <span><strong data-account-menu-name>會員</strong><small data-account-menu-status>社員</small></span>
+          </div>
+          <div class="account-popover-divider"></div>
+          <button data-account-settings type="button"><span aria-hidden="true">⚙</span>帳號設定</button>
+          <button data-account-signout type="button"><span aria-hidden="true">↪</span>登出</button>
+        </div>`;
+      actions.insertBefore(root, login);
+    }
   });
+};
+
+const closeAccountMenus = (except = null) => {
+  document.querySelectorAll("[data-account-menu-root]").forEach((root) => {
+    if (root === except) return;
+    root.querySelector("[data-account-popover]").hidden = true;
+    root.querySelector("[data-account-menu-toggle]").setAttribute("aria-expanded", "false");
+  });
+};
+
+const openAccountSettings = async (trigger = null) => {
+  await openLoginModal(trigger);
+  const { loginModal, statusCard, accountMembershipForm, personalProfileForm, authSubmit } = getLoginModalElements();
+  statusCard.hidden = true;
+  accountMembershipForm.hidden = true;
+  populatePersonalProfileForm(personalProfileForm);
+  personalProfileForm.hidden = false;
+  authSubmit.hidden = true;
+  loginModal.querySelector(".modal-title").textContent = "帳號設定";
+  loginModal.querySelector("[data-auth-subtitle]").textContent = "修改個人化資訊、基本資料與站內通知偏好。";
 };
 
 const openNotificationCenter = async () => {
@@ -1067,21 +1115,40 @@ const openNotificationCenter = async () => {
 };
 
 const bindNotificationCenter = () => {
-  installNotificationBells();
-  document.addEventListener("click", (event) => {
-    if (event.target.closest("[data-notification-bell]")) void openNotificationCenter();
+  installHeaderAccountControls();
+  document.addEventListener("click", async (event) => {
+    if (event.target.closest("[data-notification-bell]")) {
+      closeAccountMenus();
+      void openNotificationCenter();
+      return;
+    }
+    const toggle = event.target.closest("[data-account-menu-toggle]");
+    if (toggle) {
+      const root = toggle.closest("[data-account-menu-root]");
+      const popover = root.querySelector("[data-account-popover]");
+      const willOpen = popover.hidden;
+      closeAccountMenus(root);
+      popover.hidden = !willOpen;
+      toggle.setAttribute("aria-expanded", String(willOpen));
+      return;
+    }
+    const settings = event.target.closest("[data-account-settings]");
+    if (settings) {
+      closeAccountMenus();
+      await openAccountSettings(settings);
+      return;
+    }
+    if (event.target.closest("[data-account-signout]")) {
+      closeAccountMenus();
+      await handleSignOut();
+      return;
+    }
+    if (!event.target.closest("[data-account-menu-root]")) closeAccountMenus();
   });
   const modal = ensureNotificationModal();
   const close = () => { modal.hidden = true; body.classList.remove("modal-open"); };
   modal.querySelectorAll("[data-close-notifications]").forEach((button) => button.addEventListener("click", close));
   modal.addEventListener("click", (event) => { if (event.target === modal || event.target.hasAttribute("data-modal-backdrop")) close(); });
-  modal.querySelector("[data-open-notification-settings]")?.addEventListener("click", () => {
-    close();
-    openLoginModal();
-    const { personalProfileForm } = getLoginModalElements();
-    populatePersonalProfileForm(personalProfileForm);
-    personalProfileForm.hidden = false;
-  });
 };
 
 const membershipStatusCopy = {
@@ -1553,6 +1620,7 @@ const updateAuthView = () => {
     getLoginModalElements();
 
   if (currentUser) {
+    authSubmit.hidden = false;
     loginModal.querySelector(".modal-title").textContent = signedInCopy.title;
     loginModal.querySelector("[data-auth-subtitle]").textContent = signedInCopy.subtitle;
     loginForm.hidden = true;
@@ -1576,6 +1644,7 @@ const updateAuthView = () => {
   }
 
   loginModal.querySelector(".modal-title").textContent = authCopy[authMode].title;
+  authSubmit.hidden = false;
   loginModal.querySelector("[data-auth-subtitle]").textContent = authCopy[authMode].subtitle;
   loginForm.hidden = false;
   accountMembershipForm.hidden = true;
@@ -6101,12 +6170,12 @@ const handleSendRegistrationCode = async () => {
 const populatePersonalProfileForm = (form) => {
   if (!(form instanceof HTMLFormElement)) return;
   const profile = currentMemberProfile || {};
-  ["name", "studentId", "department", "phone"].forEach((key) => {
+  ["displayName", "name", "studentId", "department", "phone"].forEach((key) => {
     const input = form.elements.namedItem(key);
-    if (input instanceof HTMLInputElement) input.value = profile[key] || (key === "department" ? profile.school || "" : "");
+    if (input instanceof HTMLInputElement) input.value = profile[key] || (key === "department" ? profile.school || "" : key === "displayName" ? profile.name || "" : "");
   });
   const preferences = profile.notificationPreferences || {};
-  const defaults = { notificationAnnouncements: true, notificationClassReminders: true, notificationRegistrationUpdates: true, notificationEmail: false };
+  const defaults = { notificationAnnouncements: true, notificationClassReminders: true, notificationRegistrationUpdates: true };
   Object.entries(defaults).forEach(([name, fallback]) => {
     const input = form.elements.namedItem(name);
     if (input instanceof HTMLInputElement) input.checked = preferences[name.replace("notification", "").replace(/^./, (c) => c.toLowerCase())] ?? fallback;
@@ -6119,6 +6188,7 @@ const handlePersonalProfileSubmit = async (event) => {
   const hint = form.querySelector("[data-personal-profile-hint]");
   if (!currentUser?.uid) return;
   const values = Object.fromEntries(new FormData(form));
+  const displayName = String(values.displayName || "").trim();
   const name = String(values.name || "").trim();
   const studentId = String(values.studentId || "").trim();
   const department = String(values.department || "").trim();
@@ -6129,16 +6199,16 @@ const handlePersonalProfileSubmit = async (event) => {
   }
   try {
     await setDoc(getMemberDocRef(currentUser.uid), {
-      name, studentId, department, school: department, phone,
+      displayName: displayName || name, name, studentId, department, school: department, phone,
       notificationPreferences: {
         announcements: Boolean(form.elements.namedItem("notificationAnnouncements")?.checked),
         classReminders: Boolean(form.elements.namedItem("notificationClassReminders")?.checked),
         registrationUpdates: Boolean(form.elements.namedItem("notificationRegistrationUpdates")?.checked),
-        email: Boolean(form.elements.namedItem("notificationEmail")?.checked),
       },
       updatedAt: serverTimestamp(),
     }, { merge: true });
     await loadCurrentMemberStatus(currentUser);
+    updateLoginButtons();
     setMessageTone(hint, "個人資料與通知設定已儲存。", "success");
   } catch (error) {
     setMessageTone(hint, error?.message || "儲存失敗，請稍後再試。", "error");
@@ -6460,7 +6530,12 @@ const bindLoginModalEvents = () => {
     personalProfileForm.hidden = false;
     personalProfileForm.scrollIntoView({ behavior: "smooth", block: "start" });
   });
-  personalProfileForm.querySelector("[data-personal-profile-cancel]")?.addEventListener("click", () => { personalProfileForm.hidden = true; });
+  personalProfileForm.querySelector("[data-personal-profile-cancel]")?.addEventListener("click", closeLoginModal);
+  personalProfileForm.querySelector("[data-open-membership-settings]")?.addEventListener("click", () => {
+    personalProfileForm.hidden = true;
+    populateAccountMembershipForm(accountMembershipForm);
+    accountMembershipForm.hidden = false;
+  });
   accountMembershipForm.querySelector("[data-account-membership-cancel]")?.addEventListener("click", () => {
     accountMembershipForm.hidden = true;
   });

@@ -96,7 +96,7 @@ exports.completeVerifiedRegistration = onCall({ region: REGION }, async (request
     await admin.firestore().collection("members").doc(user.uid).set({
       uid: user.uid, email, ...profile, school: profile.department,
       membershipStatus, status: membershipStatus, paymentStatus: "unpaid",
-      notificationPreferences: { announcements: true, classReminders: true, registrationUpdates: true, email: false },
+      notificationPreferences: { announcements: true, classReminders: true, registrationUpdates: true },
       privacyConsent: { version: "2026-08-07", accepted: true, acceptedAt: admin.firestore.FieldValue.serverTimestamp() },
       source: "verified_signup", createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(), lastLoginAt: admin.firestore.FieldValue.serverTimestamp(),
     });

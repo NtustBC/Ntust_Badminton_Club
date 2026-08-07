@@ -58,6 +58,13 @@ service cloud.firestore {
         isSignedIn() &&
         request.auth.uid == userId &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(["uid", "email", "privacyConsent", "createdAt", "approvedAt", "paidAt", "paymentConfirmedAt", "paymentConfirmedBy"]) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["displayName"]) || (request.resource.data.displayName is string && request.resource.data.displayName.size() <= 60)) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["notificationPreferences"]) || (
+          request.resource.data.notificationPreferences.keys().hasOnly(["announcements", "classReminders", "registrationUpdates"]) &&
+          request.resource.data.notificationPreferences.announcements is bool &&
+          request.resource.data.notificationPreferences.classReminders is bool &&
+          request.resource.data.notificationPreferences.registrationUpdates is bool
+        )) &&
         (
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(["membershipStatus", "status", "paymentStatus", "paidAt", "approvedAt", "paymentConfirmedAt", "paymentConfirmedBy"]) ||
           (
