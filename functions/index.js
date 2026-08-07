@@ -18,6 +18,11 @@ function normalizedEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function hasFormalMembership(member = {}, approvalExists = false) {
+  const status = String(member.membershipStatus || member.status || "").trim().toLowerCase();
+  return approvalExists || member.paymentStatus === "paid" || ["formal_member", "formal", "approved", "member"].includes(status);
+}
+
 function hashRegistrationCode(salt, code) {
   return crypto.createHash("sha256").update(`${salt}:${code}`).digest("hex");
 }
@@ -269,7 +274,7 @@ exports.upsertClassSessionSignup = onCall({ region: REGION }, async (request) =>
   const session = sessionSnapshot.data();
   const member = memberSnapshot.data();
   const isAdmin = authEmail === BOOTSTRAP_ADMIN_EMAIL || adminSnapshot.exists;
-  const isFormalMember = member.membershipStatus === "formal_member" || member.status === "formal_member" || approvalSnapshot.exists;
+  const isFormalMember = hasFormalMembership(member, approvalSnapshot.exists);
   if (!isAdmin && !isFormalMember && session.allowNonMembers !== true) throw new HttpsError("permission-denied", "本場社課僅限正式社員報名。");
   if (session.signupRequired !== true) throw new HttpsError("failed-precondition", "這場社課不需要報名。");
   const now = Date.now();

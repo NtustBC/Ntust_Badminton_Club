@@ -1278,6 +1278,12 @@ const getManagedMembershipStatus = (value = "") => {
 const getMembershipStatusCopy = (status) => membershipStatusCopy[getManagedMembershipStatus(status)];
 const getCurrentMembershipStatus = () => (currentUserIsAdmin ? "admin" : getManagedMembershipStatus(currentMemberStatus));
 const isOfficialMemberStatus = () => currentUserIsAdmin || getManagedMembershipStatus(currentMemberStatus) === "formal_member";
+const hasFormalMemberAccess = (approvalData = null) =>
+  currentUserIsAdmin ||
+  getManagedMembershipStatus(currentMemberProfile || currentMemberStatus) === "formal_member" ||
+  currentMemberProfile?.paymentStatus === "paid" ||
+  currentMemberProfile?.signupApproved === true ||
+  Boolean(approvalData);
 
 const getPaymentMethodLabel = (value) =>
   ({ cash: "現金", transfer: "轉帳", later: "稍後付款", none: "未申請" })[String(value || "")] || "尚未選擇";
@@ -1386,11 +1392,15 @@ const loadCurrentMemberStatus = async (user) => {
     return currentMemberStatus;
   }
 
-  const memberDoc = await getDoc(getMemberDocRef(user.uid));
+  const [memberDoc, approvalDoc] = await Promise.all([
+    getDoc(getMemberDocRef(user.uid)),
+    user.email ? getDoc(getApprovalDocRef(user.email)) : Promise.resolve(null),
+  ]);
   const memberData = memberDoc.exists() ? memberDoc.data() : null;
+  const signupApproved = Boolean(approvalDoc?.exists?.());
 
-  currentMemberProfile = memberData ? { ...memberData } : null;
-  currentMemberStatus = normalizeMembershipStatus(memberData);
+  currentMemberProfile = memberData ? { ...memberData, signupApproved } : null;
+  currentMemberStatus = signupApproved ? "formal_member" : normalizeMembershipStatus(memberData);
   return currentMemberStatus;
 };
 
@@ -1715,7 +1725,7 @@ const updateAuthView = () => {
     `;
     statusHint.textContent = currentUserIsAdmin ? "你目前有管理員權限。" : `${statusCopy.meaning}｜${statusCopy.action}`;
     renderAccountMembershipSummary(accountMembershipSummary);
-    editAccountMembershipButton.hidden = currentUserIsAdmin || getCurrentMembershipStatus() === "formal_member";
+    editAccountMembershipButton.hidden = hasFormalMemberAccess();
     authSubmit.textContent = signedInCopy.buttonLabel;
     authSubmit.dataset.authAction = "signout";
     authSubmit.removeAttribute("form");
@@ -2141,7 +2151,7 @@ const getPublicClassSignupModalState = (session) => {
   const sessionId = getClassSessionId(session);
   const ownSignup = classSignupPageState.ownSignups.find((signup) => signup.sessionId === sessionId) || null;
   const approvalData = classSignupPageState.approval;
-  const isFormalMember = currentUserIsAdmin || currentMemberStatus === "formal_member" || Boolean(approvalData);
+  const isFormalMember = hasFormalMemberAccess(approvalData);
   const canSignup = Boolean(currentUser) && (isFormalMember || Boolean(session.allowNonMembers));
   const isSignupSession = Boolean(session.signupRequired);
   const signupOpen = isSignupSession && isClassSignupWindowOpen(session);
@@ -4474,14 +4484,6 @@ async function handleClassSignupSubmit(event) {
   }
 
   const ownExistingSignup = classSignupPageState.ownSignups.find((signup) => signup.sessionId === sessionId) || null;
-  const currentMembershipStatus = currentMemberProfile?.membershipStatus || currentMemberProfile?.status || "pending_payment";
-  const isFormalMember = currentUserIsAdmin || currentMembershipStatus === "formal_member" || Boolean(classSignupPageState.approval);
-
-  if (!isFormalMember && !session.allowNonMembers) {
-    window.alert("本場社課僅開放正式社員報名。");
-    return;
-  }
-
   submitButton.disabled = true;
 
   try {
@@ -4490,7 +4492,8 @@ async function handleClassSignupSubmit(event) {
     await refreshClassSignupPageSafe({ force: true });
   } catch (error) {
     console.error("Class signup submit failed:", error);
-    window.alert(`社課報名失敗：${error?.message || "請稍後再試一次。"}`);
+    const errorCode = String(error?.code || "").replace(/^functions\//, "");
+    window.alert(`社課報名失敗：${error?.message || "請稍後再試一次。"}${errorCode ? `（${errorCode}）` : ""}`);
   } finally {
     submitButton.disabled = false;
   }
@@ -6251,6 +6254,10 @@ const populatePersonalProfileForm = (form) => {
     const input = form.elements.namedItem(name);
     if (input instanceof HTMLInputElement) input.checked = preferences[name.replace("notification", "").replace(/^./, (c) => c.toLowerCase())] ?? fallback;
   });
+  const membershipSettingsButton = form.querySelector("[data-open-membership-settings]");
+  if (membershipSettingsButton instanceof HTMLButtonElement) {
+    membershipSettingsButton.hidden = hasFormalMemberAccess();
+  }
 };
 
 const handlePersonalProfileSubmit = async (event) => {
