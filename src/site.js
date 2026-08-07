@@ -1721,7 +1721,7 @@ const applyLanguage = (lang) => {
 };
 
 const syncMemberProfile = async (user, source, profile = {}) => {
-  if (!db || !user?.uid) {
+  if (!db || !user?.uid || isBootstrapAdminEmail(user.email || "")) {
     return;
   }
 
