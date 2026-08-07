@@ -391,7 +391,7 @@ const passwordResetModalMarkup = `
       <div class="modal-header">
         <div>
           <h2 class="modal-title">忘記密碼</h2>
-          <p class="modal-subtitle">資料必須與註冊時填寫的內容完全相符，驗證成功後會寄送一次性重設連結。</p>
+          <p class="modal-subtitle">資料必須與註冊時填寫的內容完全相符，驗證成功後可直接設定新密碼。</p>
         </div>
         <button class="modal-close" data-close-password-reset type="button" aria-label="關閉忘記密碼視窗">
           <span aria-hidden="true">+</span>
@@ -419,10 +419,18 @@ const passwordResetModalMarkup = `
             <label for="reset-phone">聯絡電話</label>
             <input id="reset-phone" name="phone" type="tel" autocomplete="tel" required />
           </div>
-          <p class="login-note" data-password-reset-hint>為保護帳號，所有欄位皆須正確。</p>
+          <div class="form-field">
+            <label for="reset-new-password">新密碼</label>
+            <input id="reset-new-password" name="newPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" required />
+          </div>
+          <div class="form-field">
+            <label for="reset-new-password-confirm">確認新密碼</label>
+            <input id="reset-new-password-confirm" name="newPasswordConfirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" required />
+          </div>
+          <p class="login-note" data-password-reset-hint>為保護帳號，個人資料必須完全相符，新密碼至少 8 個字元。</p>
         </div>
         <div class="modal-footer">
-          <button class="login-button modal-submit" data-password-reset-submit type="submit">驗證並寄送重設信</button>
+          <button class="login-button modal-submit" data-password-reset-submit type="submit">驗證並更新密碼</button>
         </div>
       </form>
     </div>
@@ -1347,7 +1355,7 @@ const openPasswordResetModal = () => {
   const { resetModal, form, emailInput } = getPasswordResetModalElements();
   form.reset();
   emailInput.value = loginEmailInput.value.trim().toLowerCase();
-  setPasswordResetHint("為保護帳號，所有欄位皆須正確。");
+  setPasswordResetHint("為保護帳號，個人資料必須完全相符，新密碼至少 8 個字元。");
   loginModal.hidden = true;
   resetModal.hidden = false;
   body.classList.add("modal-open");
@@ -1370,10 +1378,20 @@ const handlePasswordResetSubmit = async (event) => {
     studentId: String(formData.get("studentId") || "").trim(),
     department: String(formData.get("department") || "").trim(),
     phone: String(formData.get("phone") || "").trim(),
+    newPassword: String(formData.get("newPassword") || ""),
   };
+  const newPasswordConfirm = String(formData.get("newPasswordConfirm") || "");
 
-  if (Object.values(payload).some((value) => !value)) {
-    setPasswordResetHint("請完整填寫 Gmail、姓名、學號、系別與聯絡電話。", "error");
+  if (Object.values(payload).some((value) => !value) || !newPasswordConfirm) {
+    setPasswordResetHint("請完整填寫個人資料、新密碼與確認新密碼。", "error");
+    return;
+  }
+  if (payload.newPassword.length < 8 || payload.newPassword.length > 128) {
+    setPasswordResetHint("新密碼必須為 8 至 128 個字元。", "error");
+    return;
+  }
+  if (payload.newPassword !== newPasswordConfirm) {
+    setPasswordResetHint("兩次輸入的新密碼不一致。", "error");
     return;
   }
 
@@ -1398,13 +1416,13 @@ const handlePasswordResetSubmit = async (event) => {
     }
 
     form.reset();
-    setPasswordResetHint("資料驗證成功，密碼重設連結已寄到你的 Gmail。", "success");
+    setPasswordResetHint("資料驗證成功，新密碼已更新，可以關閉視窗後登入。", "success");
   } catch (error) {
     console.error("Password reset request failed:", error);
-    setPasswordResetHint(error?.message || "目前無法寄送重設信，請稍後再試。", "error");
+    setPasswordResetHint(error?.message || "目前無法更新密碼，請稍後再試。", "error");
   } finally {
     submitButton.disabled = false;
-    submitButton.textContent = "驗證並寄送重設信";
+    submitButton.textContent = "驗證並更新密碼";
   }
 };
 
