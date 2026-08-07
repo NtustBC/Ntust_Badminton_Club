@@ -3629,8 +3629,15 @@ button.admin-calendar-day:focus-visible {
 .privacy-consent-option a { margin: 0 4px; color: var(--color-primary, #0f54a0); font-weight: 700; }
 .notification-preference-grid { display: grid; gap: 10px; margin-top: 12px; }
 .notification-preference-grid label { display: flex; gap: 9px; align-items: center; }
-.notification-modal-dialog { width: min(620px, calc(100vw - 28px)); }
+.notification-modal-dialog { width: min(580px, calc(100vw - 28px)); }
+.notification-modal-dialog .modal-header { padding: 24px 26px 20px; }
+.notification-modal-dialog .modal-body { padding: 20px 26px; }
+.notification-modal-dialog .modal-footer { display: flex; justify-content: flex-end; padding: 16px 26px 20px; }
+.notification-modal-dialog .modal-footer .button-secondary { min-width: 0; padding: 10px 16px; }
 .notification-list { display: grid; gap: 12px; }
+.notification-empty { padding: 20px 22px; border: 1px solid rgba(15, 84, 160, 0.12); border-radius: 12px; background: rgba(248, 250, 252, 0.9); }
+.notification-empty h3 { margin: 0; font-family: var(--font-serif); font-size: 1.15rem; }
+.notification-empty p { margin: 7px 0 0; color: #667085; line-height: 1.6; }
 .notification-item { padding: 16px; border: 1px solid rgba(15, 84, 160, 0.14); border-radius: 12px; background: #fff; }
 .notification-item h3 { margin: 0 0 6px; font-size: 1rem; }
 .notification-item p { margin: 0; color: #475467; line-height: 1.6; }
@@ -3639,6 +3646,9 @@ button.admin-calendar-day:focus-visible {
 
 @media (max-width: 560px) {
   .verification-code-row { grid-template-columns: 1fr; }
+  .notification-modal-dialog .modal-header { padding: 20px; }
+  .notification-modal-dialog .modal-body { padding: 16px 20px; }
+  .notification-modal-dialog .modal-footer { padding: 14px 20px 18px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

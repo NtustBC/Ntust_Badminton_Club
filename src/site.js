@@ -1060,7 +1060,7 @@ const openNotificationCenter = async () => {
     if (preferences.registrationUpdates !== false && currentMemberProfile?.membershipStatus === "pending_payment") {
       items.unshift({ title: "社員申請處理中", copy: "幹部確認款項後，系統會更新社員資格。", date: "" });
     }
-    list.innerHTML = items.length ? items.map((item) => `<article class="notification-item"><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.copy)}</p>${item.date ? `<small>${escapeHtml(item.date)}</small>` : ""}</article>`).join("") : `<article class="content-card is-tight"><h3 class="content-title">目前沒有通知</h3><p class="content-copy">新公告與報名狀態會顯示在這裡。</p></article>`;
+    list.innerHTML = items.length ? items.map((item) => `<article class="notification-item"><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.copy)}</p>${item.date ? `<small>${escapeHtml(item.date)}</small>` : ""}</article>`).join("") : `<article class="notification-empty"><h3>目前沒有通知</h3><p>新公告與報名狀態會顯示在這裡。</p></article>`;
   } catch (error) {
     list.innerHTML = `<p class="content-copy">通知載入失敗，請稍後再試。</p>`;
   }
