@@ -3103,6 +3103,19 @@ button.admin-calendar-day:focus-visible {
   background: linear-gradient(135deg, rgba(234, 242, 251, 0.92), rgba(247, 251, 255, 0.98));
 }
 
+.admin-calendar-signup-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+.admin-calendar-signup-options .admin-calendar-signup-toggle {
+  width: 100%;
+  min-height: 76px;
+  align-items: center;
+}
+
 .admin-calendar-signup-settings {
   display: grid;
   gap: 16px;
@@ -3134,18 +3147,6 @@ button.admin-calendar-day:focus-visible {
 
 .admin-calendar-date-time-grid [hidden] {
   display: none;
-}
-
-.admin-signup-window-presets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.admin-signup-window-presets .button-secondary {
-  min-height: 42px;
-  padding-inline: 14px;
-  font-size: 0.88rem;
 }
 
 .admin-calendar-form-actions {
@@ -3479,7 +3480,8 @@ button.admin-calendar-day:focus-visible {
   }
 
   .admin-calendar-primary-grid,
-  .admin-calendar-signup-time-grid {
+  .admin-calendar-signup-time-grid,
+  .admin-calendar-signup-options {
     grid-template-columns: minmax(0, 1fr);
   }
 

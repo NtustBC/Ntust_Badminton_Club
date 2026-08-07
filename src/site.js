@@ -85,7 +85,6 @@ const MIN_ACADEMIC_YEAR = 115;
 const APPLICATION_SUBMIT_COOLDOWN_MS = 10 * 60 * 1000;
 const MEMBERS_DASHBOARD_REFRESH_MS = 60 * 1000;
 const PUBLIC_PAGE_REFRESH_MS = 60 * 1000;
-const CLASS_SIGNUP_WINDOW_DAYS = 7;
 const CLASS_SESSION_COLLECTION = "classSessions";
 const CLASS_SIGNUP_COLLECTION = "classSessionSignups";
 const CLASS_PUBLIC_ROSTER_COLLECTION = "classPublicRosters";
@@ -739,29 +738,26 @@ const adminClassCalendarModalMarkup = `
               <span>04</span>
               <div><strong>報名設定</strong><small>設定資格、開放時間與名額</small></div>
             </div>
-            <label class="admin-calendar-signup-toggle is-primary">
-              <input name="signupRequired" type="checkbox" checked />
-              <span><strong>社課需要報名</strong><small>開啟後，社員需先完成線上報名</small></span>
-            </label>
-            <div class="admin-calendar-signup-settings" data-admin-calendar-signup-settings>
+            <div class="admin-calendar-signup-options">
+              <label class="admin-calendar-signup-toggle is-primary">
+                <input name="signupRequired" type="checkbox" checked />
+                <span><strong>社課需要報名</strong><small>開啟後，社員需先完成線上報名</small></span>
+              </label>
               <label class="admin-calendar-signup-toggle">
                 <input name="allowNonMembers" type="checkbox" />
                 <span><strong>開放非社員報名</strong><small>未具正式社員資格的帳號也能參加</small></span>
               </label>
+            </div>
+            <div class="admin-calendar-signup-settings" data-admin-calendar-signup-settings>
               <div class="admin-calendar-signup-time-grid">
                 <div class="form-field">
                   <label for="admin-calendar-signup-open">報名開始</label>
-                  <input id="admin-calendar-signup-open" name="signupOpenAt" step="900" type="datetime-local" />
+                  <input id="admin-calendar-signup-open" name="signupOpenAt" type="datetime-local" />
                 </div>
                 <div class="form-field">
                   <label for="admin-calendar-signup-close">報名截止</label>
-                  <input id="admin-calendar-signup-close" name="signupCloseAt" step="900" type="datetime-local" />
+                  <input id="admin-calendar-signup-close" name="signupCloseAt" type="datetime-local" />
                 </div>
-              </div>
-              <div class="admin-signup-window-presets" aria-label="快速設定報名時間">
-                <button class="button-secondary" data-signup-window-preset="previous-week" type="button">前一週週三至週五</button>
-                <button class="button-secondary" data-signup-window-preset="now" type="button">現在開始</button>
-                <button class="button-secondary" data-signup-window-preset="clear" type="button">清除時間</button>
               </div>
               <div class="form-field admin-calendar-limit-field">
                 <label for="admin-calendar-signup-limit">人數上限</label>
@@ -2145,7 +2141,7 @@ const getPublicClassSignupModalState = (session) => {
   const sessionId = getClassSessionId(session);
   const ownSignup = classSignupPageState.ownSignups.find((signup) => signup.sessionId === sessionId) || null;
   const approvalData = classSignupPageState.approval;
-  const isFormalMember = currentUserIsAdmin || currentMemberStatus === "formal_member";
+  const isFormalMember = currentUserIsAdmin || currentMemberStatus === "formal_member" || Boolean(approvalData);
   const canSignup = Boolean(currentUser) && (isFormalMember || Boolean(session.allowNonMembers));
   const isSignupSession = Boolean(session.signupRequired);
   const signupOpen = isSignupSession && isClassSignupWindowOpen(session);
@@ -2422,47 +2418,6 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
 
   form.dataset.editingType = event?.type || "";
   form.dataset.editingId = eventId;
-};
-
-const applySignupWindowPreset = (form, preset) => {
-  const openInput = form.querySelector("[name='signupOpenAt']");
-  const closeInput = form.querySelector("[name='signupCloseAt']");
-  if (!(openInput instanceof HTMLInputElement) || !(closeInput instanceof HTMLInputElement)) {
-    return;
-  }
-
-  if (preset === "clear") {
-    openInput.value = "";
-    closeInput.value = "";
-    return;
-  }
-
-  if (preset === "now") {
-    const now = new Date();
-    now.setSeconds(0, 0);
-    now.setMinutes(Math.ceil(now.getMinutes() / 15) * 15);
-    openInput.value = formatDateTimeLocalValue(now);
-    return;
-  }
-
-  const sessionDate = parseDateKey(form.querySelector("[name='date']")?.value || "");
-  if (!sessionDate) {
-    window.alert("請先選擇社課日期。");
-    return;
-  }
-
-  const daysSinceMonday = (sessionDate.getDay() + 6) % 7;
-  const currentWeekMonday = new Date(sessionDate);
-  currentWeekMonday.setDate(currentWeekMonday.getDate() - daysSinceMonday);
-
-  const signupOpen = new Date(currentWeekMonday);
-  signupOpen.setDate(signupOpen.getDate() - 5);
-  signupOpen.setHours(0, 0, 0, 0);
-  const signupClose = new Date(currentWeekMonday);
-  signupClose.setDate(signupClose.getDate() - 3);
-  signupClose.setHours(23, 45, 0, 0);
-  openInput.value = formatDateTimeLocalValue(signupOpen);
-  closeInput.value = formatDateTimeLocalValue(signupClose);
 };
 
 const openAdminClassCalendarModal = (dateKey, trigger = null) => {
@@ -4073,8 +4028,8 @@ function isClassSignupWindowOpen(session) {
     return false;
   }
 
-  const diffMs = sessionDateMs - now;
-  return diffMs >= 0 && diffMs <= CLASS_SIGNUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const endOfSessionDayMs = sessionDateMs + 24 * 60 * 60 * 1000;
+  return endOfSessionDayMs > now;
 }
 
 function getSessionSignupLimit(session = {}) {
@@ -4520,7 +4475,7 @@ async function handleClassSignupSubmit(event) {
 
   const ownExistingSignup = classSignupPageState.ownSignups.find((signup) => signup.sessionId === sessionId) || null;
   const currentMembershipStatus = currentMemberProfile?.membershipStatus || currentMemberProfile?.status || "pending_payment";
-  const isFormalMember = currentUserIsAdmin || currentMembershipStatus === "formal_member";
+  const isFormalMember = currentUserIsAdmin || currentMembershipStatus === "formal_member" || Boolean(classSignupPageState.approval);
 
   if (!isFormalMember && !session.allowNonMembers) {
     window.alert("本場社課僅開放正式社員報名。");
@@ -5870,9 +5825,6 @@ function bindAdminClassCalendarActions() {
       if (endDateInput instanceof HTMLInputElement && (!endDateInput.value || endDateInput.value < event.target.value)) {
         endDateInput.value = event.target.value;
       }
-    });
-    form.querySelectorAll("[data-signup-window-preset]").forEach((button) => {
-      button.addEventListener("click", () => applySignupWindowPreset(form, button.dataset.signupWindowPreset || "previous-week"));
     });
   }
 
