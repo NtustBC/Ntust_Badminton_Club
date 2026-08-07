@@ -2699,6 +2699,63 @@ const bindMemberStatusSelects = (container) => {
   });
 };
 
+const bindMemberDeleteButtons = (container) => {
+  container.querySelectorAll("[data-member-account-delete]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const memberId = String(button.dataset.memberId || "").trim();
+      const email = String(button.dataset.memberEmail || "").trim().toLowerCase();
+      if (!memberId || !email || !currentUser || !currentUserIsAdmin) {
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `確定要永久刪除 ${email} 嗎？\n\n這會同時刪除 Firebase Authentication 登入帳號、社員資料、核准紀錄、入社申請與社課報名，且無法復原。`,
+      );
+      if (!confirmed) {
+        return;
+      }
+
+      const rowControls = button.closest("tr")?.querySelectorAll("button, select") || [];
+      rowControls.forEach((control) => {
+        control.disabled = true;
+      });
+      const originalLabel = button.textContent;
+      button.textContent = "刪除中…";
+
+      try {
+        const idToken = await currentUser.getIdToken();
+        const endpoint = `https://asia-east1-${firebaseConfig.projectId}.cloudfunctions.net/deleteMemberAccount`;
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ data: { uid: memberId, email } }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result.error) {
+          throw new Error(result.error?.message || "帳號刪除失敗，請稍後再試一次。");
+        }
+
+        membersDashboardCache.members = membersDashboardCache.members.filter((member) => member.id !== memberId);
+        await refreshMembersDashboardSafe({ force: true });
+        openActionSuccessModal({
+          title: "帳號已刪除",
+          copy: `${email} 已從 Authentication 與社員資料中永久刪除。`,
+        });
+      } catch (error) {
+        console.error("Delete member Authentication account failed:", error);
+        rowControls.forEach((control) => {
+          control.disabled = false;
+        });
+        button.textContent = originalLabel;
+        window.alert(`刪除帳號失敗：${error?.message || "請稍後再試一次。"}`);
+      }
+    });
+  });
+};
+
 const renderMembersExportToolbar = (members = []) => {
   const content = document.querySelector("[data-members-content]");
   const filterCard = content?.querySelector(".member-filter-card");
@@ -2762,6 +2819,16 @@ const renderMembersExportToolbar = (members = []) => {
               ${getMemberStatusOptionsMarkup(managedStatus)}
             </select>
           </td>
+          <td>
+            <button
+              class="member-delete-button"
+              data-member-account-delete
+              data-member-id="${escapeHtml(member.id)}"
+              data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}"
+              type="button"
+              ${member.id === currentUser?.uid ? 'disabled title="不能刪除目前登入中的管理員帳號"' : ""}
+            >刪除</button>
+          </td>
         </tr>
       `;
     })
@@ -2786,6 +2853,7 @@ const renderMembersExportToolbar = (members = []) => {
             <th scope="col">Gmail</th>
             <th scope="col">聯絡電話</th>
             <th scope="col">社員狀態</th>
+            <th scope="col">操作</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -2794,6 +2862,7 @@ const renderMembersExportToolbar = (members = []) => {
   `;
 
   bindMemberStatusSelects(tableCard);
+  bindMemberDeleteButtons(tableCard);
 };
 const renderMembersList = (members = []) => {
   const list = document.querySelector("[data-members-list]");

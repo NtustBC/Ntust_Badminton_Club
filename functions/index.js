@@ -8,6 +8,7 @@ admin.initializeApp();
 
 const REGION = "asia-east1";
 const APPLICATION_DOCUMENT = "applications/{applicationId}";
+const BOOTSTRAP_ADMIN_EMAIL = "admin@gmail.com";
 
 const RECEIVED_EMAIL_SUBJECT = "【臺科大羽球社】社員申請已收到！後續繳費與審核步驟說明";
 const APPROVED_EMAIL_SUBJECT = "【臺科大羽球社】恭喜！您的入社申請已審核通過，請前往網站登入";
@@ -419,3 +420,80 @@ exports.requestVerifiedPasswordReset = onCall(
     return { ok: true };
   },
 );
+exports.deleteMemberAccount = onCall({ region: REGION }, async (request) => {
+  const callerUid = request.auth?.uid;
+  const callerEmail = String(request.auth?.token?.email || "").trim().toLowerCase();
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "請先登入管理員帳號。");
+  }
+
+  const callerIsBootstrapAdmin = callerEmail === BOOTSTRAP_ADMIN_EMAIL;
+  const callerAdminSnapshot = callerIsBootstrapAdmin
+    ? null
+    : await admin.firestore().collection("admins").doc(callerUid).get();
+  if (!callerIsBootstrapAdmin && !callerAdminSnapshot?.exists) {
+    throw new HttpsError("permission-denied", "只有管理員可以刪除帳號。");
+  }
+
+  const uid = String(request.data?.uid || "").trim();
+  const requestedEmail = String(request.data?.email || "").trim().toLowerCase();
+  if (!uid || !requestedEmail) {
+    throw new HttpsError("invalid-argument", "缺少要刪除的帳號資料。");
+  }
+  if (uid === callerUid) {
+    throw new HttpsError("failed-precondition", "不能刪除目前登入中的管理員帳號。");
+  }
+
+  let targetEmail = requestedEmail;
+  try {
+    const targetUser = await admin.auth().getUser(uid);
+    targetEmail = String(targetUser.email || "").trim().toLowerCase();
+    if (!targetEmail || targetEmail !== requestedEmail) {
+      throw new HttpsError("failed-precondition", "Authentication 帳號與社員資料不一致，已停止刪除。");
+    }
+  } catch (error) {
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    if (error?.code !== "auth/user-not-found") {
+      logger.error("Failed to load target Authentication account.", { uid, error: error?.message || String(error) });
+      throw new HttpsError("internal", "無法讀取 Authentication 帳號。");
+    }
+  }
+
+  if (targetEmail === BOOTSTRAP_ADMIN_EMAIL) {
+    throw new HttpsError("failed-precondition", "系統管理員帳號不能刪除。");
+  }
+
+  try {
+    await admin.auth().deleteUser(uid);
+  } catch (error) {
+    if (error?.code !== "auth/user-not-found") {
+      logger.error("Failed to delete Authentication account.", { uid, error: error?.message || String(error) });
+      throw new HttpsError("internal", "Authentication 帳號刪除失敗。");
+    }
+  }
+
+  const firestore = admin.firestore();
+  const [applicationsSnapshot, signupsSnapshot] = await Promise.all([
+    firestore.collection("applications").where("email", "==", targetEmail).get(),
+    firestore.collection("classSessionSignups").where("userId", "==", uid).get(),
+  ]);
+  const writer = firestore.bulkWriter();
+  writer.delete(firestore.collection("members").doc(uid));
+  writer.delete(firestore.collection("admins").doc(uid));
+  writer.delete(firestore.collection("signupApprovals").doc(targetEmail));
+  writer.delete(
+    firestore.collection("passwordResetRateLimits").doc(crypto.createHash("sha256").update(targetEmail).digest("hex")),
+  );
+  applicationsSnapshot.docs.forEach((snapshot) => writer.delete(snapshot.ref));
+  signupsSnapshot.docs.forEach((snapshot) => writer.delete(snapshot.ref));
+  await writer.close();
+
+  logger.info("Member Authentication account deleted by administrator.", {
+    callerUid,
+    deletedUid: uid,
+    deletedEmail: targetEmail,
+  });
+  return { ok: true, uid, email: targetEmail };
+});
