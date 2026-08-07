@@ -19,6 +19,7 @@ let setDoc;
 let setPersistence;
 let updateDoc;
 let where;
+let writeBatch;
 
 let firebaseModulesPromise = null;
 
@@ -50,6 +51,7 @@ const ensureFirebaseModules = async () => {
         setPersistence,
         updateDoc,
         where,
+        writeBatch,
       } = firebaseModules);
       return firebaseModules;
     } catch (error) {
@@ -99,6 +101,10 @@ const DATE_WEEKDAY_ORDER = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const CLASS_SUNDAY_SLOTS = ["13:00~14:30", "14:30~16:00"];
 const bootstrapAdminEmailNormalized = bootstrapAdminEmail.trim().toLowerCase();
 const firebaseConfigured = Object.values(firebaseConfig).every(Boolean);
+
+if (firebaseConfigured) {
+  void ensureFirebaseModules().catch((error) => console.warn("Firebase SDK warmup failed:", error));
+}
 
 let auth = null;
 let db = null;
@@ -269,7 +275,7 @@ const membersPageCopy = {
 };
 
 const authErrorMessages = {
-  "auth/email-already-in-use": "這個信箱已存在於登入系統，即使後台社員名單沒有顯示也無法重複註冊。請切換到登入；成功登入後系統會重新同步社員資料。",
+  "auth/email-already-in-use": "這個信箱已存在於登入系統，即使後台社員名單沒有顯示也無法重複註冊。請直接登入；若不記得密碼，請使用「忘記密碼」。",
   "auth/invalid-credential": "信箱或密碼不正確，請再確認一次。",
   "auth/invalid-email": "請輸入有效的電子郵件信箱。",
   "auth/missing-password": "請輸入密碼。",
@@ -337,6 +343,9 @@ const loginModalMarkup = `
               autocomplete="current-password"
             />
           </div>
+          <div class="auth-forgot-row" data-password-reset-trigger>
+            <button class="auth-forgot-button" data-open-password-reset type="button">忘記密碼？</button>
+          </div>
           <div class="form-field" data-auth-confirm-field hidden>
             <label for="login-password-confirm">確認密碼</label>
             <input
@@ -371,6 +380,51 @@ const loginModalMarkup = `
       <div class="modal-footer">
         <button class="login-button modal-submit" data-auth-submit form="login-form" type="submit">登入</button>
       </div>
+    </div>
+  </div>
+`;
+
+const passwordResetModalMarkup = `
+  <div class="modal" data-password-reset-modal hidden>
+    <div class="modal-backdrop" data-modal-backdrop></div>
+    <div class="modal-dialog auth-modal-dialog">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">忘記密碼</h2>
+          <p class="modal-subtitle">資料必須與註冊時填寫的內容完全相符，驗證成功後會寄送一次性重設連結。</p>
+        </div>
+        <button class="modal-close" data-close-password-reset type="button" aria-label="關閉忘記密碼視窗">
+          <span aria-hidden="true">+</span>
+        </button>
+      </div>
+      <form class="form-grid" data-password-reset-form novalidate>
+        <div class="modal-body form-grid">
+          <div class="form-field">
+            <label for="reset-email">Gmail</label>
+            <input id="reset-email" name="email" type="email" autocomplete="email" required />
+          </div>
+          <div class="form-field">
+            <label for="reset-name">姓名</label>
+            <input id="reset-name" name="name" type="text" autocomplete="name" required />
+          </div>
+          <div class="form-field">
+            <label for="reset-student-id">學號</label>
+            <input id="reset-student-id" name="studentId" type="text" required />
+          </div>
+          <div class="form-field">
+            <label for="reset-department">系別</label>
+            <input id="reset-department" name="department" type="text" required />
+          </div>
+          <div class="form-field">
+            <label for="reset-phone">聯絡電話</label>
+            <input id="reset-phone" name="phone" type="tel" autocomplete="tel" required />
+          </div>
+          <p class="login-note" data-password-reset-hint>為保護帳號，所有欄位皆須正確。</p>
+        </div>
+        <div class="modal-footer">
+          <button class="login-button modal-submit" data-password-reset-submit type="submit">驗證並寄送重設信</button>
+        </div>
+      </form>
     </div>
   </div>
 `;
@@ -781,12 +835,16 @@ const updateLoginButtons = () => {
   syncMembersPageHero();
 
   getLoginButtons().forEach((button) => {
-    button.textContent = currentUser ? getMembershipStatusCopy(currentMemberStatus).label : button.dataset.defaultLabel;
+    button.textContent = currentUser ? getMembershipStatusCopy(getCurrentMembershipStatus()).label : button.dataset.defaultLabel;
   });
 };
 
 const membershipStatusCopy = {
-  non_member: {
+  admin: {
+    label: "管理員",
+    meaning: "目前具有管理員權限。",
+    action: "進入管理頁",
+  },  non_member: {
     label: "非社員",
     meaning: "目前不是正式社員。",
     action: "查看加入方式",
@@ -810,6 +868,10 @@ const getManagedMembershipStatus = (value = "") => {
     .trim()
     .toLowerCase();
 
+  if (["admin", "administrator"].includes(explicitStatus)) {
+    return "admin";
+  }
+
   if (["formal_member", "formal", "approved", "member"].includes(explicitStatus)) {
     return "formal_member";
   }
@@ -822,6 +884,7 @@ const getManagedMembershipStatus = (value = "") => {
 };
 
 const getMembershipStatusCopy = (status) => membershipStatusCopy[getManagedMembershipStatus(status)];
+const getCurrentMembershipStatus = () => (currentUserIsAdmin ? "admin" : getManagedMembershipStatus(currentMemberStatus));
 const isOfficialMemberStatus = () => currentUserIsAdmin || getManagedMembershipStatus(currentMemberStatus) === "formal_member";
 
 const normalizeMembershipStatus = (memberData = null, approvalData = null) => {
@@ -878,6 +941,16 @@ const ensureLoginModal = () => {
 
   document.body.insertAdjacentHTML("beforeend", loginModalMarkup);
   return document.querySelector("[data-login-modal]");
+};
+
+const ensurePasswordResetModal = () => {
+  const existing = document.querySelector("[data-password-reset-modal]");
+  if (existing) {
+    return existing;
+  }
+
+  document.body.insertAdjacentHTML("beforeend", passwordResetModalMarkup);
+  return document.querySelector("[data-password-reset-modal]");
 };
 
 const ensureApplicationModal = () => {
@@ -968,6 +1041,18 @@ const getLoginModalElements = () => {
   };
 };
 
+const getPasswordResetModalElements = () => {
+  const resetModal = ensurePasswordResetModal();
+  return {
+    resetModal,
+    form: resetModal.querySelector("[data-password-reset-form]"),
+    hint: resetModal.querySelector("[data-password-reset-hint]"),
+    submitButton: resetModal.querySelector("[data-password-reset-submit]"),
+    emailInput: resetModal.querySelector("#reset-email"),
+    closeButtons: resetModal.querySelectorAll("[data-close-password-reset]"),
+  };
+};
+
 const getApplicationModalElements = () => {
   const applicationModal = ensureApplicationModal();
 
@@ -1036,6 +1121,7 @@ const setAuthMode = (mode) => {
   authSubtitle.textContent = authCopy[mode].subtitle;
   authSubmit.textContent = authCopy[mode].submitLabel;
   confirmField.hidden = mode !== "signup";
+  loginModal.querySelector("[data-password-reset-trigger]").hidden = mode !== "signin";
   if (signupProfile) {
     signupProfile.hidden = mode !== "signup";
   }
@@ -1069,7 +1155,7 @@ const updateAuthView = () => {
     loginForm.hidden = true;
     statusCard.hidden = false;
     authSwitch.hidden = true;
-    const statusCopy = getMembershipStatusCopy(currentMemberStatus);
+    const statusCopy = getMembershipStatusCopy(getCurrentMembershipStatus());
     statusEmail.innerHTML = `
       <span class="member-status-badge">${escapeHtml(statusCopy.label)}</span>
       <span>${escapeHtml(currentUser.email || "")}</span>
@@ -1166,16 +1252,15 @@ const ensureAuthReady = async () => {
       faqPageState.loadWarnings = [];
 
       if (user) {
-        try {
-          await loadAdminStatus(user);
-        } catch (error) {
-          console.warn("Load admin status failed:", error);
+        const [adminStatusResult, memberStatusResult] = await Promise.allSettled([
+          loadAdminStatus(user),
+          loadCurrentMemberStatus(user),
+        ]);
+        if (adminStatusResult.status === "rejected") {
+          console.warn("Load admin status failed:", adminStatusResult.reason);
         }
-
-        try {
-          await loadCurrentMemberStatus(user);
-        } catch (error) {
-          console.warn("Load member status failed:", error);
+        if (memberStatusResult.status === "rejected") {
+          console.warn("Load member status failed:", memberStatusResult.reason);
         }
       }
 
@@ -1242,6 +1327,89 @@ const closeLoginModal = () => {
   if (lastLoginTrigger) {
     lastLoginTrigger.focus();
   }
+};
+
+const setPasswordResetHint = (message, tone = "default") => {
+  setMessageTone(getPasswordResetModalElements().hint, message, tone);
+};
+
+const openPasswordResetModal = () => {
+  const { loginModal, emailInput: loginEmailInput } = getLoginModalElements();
+  const { resetModal, form, emailInput } = getPasswordResetModalElements();
+  form.reset();
+  emailInput.value = loginEmailInput.value.trim().toLowerCase();
+  setPasswordResetHint("為保護帳號，所有欄位皆須正確。");
+  loginModal.hidden = true;
+  resetModal.hidden = false;
+  body.classList.add("modal-open");
+  window.setTimeout(() => (emailInput.value ? form.querySelector("#reset-name") : emailInput)?.focus(), 50);
+};
+
+const closePasswordResetModal = () => {
+  const { resetModal } = getPasswordResetModalElements();
+  resetModal.hidden = true;
+  body.classList.remove("modal-open");
+};
+
+const handlePasswordResetSubmit = async (event) => {
+  event.preventDefault();
+  const { form, submitButton } = getPasswordResetModalElements();
+  const formData = new FormData(form);
+  const payload = {
+    email: String(formData.get("email") || "").trim().toLowerCase(),
+    name: String(formData.get("name") || "").trim(),
+    studentId: String(formData.get("studentId") || "").trim(),
+    department: String(formData.get("department") || "").trim(),
+    phone: String(formData.get("phone") || "").trim(),
+  };
+
+  if (Object.values(payload).some((value) => !value)) {
+    setPasswordResetHint("請完整填寫 Gmail、姓名、學號、系別與聯絡電話。", "error");
+    return;
+  }
+
+  submitButton.disabled = true;
+  submitButton.textContent = "驗證中…";
+  setPasswordResetHint("正在安全驗證資料，第一次使用可能需要幾秒鐘。");
+
+  try {
+    const endpoint = `https://asia-east1-${firebaseConfig.projectId}.cloudfunctions.net/requestVerifiedPasswordReset`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: payload }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.error) {
+      const status = String(result.error?.status || "").toLowerCase();
+      if (status.includes("resource_exhausted")) {
+        throw new Error("嘗試次數過多，請一小時後再試。");
+      }
+      throw new Error(result.error?.message || "帳號或個人資料不正確。");
+    }
+
+    form.reset();
+    setPasswordResetHint("資料驗證成功，密碼重設連結已寄到你的 Gmail。", "success");
+  } catch (error) {
+    console.error("Password reset request failed:", error);
+    setPasswordResetHint(error?.message || "目前無法寄送重設信，請稍後再試。", "error");
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = "驗證並寄送重設信";
+  }
+};
+
+const bindPasswordResetModalEvents = () => {
+  const { resetModal, form, closeButtons } = getPasswordResetModalElements();
+  document.querySelector("[data-open-password-reset]")?.addEventListener("click", openPasswordResetModal);
+  form.addEventListener("submit", handlePasswordResetSubmit);
+  closeButtons.forEach((button) => button.addEventListener("click", closePasswordResetModal));
+  resetModal.addEventListener("click", (event) => {
+    const target = event.target;
+    if (target === resetModal || target.hasAttribute("data-modal-backdrop")) {
+      closePasswordResetModal();
+    }
+  });
 };
 
 const openApplicationModal = (trigger) => {
@@ -1721,8 +1889,10 @@ const syncMemberProfile = async (user, source, profile = {}) => {
   }
 
   const memberRef = getMemberDocRef(user.uid);
-  const existingDoc = await getDoc(memberRef);
-  const approvalDoc = user.email ? await getDoc(getApprovalDocRef(user.email)) : null;
+  const [existingDoc, approvalDoc] = await Promise.all([
+    getDoc(memberRef),
+    user.email ? getDoc(getApprovalDocRef(user.email)) : Promise.resolve(null),
+  ]);
   const approvalData = approvalDoc?.exists() ? approvalDoc.data() : null;
   const normalizedEmail = String(user.email || "").trim().toLowerCase();
   const legacyApprovedMembers =
@@ -2443,6 +2613,7 @@ const getMemberStatusOptionsMarkup = (status) => {
     { value: "non_member", label: "非社員" },
     { value: "former_member", label: "前社員" },
     { value: "formal_member", label: "社員" },
+    { value: "admin", label: "管理員" },
   ]
     .map(
       (option) =>
@@ -2462,27 +2633,40 @@ const bindMemberStatusSelects = (container) => {
         return;
       }
 
+      const isAdmin = nextStatus === "admin";
       const isFormalMember = nextStatus === "formal_member";
       const isFormerMember = nextStatus === "former_member";
+      const memberUpdate = {
+        membershipStatus: nextStatus,
+        status: nextStatus,
+        paymentStatus: isAdmin ? "not_required" : isFormalMember ? "paid" : "unpaid",
+        paidAt: isFormalMember ? serverTimestamp() : null,
+        formerMemberAt: isFormerMember ? serverTimestamp() : null,
+        updatedAt: serverTimestamp(),
+      };
       select.disabled = true;
 
       try {
-        await setDoc(
-          getMemberDocRef(memberId),
-          {
-            membershipStatus: nextStatus,
-            status: nextStatus,
-            paymentStatus: isFormalMember ? "paid" : "unpaid",
-            paidAt: isFormalMember ? serverTimestamp() : null,
-            formerMemberAt: isFormerMember ? serverTimestamp() : null,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true },
-        );
-
+        const batch = writeBatch(db);
+        batch.set(getMemberDocRef(memberId), memberUpdate, { merge: true });
+        if (isAdmin) {
+          batch.set(
+            getAdminDocRef(memberId),
+            {
+              uid: memberId,
+              email,
+              role: "admin",
+              updatedAt: serverTimestamp(),
+              updatedBy: currentUser?.uid || "",
+            },
+            { merge: true },
+          );
+        } else {
+          batch.delete(getAdminDocRef(memberId));
+        }
         if (email) {
           if (isFormalMember) {
-            await setDoc(
+            batch.set(
               getApprovalDocRef(email),
               {
                 email,
@@ -2493,14 +2677,23 @@ const bindMemberStatusSelects = (container) => {
               { merge: true },
             );
           } else {
-            const approvalDoc = await getDoc(getApprovalDocRef(email));
-            if (approvalDoc.exists()) {
-              await deleteDoc(getApprovalDocRef(email));
-            }
+            batch.delete(getApprovalDocRef(email));
           }
         }
+        await batch.commit();
 
-        await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+        const cachedMember = membersDashboardCache.members.find((member) => member.id === memberId);
+        if (cachedMember) {
+          Object.assign(cachedMember, {
+            membershipStatus: nextStatus,
+            status: nextStatus,
+            paymentStatus: memberUpdate.paymentStatus,
+          });
+        }
+        const displayMembers = mergeMembersWithApprovedApplications(membersDashboardCache.members);
+        renderMembersSummary(displayMembers);
+        renderMembersExportToolbar(displayMembers);
+        renderMembersList(displayMembers);
         openActionSuccessModal({
           title: "社員狀態已更新",
           copy: `${email || "這筆帳號"} 已設定為「${getMembershipStatusCopy(nextStatus).label}」。`,
@@ -5016,12 +5209,14 @@ const handleAuthSubmit = async (event) => {
 
     try {
       await ensureBootstrapAdminDoc(credential.user);
-      await loadAdminStatus(credential.user);
-      await syncMemberProfile(
-        credential.user,
-        authMode === "signup" ? "signup" : "signin",
-        authMode === "signup" ? signupProfile : {},
-      );
+      await Promise.all([
+        loadAdminStatus(credential.user),
+        syncMemberProfile(
+          credential.user,
+          authMode === "signup" ? "signup" : "signin",
+          authMode === "signup" ? signupProfile : {},
+        ),
+      ]);
       await loadCurrentMemberStatus(credential.user);
     } catch (error) {
       profileSyncFailed = true;
@@ -5443,6 +5638,7 @@ const initKeybindings = () => {
 
     const { loginModal } = getLoginModalElements();
     const { applicationModal } = getApplicationModalElements();
+    const { resetModal } = getPasswordResetModalElements();
     const { successModal } = getApplicationSuccessModalElements();
     const { successModal: actionSuccessModal } = getActionSuccessModalElements();
     const { calendarModal: publicCalendarModal } = getPublicCalendarModalElements();
@@ -5454,6 +5650,10 @@ const initKeybindings = () => {
 
     if (!applicationModal.hidden) {
       closeApplicationModal();
+    }
+
+    if (!resetModal.hidden) {
+      closePasswordResetModal();
     }
 
     if (!successModal.hidden) {
@@ -5558,12 +5758,14 @@ const initPublicBoardAutoRefresh = () => {
 const init = async () => {
   primeAuthStateFromSnapshot();
   ensureLoginModal();
+  ensurePasswordResetModal();
   ensureApplicationModal();
   ensureApplicationSuccessModal();
   ensureActionSuccessModal();
   ensurePublicCalendarModal();
   ensureClassSignupModal();
   bindLoginModalEvents();
+  bindPasswordResetModalEvents();
   bindApplicationModalEvents();
   bindApplicationSuccessModalEvents();
   bindActionSuccessModalEvents();

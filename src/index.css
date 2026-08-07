@@ -1404,6 +1404,29 @@ img {
   outline: none;
 }
 
+.auth-forgot-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -6px;
+}
+
+.auth-forgot-button {
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-forgot-button:hover,
+.auth-forgot-button:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+
 .auth-status-card {
   display: grid;
   gap: 10px;

@@ -31,9 +31,9 @@ service cloud.firestore {
         );
     }
     match /admins/{userId} {
-      allow read: if isSignedIn() && request.auth.uid == userId;
-      allow create: if isBootstrapAdminEmail() && request.auth.uid == userId;
-      allow update, delete: if false;
+      allow get: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     match /members/{userId} {

@@ -1,6 +1,8 @@
 const admin = require("firebase-admin");
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { logger } = require("firebase-functions");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const crypto = require("crypto");
 
 admin.initializeApp();
 
@@ -301,5 +303,119 @@ exports.sendApplicationApprovedEmail = onDocumentUpdated(
         error: error?.message || String(error),
       });
     }
+  },
+);
+
+const PASSWORD_RESET_SUBJECT = "【臺科大羽球社】密碼重設連結";
+const PASSWORD_RESET_WINDOW_MS = 60 * 60 * 1000;
+const PASSWORD_RESET_MAX_ATTEMPTS = 5;
+
+function normalizeIdentityText(value) {
+  return String(value || "").trim().replace(/\s+/g, "").toLowerCase();
+}
+
+function normalizeStudentId(value) {
+  return String(value || "").trim().replace(/[\s-]+/g, "").toUpperCase();
+}
+
+function normalizePhone(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+async function consumePasswordResetAttempt(email) {
+  const key = crypto.createHash("sha256").update(email).digest("hex");
+  const ref = admin.firestore().collection("passwordResetRateLimits").doc(key);
+  const now = Date.now();
+
+  await admin.firestore().runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const data = snapshot.exists ? snapshot.data() : {};
+    const windowStartedAtMs = Number(data.windowStartedAtMs || 0);
+    const inCurrentWindow = now - windowStartedAtMs < PASSWORD_RESET_WINDOW_MS;
+    const attempts = inCurrentWindow ? Number(data.attempts || 0) : 0;
+
+    if (attempts >= PASSWORD_RESET_MAX_ATTEMPTS) {
+      throw new HttpsError("resource-exhausted", "嘗試次數過多，請一小時後再試。");
+    }
+
+    transaction.set(
+      ref,
+      {
+        attempts: attempts + 1,
+        windowStartedAtMs: inCurrentWindow ? windowStartedAtMs : now,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+  });
+}
+
+function buildPasswordResetEmail(resetLink) {
+  const text = `你已通過臺科大羽球社網站的個人資料驗證。\n\n請使用以下一次性連結重設密碼：\n${resetLink}\n\n如果不是你提出申請，請忽略這封信。`;
+  const html = `
+    <div style="font-family: Arial, 'Noto Sans TC', sans-serif; color: #13263a; line-height: 1.8;">
+      <p>你已通過臺科大羽球社網站的個人資料驗證。</p>
+      <p><a href="${escapeHtml(resetLink)}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#0f4c81;color:#fff;text-decoration:none;font-weight:700;">重設密碼</a></p>
+      <p>這是一次性連結。如果不是你提出申請，請忽略這封信。</p>
+    </div>
+  `;
+  return { text, html };
+}
+
+exports.requestVerifiedPasswordReset = onCall(
+  {
+    region: REGION,
+    secrets: ["RESEND_API_KEY"],
+  },
+  async (request) => {
+    const email = String(request.data?.email || "").trim().toLowerCase();
+    const name = String(request.data?.name || "").trim();
+    const studentId = String(request.data?.studentId || "").trim();
+    const department = String(request.data?.department || "").trim();
+    const phone = String(request.data?.phone || "").trim();
+
+    if (!email || !name || !studentId || !department || !phone) {
+      throw new HttpsError("invalid-argument", "請完整填寫所有欄位。");
+    }
+
+    await consumePasswordResetAttempt(email);
+
+    let userRecord;
+    try {
+      userRecord = await admin.auth().getUserByEmail(email);
+    } catch (error) {
+      logger.warn("Password reset identity verification failed.", { reason: error?.code || "auth-user-not-found" });
+      throw new HttpsError("failed-precondition", "帳號或個人資料不正確。");
+    }
+
+    const memberSnapshot = await admin.firestore().collection("members").doc(userRecord.uid).get();
+    if (!memberSnapshot.exists) {
+      logger.warn("Password reset member profile was missing.", { uid: userRecord.uid });
+      throw new HttpsError("failed-precondition", "帳號或個人資料不正確。");
+    }
+
+    const member = memberSnapshot.data();
+    const identityMatches =
+      normalizeIdentityText(member.name) === normalizeIdentityText(name) &&
+      normalizeStudentId(member.studentId) === normalizeStudentId(studentId) &&
+      normalizeIdentityText(member.department || member.school) === normalizeIdentityText(department) &&
+      normalizePhone(member.phone) === normalizePhone(phone);
+
+    if (!identityMatches) {
+      logger.warn("Password reset identity fields did not match.", { uid: userRecord.uid });
+      throw new HttpsError("failed-precondition", "帳號或個人資料不正確。");
+    }
+
+    const resetLink = await admin.auth().generatePasswordResetLink(email);
+    const emailContent = buildPasswordResetEmail(resetLink);
+    await sendWithResend({
+      to: email,
+      subject: PASSWORD_RESET_SUBJECT,
+      text: emailContent.text,
+      html: emailContent.html,
+    });
+
+    logger.info("Verified password reset email sent.", { uid: userRecord.uid });
+    return { ok: true };
   },
 );

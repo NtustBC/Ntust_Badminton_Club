@@ -20,6 +20,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
 export {
@@ -42,4 +43,5 @@ export {
   signOut,
   updateDoc,
   where,
+  writeBatch,
 };
