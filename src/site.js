@@ -1098,11 +1098,13 @@ const openNotificationCenter = async () => {
   list.innerHTML = `<p class="content-copy">載入通知中…</p>`;
   try {
     const preferences = currentMemberProfile?.notificationPreferences || { announcements: true, classReminders: true, registrationUpdates: true };
+    const dismissedIds = new Set(Array.isArray(currentMemberProfile?.dismissedNotificationIds) ? currentMemberProfile.dismissedNotificationIds : []);
     const items = [];
     if (preferences.announcements !== false) {
       const announcements = await getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION);
       announcements.sort((a, b) => getAnnouncementSortMs(b) - getAnnouncementSortMs(a)).slice(0, 12).forEach((entry) => {
         items.push({
+          id: `announcement:${entry.id}`,
           title: entry.title || "社團公告",
           copy: entry.body || entry.message || entry.reminder || entry.note || entry.description || "請查看最新公告內容。",
           date: formatDateKey(entry.date || entry.startDate || ""),
@@ -1117,6 +1119,7 @@ const openNotificationCenter = async () => {
         .slice(0, 12)
         .forEach((entry) => {
           items.push({
+            id: `class:${getClassSessionId(entry)}`,
             title: entry.title || "社課提醒",
             copy: entry.description || entry.reminder || [getClassSessionTimeLabel(entry), entry.location].filter(Boolean).join(" · ") || "請查看社課日期與內容。",
             date: formatDateKey(entry.date || entry.sessionDate || ""),
@@ -1125,10 +1128,18 @@ const openNotificationCenter = async () => {
         });
     }
     if (preferences.registrationUpdates !== false && currentMemberProfile?.membershipStatus === "pending_payment") {
-      items.unshift({ title: "社員申請處理中", copy: "幹部確認款項後，系統會更新社員資格。", date: "" });
+      items.unshift({ id: "membership:pending-payment", title: "社員申請處理中", copy: "幹部確認款項後，系統會更新社員資格。", date: "" });
     }
-    items.sort((a, b) => Number(b.sortMs || 0) - Number(a.sortMs || 0));
-    list.innerHTML = items.length ? items.slice(0, 20).map((item) => `<article class="notification-item"><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.copy)}</p>${item.date ? `<small>${escapeHtml(item.date)}</small>` : ""}</article>`).join("") : `<article class="notification-empty"><h3>目前沒有通知</h3><p>新公告與報名狀態會顯示在這裡。</p></article>`;
+    const visibleItems = items.filter((item) => item.id && !dismissedIds.has(item.id));
+    visibleItems.sort((a, b) => Number(b.sortMs || 0) - Number(a.sortMs || 0));
+    list.innerHTML = visibleItems.length ? visibleItems.slice(0, 20).map((item) => `
+      <article class="notification-item" data-notification-item data-notification-id="${escapeHtml(item.id)}">
+        <button class="notification-delete-button" data-dismiss-notification type="button" aria-label="刪除「${escapeHtml(item.title)}」通知">×</button>
+        <h3>${escapeHtml(item.title)}</h3>
+        <p>${escapeHtml(item.copy)}</p>
+        ${item.date ? `<small>${escapeHtml(item.date)}</small>` : ""}
+      </article>
+    `).join("") : `<article class="notification-empty"><h3>目前沒有通知</h3><p>新公告與報名狀態會顯示在這裡。</p></article>`;
   } catch (error) {
     list.innerHTML = `<p class="content-copy">通知載入失敗，請稍後再試。</p>`;
   }
@@ -1137,6 +1148,31 @@ const openNotificationCenter = async () => {
 const bindNotificationCenter = () => {
   installHeaderAccountControls();
   document.addEventListener("click", async (event) => {
+    const dismissButton = event.target.closest("[data-dismiss-notification]");
+    if (dismissButton) {
+      const item = dismissButton.closest("[data-notification-item]");
+      const notificationId = String(item?.dataset.notificationId || "").trim();
+      if (!notificationId || !currentUser?.uid) return;
+      dismissButton.disabled = true;
+      try {
+        const currentIds = Array.isArray(currentMemberProfile?.dismissedNotificationIds)
+          ? currentMemberProfile.dismissedNotificationIds
+          : [];
+        const dismissedNotificationIds = [...new Set([...currentIds, notificationId])].slice(-200);
+        await setDoc(getMemberDocRef(currentUser.uid), { dismissedNotificationIds }, { merge: true });
+        currentMemberProfile = { ...(currentMemberProfile || {}), dismissedNotificationIds };
+        item.remove();
+        const list = document.querySelector("[data-notification-list]");
+        if (list && !list.querySelector("[data-notification-item]")) {
+          list.innerHTML = `<article class="notification-empty"><h3>目前沒有通知</h3><p>新公告與報名狀態會顯示在這裡。</p></article>`;
+        }
+      } catch (error) {
+        console.error("Dismiss notification failed:", error);
+        dismissButton.disabled = false;
+        window.alert(`刪除通知失敗：${error?.message || "請稍後再試一次。"}`);
+      }
+      return;
+    }
     if (event.target.closest("[data-notification-bell]")) {
       closeAccountMenus();
       void openNotificationCenter();

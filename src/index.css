@@ -3653,10 +3653,13 @@ button.admin-calendar-day:focus-visible {
 .notification-empty { padding: 20px 22px; border: 1px solid rgba(15, 84, 160, 0.12); border-radius: 12px; background: rgba(248, 250, 252, 0.9); }
 .notification-empty h3 { margin: 0; font-family: var(--font-serif); font-size: 1.15rem; }
 .notification-empty p { margin: 7px 0 0; color: #667085; line-height: 1.6; }
-.notification-item { padding: 16px; border: 1px solid rgba(15, 84, 160, 0.14); border-radius: 12px; background: #fff; }
+.notification-item { position: relative; padding: 16px 48px 16px 16px; border: 1px solid rgba(15, 84, 160, 0.14); border-radius: 12px; background: #fff; }
 .notification-item h3 { margin: 0 0 6px; font-size: 1rem; }
 .notification-item p { margin: 0; color: #475467; line-height: 1.6; }
 .notification-item small { display: block; margin-top: 8px; color: #667085; }
+.notification-delete-button { position: absolute; top: 9px; right: 9px; display: grid; width: 32px; height: 32px; padding: 0; place-items: center; border: 0; border-radius: 8px; background: transparent; color: #667085; font-size: 1.35rem; line-height: 1; cursor: pointer; }
+.notification-delete-button:hover, .notification-delete-button:focus-visible { background: rgba(180, 35, 24, 0.08); color: #b42318; outline: none; }
+.notification-delete-button:disabled { cursor: wait; opacity: 0.45; }
 .class-capacity-summary { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin: 14px 0; padding: 13px 16px; border-radius: 12px; background: rgba(15, 84, 160, 0.08); color: #0f54a0; }
 
 @media (max-width: 560px) {
