@@ -935,7 +935,7 @@ const getClassAnnouncementDocRef = (announcementId) => doc(db, CLASS_ANNOUNCEMEN
 const getFaqDocRef = (faqId) => doc(db, FAQ_COLLECTION, faqId);
 const getFaqQuestionDocRef = (questionId) => doc(db, FAQ_QUESTION_COLLECTION, questionId);
 const getSiteSettingsDocRef = (settingId) => doc(db, SITE_SETTINGS_COLLECTION, settingId);
-const getClassSessionSortMs = (session) => getDateKeyMs(session.date || session.sessionDate);
+const getClassSessionSortMs = (session = {}) => getDateKeyMs(session.date || session.sessionDate);
 const getAnnouncementSortMs = (announcement) => getTimestampMs(announcement.createdAt || announcement.updatedAt || announcement.date);
 const getFaqSortMs = (faq) => getTimestampMs(faq.createdAt || faq.updatedAt || faq.date);
 const getWeekdayKeyFromDateValue = (value) => {
@@ -1099,16 +1099,36 @@ const openNotificationCenter = async () => {
   try {
     const preferences = currentMemberProfile?.notificationPreferences || { announcements: true, classReminders: true, registrationUpdates: true };
     const items = [];
-    if (preferences.announcements !== false || preferences.classReminders !== false) {
+    if (preferences.announcements !== false) {
       const announcements = await getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION);
       announcements.sort((a, b) => getAnnouncementSortMs(b) - getAnnouncementSortMs(a)).slice(0, 12).forEach((entry) => {
-        items.push({ title: entry.title || "社團公告", copy: entry.note || entry.description || "請查看最新公告內容。", date: formatDateKey(entry.date || entry.startDate || "") });
+        items.push({
+          title: entry.title || "社團公告",
+          copy: entry.body || entry.message || entry.reminder || entry.note || entry.description || "請查看最新公告內容。",
+          date: formatDateKey(entry.date || entry.startDate || ""),
+          sortMs: getAnnouncementSortMs(entry),
+        });
       });
+    }
+    if (preferences.classReminders !== false) {
+      const sessions = await getCollectionEntries(CLASS_SESSION_COLLECTION);
+      sessions
+        .sort((a, b) => getClassSessionSortMs(b) - getClassSessionSortMs(a))
+        .slice(0, 12)
+        .forEach((entry) => {
+          items.push({
+            title: entry.title || "社課提醒",
+            copy: entry.description || entry.reminder || [getClassSessionTimeLabel(entry), entry.location].filter(Boolean).join(" · ") || "請查看社課日期與內容。",
+            date: formatDateKey(entry.date || entry.sessionDate || ""),
+            sortMs: getClassSessionSortMs(entry),
+          });
+        });
     }
     if (preferences.registrationUpdates !== false && currentMemberProfile?.membershipStatus === "pending_payment") {
       items.unshift({ title: "社員申請處理中", copy: "幹部確認款項後，系統會更新社員資格。", date: "" });
     }
-    list.innerHTML = items.length ? items.map((item) => `<article class="notification-item"><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.copy)}</p>${item.date ? `<small>${escapeHtml(item.date)}</small>` : ""}</article>`).join("") : `<article class="notification-empty"><h3>目前沒有通知</h3><p>新公告與報名狀態會顯示在這裡。</p></article>`;
+    items.sort((a, b) => Number(b.sortMs || 0) - Number(a.sortMs || 0));
+    list.innerHTML = items.length ? items.slice(0, 20).map((item) => `<article class="notification-item"><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.copy)}</p>${item.date ? `<small>${escapeHtml(item.date)}</small>` : ""}</article>`).join("") : `<article class="notification-empty"><h3>目前沒有通知</h3><p>新公告與報名狀態會顯示在這裡。</p></article>`;
   } catch (error) {
     list.innerHTML = `<p class="content-copy">通知載入失敗，請稍後再試。</p>`;
   }
@@ -4088,7 +4108,7 @@ function renderClassCalendarBoard(sessions = []) {
       const isSignupSession = Boolean(session.signupRequired);
       return isSignupSession && isClassSignupWindowOpen(session);
     })
-    .sort((a, b) => getClassSessionSortMs(a.session) - getClassSessionSortMs(b.session));
+    .sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
 
   const sessionMarkup = openSignupSessions
     .map((session) => {
@@ -5240,6 +5260,7 @@ async function handleAnnouncementFormSubmit(event) {
       updatedAt: serverTimestamp(),
     });
 
+    announcementPageState.loaded = false;
     form.reset();
     await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
   } catch (error) {
@@ -5949,6 +5970,7 @@ async function handleAdminCalendarEventSubmit(event) {
         },
         { merge: true },
       );
+      announcementPageState.loaded = false;
     } else {
       const sessionRef = eventId ? getClassSessionDocRef(eventId) : doc(collection(db, CLASS_SESSION_COLLECTION));
       const existing = eventId ? await getDoc(sessionRef) : null;
@@ -5978,6 +6000,7 @@ async function handleAdminCalendarEventSubmit(event) {
         },
         { merge: true },
       );
+      classSignupPageState.loaded = false;
     }
 
     adminClassCalendarMonthOffset = getAdminCalendarMonthOffset(parseDateKey(date) || new Date());
@@ -7109,13 +7132,13 @@ const activateCurrentPage = async () => {
   updateLoginButtons();
 
   if (pageName === "members") {
-    await refreshMembersDashboardSafe();
+    await refreshMembersDashboardSafe({ force: true });
   } else if (pageName === "class-signup") {
-    await refreshClassSignupPageSafe();
+    await refreshClassSignupPageSafe({ force: true });
   } else if (pageName === "notices") {
-    await refreshAnnouncementsPageSafe();
+    await refreshAnnouncementsPageSafe({ force: true });
   } else if (pageName === "faq") {
-    await refreshFaqPageSafe();
+    await refreshFaqPageSafe({ force: true });
   }
 };
 
