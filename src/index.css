@@ -1349,6 +1349,19 @@ img {
   width: min(480px, calc(100% - 28px));
 }
 
+[data-password-reset-form] {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+[data-password-reset-form] > .modal-body {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 .success-modal-dialog {
   width: min(560px, calc(100% - 28px));
 }

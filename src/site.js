@@ -887,14 +887,14 @@ const getMembershipStatusCopy = (status) => membershipStatusCopy[getManagedMembe
 const getCurrentMembershipStatus = () => (currentUserIsAdmin ? "admin" : getManagedMembershipStatus(currentMemberStatus));
 const isOfficialMemberStatus = () => currentUserIsAdmin || getManagedMembershipStatus(currentMemberStatus) === "formal_member";
 
-const normalizeMembershipStatus = (memberData = null, approvalData = null) => {
+const normalizeMembershipStatus = (memberData = null) => {
   const explicitStatus = String(memberData?.membershipStatus || memberData?.status || "").trim().toLowerCase();
 
   if (explicitStatus) {
     return getManagedMembershipStatus(explicitStatus);
   }
 
-  return approvalData ? "formal_member" : "non_member";
+  return "non_member";
 };
 
 const loadCurrentMemberStatus = async (user) => {
@@ -905,15 +905,11 @@ const loadCurrentMemberStatus = async (user) => {
     return currentMemberStatus;
   }
 
-  const [memberDoc, approvalDoc] = await Promise.all([
-    getDoc(getMemberDocRef(user.uid)),
-    user.email ? getDoc(getApprovalDocRef(user.email)) : Promise.resolve(null),
-  ]);
+  const memberDoc = await getDoc(getMemberDocRef(user.uid));
   const memberData = memberDoc.exists() ? memberDoc.data() : null;
-  const approvalData = approvalDoc && typeof approvalDoc.exists === "function" && approvalDoc.exists() ? approvalDoc.data() : null;
 
-  currentMemberProfile = { ...(memberData || {}), ...(approvalData || {}) };
-  currentMemberStatus = normalizeMembershipStatus(memberData, approvalData);
+  currentMemberProfile = memberData ? { ...memberData } : null;
+  currentMemberStatus = normalizeMembershipStatus(memberData);
   return currentMemberStatus;
 };
 
@@ -1261,6 +1257,19 @@ const ensureAuthReady = async () => {
         }
         if (memberStatusResult.status === "rejected") {
           console.warn("Load member status failed:", memberStatusResult.reason);
+        }
+
+        if (
+          memberStatusResult.status === "fulfilled" &&
+          !currentMemberProfile &&
+          !isBootstrapAdminEmail(user.email || "")
+        ) {
+          try {
+            await syncMemberProfile(user, "session");
+            await loadCurrentMemberStatus(user);
+          } catch (error) {
+            console.warn("Repair missing member profile failed:", error);
+          }
         }
       }
 
@@ -1889,11 +1898,7 @@ const syncMemberProfile = async (user, source, profile = {}) => {
   }
 
   const memberRef = getMemberDocRef(user.uid);
-  const [existingDoc, approvalDoc] = await Promise.all([
-    getDoc(memberRef),
-    user.email ? getDoc(getApprovalDocRef(user.email)) : Promise.resolve(null),
-  ]);
-  const approvalData = approvalDoc?.exists() ? approvalDoc.data() : null;
+  const existingDoc = await getDoc(memberRef);
   const normalizedEmail = String(user.email || "").trim().toLowerCase();
   const legacyApprovedMembers =
     currentUserIsAdmin && normalizedEmail
@@ -1926,21 +1931,6 @@ const syncMemberProfile = async (user, source, profile = {}) => {
     payload.status = profile.name ? "pending_payment" : "not_applied";
     payload.membershipStatus = profile.name ? "pending_payment" : "not_applied";
     payload.paymentStatus = profile.name ? "unpaid" : "unpaid";
-  }
-
-  if (approvalData) {
-    payload.name = approvalData.name || "";
-    payload.applicationId = approvalData.applicationId || "";
-    payload.applicationType = approvalData.applicationType || "club";
-    payload.studentId = approvalData.studentId || "";
-    payload.department = approvalData.department || approvalData.school || "";
-    payload.phone = approvalData.phone || "";
-    payload.school = approvalData.school || approvalData.department || "";
-    payload.academicYear = approvalData.academicYear || "未設定";
-    payload.term = approvalData.term || "未設定";
-    payload.approvedAt = approvalData.approvedAt || serverTimestamp();
-    payload.status = "formal_member";
-    payload.membershipStatus = "formal_member";
   }
 
   await setDoc(memberRef, payload, { merge: true });
