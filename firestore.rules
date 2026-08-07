@@ -48,6 +48,8 @@ service cloud.firestore {
       allow create: if isAdmin() || (
         isSignedIn() &&
         request.auth.uid == userId &&
+        request.auth.token.email_verified == true &&
+        request.resource.data.email == request.auth.token.email &&
         request.resource.data.membershipStatus in ["not_applied", "pending_payment"] &&
         request.resource.data.status == request.resource.data.membershipStatus &&
         request.resource.data.paymentStatus == "unpaid"
@@ -55,6 +57,7 @@ service cloud.firestore {
       allow update: if isAdmin() || (
         isSignedIn() &&
         request.auth.uid == userId &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(["uid", "email", "privacyConsent", "createdAt", "approvedAt", "paidAt", "paymentConfirmedAt", "paymentConfirmedBy"]) &&
         (
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(["membershipStatus", "status", "paymentStatus", "paidAt", "approvedAt", "paymentConfirmedAt", "paymentConfirmedBy"]) ||
           (
@@ -72,13 +75,22 @@ service cloud.firestore {
     }
 
     match /applications/{applicationId} {
-      allow create: if true;
+      allow create: if isSignedIn()
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.keys().hasOnly(["name", "studentId", "department", "school", "phone", "email", "note", "applicationType", "academicYear", "term", "approved", "reviewStatus", "submittedAt", "updatedAt"])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 100
+        && request.resource.data.studentId is string && request.resource.data.studentId.size() <= 30
+        && request.resource.data.department is string && request.resource.data.department.size() <= 100
+        && request.resource.data.phone is string && request.resource.data.phone.size() <= 30
+        && request.resource.data.note is string && request.resource.data.note.size() <= 1000
+        && request.resource.data.approved == false
+        && request.resource.data.reviewStatus == "pending";
       allow get, list: if isAdmin();
       allow update, delete: if isAdmin();
     }
 
     match /signupApprovals/{emailId} {
-      allow get: if true;
+      allow get: if isAdmin() || (isSignedIn() && emailId == request.auth.token.email);
       allow list: if isAdmin();
       allow create, update, delete: if isAdmin();
     }
@@ -94,46 +106,20 @@ service cloud.firestore {
 
     match /classSessionSignups/{signupId} {
       allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow create: if isSignedIn()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.sessionId is string
-        && (isAdmin() || hasFormalMemberRecord() || classSessionAllowsNonMembers(request.resource.data.sessionId))
-        && (
-          !request.resource.data.keys().hasAny(["dropInPaymentStatus"]) ||
-          request.resource.data.dropInPaymentStatus == "unpaid" ||
-          (request.resource.data.dropInPaymentStatus == "not_required" && hasFormalMemberRecord())
-        );
-      allow update: if isAdmin() || (
-        isSignedIn() &&
-        resource.data.userId == request.auth.uid &&
-        (hasFormalMemberRecord() || classSessionAllowsNonMembers(resource.data.sessionId)) &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(["paymentStatus", "paidAt", "dropInPaymentStatus", "dropInPaidAt", "signupStatus"])
-      );
-      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create, update, delete: if isAdmin();
     }
 
     match /classPublicRosters/{rosterId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /classSessionStats/{sessionId} {
       allow read: if true;
-      allow create: if isSignedIn()
-        && request.resource.data.keys().hasOnly(["sessionId", "userId", "maskedName", "studentId", "createdAt", "updatedAt"])
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.sessionId is string
-        && request.resource.data.maskedName is string
-        && request.resource.data.maskedName.size() <= 100
-        && request.resource.data.studentId is string
-        && request.resource.data.studentId.size() <= 30
-        && (isAdmin() || hasFormalMemberRecord() || classSessionAllowsNonMembers(request.resource.data.sessionId));
-      allow update: if isAdmin() || (
-        isSignedIn()
-        && resource.data.userId == request.auth.uid
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.sessionId == resource.data.sessionId
-        && request.resource.data.keys().hasOnly(["sessionId", "userId", "maskedName", "studentId", "createdAt", "updatedAt"])
-        && request.resource.data.maskedName is string
-        && request.resource.data.maskedName.size() <= 100
-        && (hasFormalMemberRecord() || classSessionAllowsNonMembers(resource.data.sessionId))
-      );
-      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /registrationVerifications/{verificationId} {
+      allow read, write: if false;
     }
 
     match /classAnnouncements/{announcementId} {

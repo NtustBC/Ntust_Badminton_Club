@@ -1,6 +1,7 @@
 const admin = require("firebase-admin");
 const { logger } = require("firebase-functions");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const crypto = require("crypto");
 
 admin.initializeApp();
@@ -9,6 +10,105 @@ const REGION = "asia-east1";
 const BOOTSTRAP_ADMIN_EMAIL = "admin@gmail.com";
 const PASSWORD_RESET_WINDOW_MS = 60 * 60 * 1000;
 const PASSWORD_RESET_MAX_ATTEMPTS = 5;
+const REGISTRATION_CODE_TTL_MS = 10 * 60 * 1000;
+const REGISTRATION_CODE_COOLDOWN_MS = 60 * 1000;
+const REGISTRATION_CODE_MAX_ATTEMPTS = 5;
+
+function normalizedEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function hashRegistrationCode(salt, code) {
+  return crypto.createHash("sha256").update(`${salt}:${code}`).digest("hex");
+}
+
+function validateRegistrationProfile(profile = {}) {
+  const result = {
+    name: String(profile.name || "").trim(),
+    studentId: String(profile.studentId || "").trim().toUpperCase(),
+    department: String(profile.department || "").trim(),
+    phone: String(profile.phone || "").trim(),
+    membershipIntent: profile.membershipIntent === "join" ? "join" : "not_join",
+    paymentMethod: String(profile.paymentMethod || "none"),
+    cashPaymentSlot: String(profile.cashPaymentSlot || ""),
+    transferAt: String(profile.transferAt || ""),
+    transferLastFive: String(profile.transferLastFive || ""),
+  };
+  if (!result.name || !result.studentId || !result.department || !result.phone) {
+    throw new HttpsError("invalid-argument", "請完整填寫姓名、學號、系別與聯絡電話。");
+  }
+  if (result.name.length > 100 || result.studentId.length > 30 || result.department.length > 100 || result.phone.length > 30) {
+    throw new HttpsError("invalid-argument", "個人資料欄位長度超過限制。");
+  }
+  return result;
+}
+
+exports.requestRegistrationCode = onCall({ region: REGION }, async (request) => {
+  const email = normalizedEmail(request.data?.email);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+    throw new HttpsError("invalid-argument", "請輸入有效的電子郵件信箱。");
+  }
+  try {
+    await admin.auth().getUserByEmail(email);
+    throw new HttpsError("already-exists", "這個 Email 已經註冊過了，請直接登入。");
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    if (error?.code !== "auth/user-not-found") throw new HttpsError("internal", "暫時無法驗證信箱。");
+  }
+
+  const key = crypto.createHash("sha256").update(email).digest("hex");
+  const ref = admin.firestore().collection("registrationVerifications").doc(key);
+  const existing = await ref.get();
+  const now = Date.now();
+  if (existing.exists && now - Number(existing.data().lastSentAtMs || 0) < REGISTRATION_CODE_COOLDOWN_MS) {
+    throw new HttpsError("resource-exhausted", "請稍候 1 分鐘再重新產生驗證碼。");
+  }
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+  const salt = crypto.randomBytes(16).toString("hex");
+  await ref.set({ email, salt, codeHash: hashRegistrationCode(salt, code), expiresAtMs: now + REGISTRATION_CODE_TTL_MS, lastSentAtMs: now, attempts: 0, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+  return { ok: true, code, expiresInSeconds: REGISTRATION_CODE_TTL_MS / 1000 };
+});
+
+exports.completeVerifiedRegistration = onCall({ region: REGION }, async (request) => {
+  const email = normalizedEmail(request.data?.email);
+  const password = String(request.data?.password || "");
+  const code = String(request.data?.verificationCode || "").trim();
+  const privacyConsent = request.data?.privacyConsent === true;
+  const profile = validateRegistrationProfile(request.data?.profile);
+  if (!privacyConsent) throw new HttpsError("failed-precondition", "必須同意個人資料蒐集說明才能註冊。");
+  if (password.length < 8 || password.length > 128 || !/^\d{6}$/.test(code)) throw new HttpsError("invalid-argument", "密碼或驗證碼格式不正確。");
+
+  const key = crypto.createHash("sha256").update(email).digest("hex");
+  const ref = admin.firestore().collection("registrationVerifications").doc(key);
+  const verification = await ref.get();
+  const data = verification.exists ? verification.data() : {};
+  if (!verification.exists || Date.now() > Number(data.expiresAtMs || 0) || data.email !== email) throw new HttpsError("deadline-exceeded", "驗證碼已失效，請重新產生。");
+  if (Number(data.attempts || 0) >= REGISTRATION_CODE_MAX_ATTEMPTS) throw new HttpsError("resource-exhausted", "驗證次數過多，請重新產生驗證碼。");
+  if (hashRegistrationCode(data.salt, code) !== data.codeHash) {
+    await ref.update({ attempts: admin.firestore.FieldValue.increment(1) });
+    throw new HttpsError("permission-denied", "驗證碼不正確。");
+  }
+
+  let user;
+  try {
+    user = await admin.auth().createUser({ email, password, emailVerified: true, displayName: profile.name });
+    const membershipStatus = profile.membershipIntent === "join" ? "pending_payment" : "not_applied";
+    await admin.firestore().collection("members").doc(user.uid).set({
+      uid: user.uid, email, ...profile, school: profile.department,
+      membershipStatus, status: membershipStatus, paymentStatus: "unpaid",
+      notificationPreferences: { announcements: true, classReminders: true, registrationUpdates: true, email: false },
+      privacyConsent: { version: "2026-08-07", accepted: true, acceptedAt: admin.firestore.FieldValue.serverTimestamp() },
+      source: "verified_signup", createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(), lastLoginAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    await ref.delete();
+    return { ok: true };
+  } catch (error) {
+    if (user?.uid) await admin.auth().deleteUser(user.uid).catch(() => {});
+    if (error?.code === "auth/email-already-exists") throw new HttpsError("already-exists", "這個 Email 已經註冊過了。");
+    logger.error("Verified registration failed.", { error: error?.message || String(error) });
+    throw new HttpsError("internal", "建立帳號失敗，請稍後再試。");
+  }
+});
 
 function normalizeIdentityText(value) {
   return String(value || "").trim().replace(/\s+/g, "").toLowerCase();
@@ -20,6 +120,12 @@ function normalizeStudentId(value) {
 
 function normalizePhone(value) {
   return String(value || "").replace(/\D/g, "");
+}
+
+function parseClubDateTime(value) {
+  const text = String(value || "").trim();
+  if (!text) return Number.NaN;
+  return Date.parse(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(text) ? `${text}+08:00` : text);
 }
 
 async function consumePasswordResetAttempt(email) {
@@ -50,52 +156,8 @@ async function consumePasswordResetAttempt(email) {
   });
 }
 
-exports.requestVerifiedPasswordReset = onCall({ region: REGION }, async (request) => {
-  const email = String(request.data?.email || "").trim().toLowerCase();
-  const name = String(request.data?.name || "").trim();
-  const studentId = String(request.data?.studentId || "").trim();
-  const department = String(request.data?.department || "").trim();
-  const phone = String(request.data?.phone || "").trim();
-  const newPassword = String(request.data?.newPassword || "");
-
-  if (!email || !name || !studentId || !department || !phone || !newPassword) {
-    throw new HttpsError("invalid-argument", "請完整填寫所有欄位。");
-  }
-  if (newPassword.length < 8 || newPassword.length > 128) {
-    throw new HttpsError("invalid-argument", "新密碼必須為 8 至 128 個字元。");
-  }
-
-  await consumePasswordResetAttempt(email);
-
-  let userRecord;
-  try {
-    userRecord = await admin.auth().getUserByEmail(email);
-  } catch (error) {
-    logger.warn("Password reset identity verification failed.", { reason: error?.code || "auth-user-not-found" });
-    throw new HttpsError("failed-precondition", "帳號或個人資料不正確。");
-  }
-
-  const memberSnapshot = await admin.firestore().collection("members").doc(userRecord.uid).get();
-  if (!memberSnapshot.exists) {
-    logger.warn("Password reset member profile was missing.", { uid: userRecord.uid });
-    throw new HttpsError("failed-precondition", "帳號或個人資料不正確。");
-  }
-
-  const member = memberSnapshot.data();
-  const identityMatches =
-    normalizeIdentityText(member.name) === normalizeIdentityText(name) &&
-    normalizeStudentId(member.studentId) === normalizeStudentId(studentId) &&
-    normalizeIdentityText(member.department || member.school) === normalizeIdentityText(department) &&
-    normalizePhone(member.phone) === normalizePhone(phone);
-
-  if (!identityMatches) {
-    logger.warn("Password reset identity fields did not match.", { uid: userRecord.uid });
-    throw new HttpsError("failed-precondition", "帳號或個人資料不正確。");
-  }
-
-  await admin.auth().updateUser(userRecord.uid, { password: newPassword });
-  logger.info("Password updated after verified identity check.", { uid: userRecord.uid });
-  return { ok: true };
+exports.requestVerifiedPasswordReset = onCall({ region: REGION }, async () => {
+  throw new HttpsError("failed-precondition", "目前未啟用自動密碼重設，請聯絡社團幹部協助處理。");
 });
 exports.deleteMemberAccount = onCall({ region: REGION }, async (request) => {
   const callerUid = request.auth?.uid;
@@ -173,4 +235,77 @@ exports.deleteMemberAccount = onCall({ region: REGION }, async (request) => {
     deletedEmail: targetEmail,
   });
   return { ok: true, uid, email: targetEmail };
+});
+
+async function getSessionSignupSeedCount(sessionId) {
+  const snapshot = await admin.firestore().collection("classSessionSignups").where("sessionId", "==", sessionId).count().get();
+  return Number(snapshot.data().count || 0);
+}
+
+exports.upsertClassSessionSignup = onCall({ region: REGION }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "請先登入後再報名。");
+  const sessionId = String(request.data?.sessionId || "").trim();
+  const note = String(request.data?.note || "").trim().slice(0, 500);
+  if (!sessionId) throw new HttpsError("invalid-argument", "缺少社課場次。");
+
+  const firestore = admin.firestore();
+  const sessionRef = firestore.collection("classSessions").doc(sessionId);
+  const memberRef = firestore.collection("members").doc(uid);
+  const signupRef = firestore.collection("classSessionSignups").doc(`${sessionId}-${uid}`);
+  const statsRef = firestore.collection("classSessionStats").doc(sessionId);
+  const [sessionSnapshot, memberSnapshot, statsSnapshot] = await Promise.all([sessionRef.get(), memberRef.get(), statsRef.get()]);
+  if (!sessionSnapshot.exists) throw new HttpsError("not-found", "找不到這場社課。");
+  if (!memberSnapshot.exists) throw new HttpsError("failed-precondition", "請先完成個人資料。");
+  const session = sessionSnapshot.data();
+  const member = memberSnapshot.data();
+  const isAdmin = normalizedEmail(request.auth.token?.email) === BOOTSTRAP_ADMIN_EMAIL || (await firestore.collection("admins").doc(uid).get()).exists;
+  const isFormalMember = member.membershipStatus === "formal_member" || member.status === "formal_member";
+  if (!isAdmin && !isFormalMember && session.allowNonMembers !== true) throw new HttpsError("permission-denied", "本場社課僅限正式社員報名。");
+  if (session.signupRequired !== true) throw new HttpsError("failed-precondition", "這場社課不需要報名。");
+  const now = Date.now();
+  const openAt = parseClubDateTime(session.signupOpenAt);
+  const closeAt = parseClubDateTime(session.signupCloseAt);
+  if ((Number.isFinite(openAt) && now < openAt) || (Number.isFinite(closeAt) && now > closeAt)) throw new HttpsError("failed-precondition", "目前不在報名期間內。");
+
+  const seedCount = statsSnapshot.exists ? Number(statsSnapshot.data().signupCount || 0) : await getSessionSignupSeedCount(sessionId);
+  await firestore.runTransaction(async (transaction) => {
+    const [existingSignup, currentStats] = await Promise.all([transaction.get(signupRef), transaction.get(statsRef)]);
+    const count = currentStats.exists ? Number(currentStats.data().signupCount || 0) : seedCount;
+    const limit = Number(session.signupLimit || 0);
+    if (!existingSignup.exists && limit > 0 && count >= limit) throw new HttpsError("resource-exhausted", "這場社課已額滿。");
+    transaction.set(signupRef, {
+      sessionId, userId: uid, email: request.auth.token?.email || "", name: member.name || "", studentId: member.studentId || "", note,
+      membershipStatusAtSignup: isFormalMember ? "formal_member" : String(member.membershipStatus || "non_member"),
+      isFormalMemberAtSignup: isFormalMember, dropInPaymentStatus: isFormalMember ? "not_required" : existingSignup.data()?.dropInPaymentStatus || "unpaid",
+      sessionDate: session.date || "", sessionWeekday: session.weekday || "", sessionTitle: session.title || "", sessionTimeLabel: session.timeLabel || "",
+      createdAt: existingSignup.data()?.createdAt || admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    transaction.set(statsRef, { sessionId, signupCount: existingSignup.exists ? count : count + 1, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  });
+  return { ok: true };
+});
+
+exports.deleteClassSessionSignup = onCall({ region: REGION }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "請先登入。");
+  const sessionId = String(request.data?.sessionId || "").trim();
+  const firestore = admin.firestore();
+  const signupRef = firestore.collection("classSessionSignups").doc(`${sessionId}-${uid}`);
+  const statsRef = firestore.collection("classSessionStats").doc(sessionId);
+  await firestore.runTransaction(async (transaction) => {
+    const [signup, stats] = await Promise.all([transaction.get(signupRef), transaction.get(statsRef)]);
+    if (!signup.exists) return;
+    transaction.delete(signupRef);
+    transaction.set(statsRef, { sessionId, signupCount: Math.max(0, Number(stats.data()?.signupCount || 1) - 1), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  });
+  return { ok: true };
+});
+
+exports.syncClassSessionStats = onDocumentWritten({ document: "classSessionSignups/{signupId}", region: REGION }, async (event) => {
+  const sessionId = String(event.data.after.data()?.sessionId || event.data.before.data()?.sessionId || "");
+  if (!sessionId) return;
+  const firestore = admin.firestore();
+  const count = await getSessionSignupSeedCount(sessionId);
+  await firestore.collection("classSessionStats").doc(sessionId).set({ sessionId, signupCount: count, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
 });

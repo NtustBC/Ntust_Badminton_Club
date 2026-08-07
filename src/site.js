@@ -13,6 +13,8 @@ let doc;
 let getDoc;
 let getDocs;
 let getFirestore;
+let getFunctions;
+let httpsCallable;
 let query;
 let serverTimestamp;
 let setDoc;
@@ -45,6 +47,8 @@ const ensureFirebaseModules = async () => {
         getDoc,
         getDocs,
         getFirestore,
+        getFunctions,
+        httpsCallable,
         query,
         serverTimestamp,
         setDoc,
@@ -85,6 +89,7 @@ const CLASS_SIGNUP_WINDOW_DAYS = 7;
 const CLASS_SESSION_COLLECTION = "classSessions";
 const CLASS_SIGNUP_COLLECTION = "classSessionSignups";
 const CLASS_PUBLIC_ROSTER_COLLECTION = "classPublicRosters";
+const CLASS_SESSION_STATS_COLLECTION = "classSessionStats";
 const CLASS_ANNOUNCEMENT_COLLECTION = "classAnnouncements";
 const FAQ_COLLECTION = "faqEntries";
 const FAQ_QUESTION_COLLECTION = "faqQuestions";
@@ -109,10 +114,12 @@ if (firebaseConfigured) {
 
 let auth = null;
 let db = null;
+let functions = null;
 let currentUser = null;
 let currentUserIsAdmin = false;
 let currentMemberStatus = "non_member";
 let currentMemberProfile = null;
+let registrationCodeRequestedFor = "";
 let configuredAcademicYear = "";
 let configuredAcademicTerm = "";
 let configuredAcademicPeriodKey = "";
@@ -333,13 +340,39 @@ const loginModalMarkup = `
           </button>
         </div>
 
-        <div class="auth-status-card" data-auth-status hidden>
+          <div class="auth-status-card" data-auth-status hidden>
           <p class="auth-status-label">社員狀態</p>
           <p class="auth-status-email" data-auth-email></p>
           <p class="login-note" data-auth-status-hint></p>
           <div class="account-membership-summary" data-account-membership-summary></div>
           <button class="button-secondary" data-edit-account-membership type="button">查看／修改本學期申請</button>
+          <button class="button-secondary" data-edit-personal-profile type="button">編輯個人資料與通知設定</button>
         </div>
+
+        <form class="form-grid account-membership-form" data-personal-profile-form hidden>
+          <div class="section-kicker">個人資料</div>
+          <div class="class-signup-profile">
+            <div class="form-field"><label for="profile-name">姓名</label><input id="profile-name" name="name" type="text" autocomplete="name" required /></div>
+            <div class="form-field"><label for="profile-student-id">學號</label><input id="profile-student-id" name="studentId" type="text" required /></div>
+            <div class="form-field"><label for="profile-department">系別</label><input id="profile-department" name="department" type="text" required /></div>
+            <div class="form-field"><label for="profile-phone">聯絡電話</label><input id="profile-phone" name="phone" type="tel" autocomplete="tel" required /></div>
+          </div>
+          <fieldset class="membership-choice-fieldset">
+            <legend>通知設定</legend>
+            <p class="login-note">勾選想在網站鈴鐺中收到的通知類型。</p>
+            <div class="notification-preference-grid">
+              <label><input name="notificationAnnouncements" type="checkbox" /> 社團公告</label>
+              <label><input name="notificationClassReminders" type="checkbox" /> 社課提醒與異動</label>
+              <label><input name="notificationRegistrationUpdates" type="checkbox" /> 報名與候補狀態</label>
+              <label><input name="notificationEmail" type="checkbox" /> 同意接收 Email 通知</label>
+            </div>
+          </fieldset>
+          <p class="login-note" data-personal-profile-hint></p>
+          <div class="account-membership-actions">
+            <button class="button-primary" type="submit">儲存個人設定</button>
+            <button class="button-secondary" data-personal-profile-cancel type="button">取消</button>
+          </div>
+        </form>
 
         <form class="form-grid" data-login-form id="login-form" novalidate>
           <div class="form-field">
@@ -385,6 +418,15 @@ const loginModalMarkup = `
             <div class="form-field">
               <label for="signup-phone">聯絡電話</label>
               <input id="signup-phone" name="phone" placeholder="09xx-xxx-xxx" type="tel" autocomplete="tel" />
+            </div>
+            <div class="form-field">
+              <label for="signup-verification-code">Email 驗證碼</label>
+              <div class="verification-code-row">
+                <input id="signup-verification-code" name="verificationCode" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" placeholder="6 位數驗證碼" type="text" autocomplete="one-time-code" />
+                <button class="button-secondary" data-send-registration-code type="button">產生驗證碼</button>
+              </div>
+              <div class="registration-code-display" data-registration-code-display hidden><span>畫面驗證碼</span><strong></strong></div>
+              <small class="form-help">按下「產生驗證碼」後，將畫面顯示的 6 位數字輸入上方。驗證碼 10 分鐘內有效。</small>
             </div>
             <fieldset class="membership-choice-fieldset">
               <legend>本學期是否申請成為社員？</legend>
@@ -443,6 +485,10 @@ const loginModalMarkup = `
                 <p class="membership-payment-reminder">轉帳後請務必確認交易成功，並自行保留成功畫面的截圖，直到幹部完成核對。</p>
               </div>
             </div>
+            <label class="privacy-consent-option">
+              <input name="privacyConsent" type="checkbox" />
+              <span>我已閱讀並同意<a href="./privacy.html" target="_blank" rel="noreferrer">隱私權政策與個人資料蒐集、處理及利用說明</a>，並同意社團基於帳號、社員資格、活動報名及通知目的使用上述資料。</span>
+            </label>
           </div>
           <p class="login-note" data-login-hint>${authCopy.signin.hint}</p>
         </form>
@@ -498,7 +544,7 @@ const passwordResetModalMarkup = `
       <div class="modal-header">
         <div>
           <h2 class="modal-title">忘記密碼</h2>
-          <p class="modal-subtitle">資料必須與註冊時填寫的內容完全相符，驗證成功後可直接設定新密碼。</p>
+          <p class="modal-subtitle">目前暫不提供系統寄信與自動密碼重設。</p>
         </div>
         <button class="modal-close" data-close-password-reset type="button" aria-label="關閉忘記密碼視窗">
           <span aria-hidden="true">+</span>
@@ -506,38 +552,10 @@ const passwordResetModalMarkup = `
       </div>
       <form class="form-grid" data-password-reset-form novalidate>
         <div class="modal-body form-grid">
-          <div class="form-field">
-            <label for="reset-email">Gmail</label>
-            <input id="reset-email" name="email" type="email" autocomplete="email" required />
-          </div>
-          <div class="form-field">
-            <label for="reset-name">姓名</label>
-            <input id="reset-name" name="name" type="text" autocomplete="name" required />
-          </div>
-          <div class="form-field">
-            <label for="reset-student-id">學號</label>
-            <input id="reset-student-id" name="studentId" type="text" required />
-          </div>
-          <div class="form-field">
-            <label for="reset-department">系別</label>
-            <input id="reset-department" name="department" type="text" required />
-          </div>
-          <div class="form-field">
-            <label for="reset-phone">聯絡電話</label>
-            <input id="reset-phone" name="phone" type="tel" autocomplete="tel" required />
-          </div>
-          <div class="form-field">
-            <label for="reset-new-password">新密碼</label>
-            <input id="reset-new-password" name="newPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" required />
-          </div>
-          <div class="form-field">
-            <label for="reset-new-password-confirm">確認新密碼</label>
-            <input id="reset-new-password-confirm" name="newPasswordConfirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" required />
-          </div>
-          <p class="login-note" data-password-reset-hint>為保護帳號，個人資料必須完全相符，新密碼至少 8 個字元。</p>
+          <p class="login-note" data-password-reset-hint>如需重設密碼，請聯絡社團幹部核對身分後協助處理。</p>
         </div>
         <div class="modal-footer">
-          <button class="login-button modal-submit" data-password-reset-submit type="submit">驗證並更新密碼</button>
+          <button class="login-button modal-submit" data-close-password-reset type="button">知道了</button>
         </div>
       </form>
     </div>
@@ -770,6 +788,20 @@ const classSignupDetailModalMarkup = `
   </div>
 `;
 
+const notificationModalMarkup = `
+  <div class="modal" data-notification-modal hidden>
+    <div class="modal-backdrop" data-modal-backdrop></div>
+    <div class="modal-dialog notification-modal-dialog">
+      <div class="modal-header">
+        <div><h2 class="modal-title">通知中心</h2><p class="modal-subtitle">依照你在個人資料中選擇的通知類型顯示。</p></div>
+        <button class="modal-close" data-close-notifications type="button" aria-label="關閉通知中心"><span aria-hidden="true">+</span></button>
+      </div>
+      <div class="modal-body"><div class="notification-list" data-notification-list></div></div>
+      <div class="modal-footer"><button class="button-secondary" data-open-notification-settings type="button">通知設定</button></div>
+    </div>
+  </div>
+`;
+
 const escapeHtml = (value) =>
   String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -989,6 +1021,66 @@ const updateLoginButtons = () => {
 
   getLoginButtons().forEach((button) => {
     button.textContent = currentUser ? getMembershipStatusCopy(getCurrentMembershipStatus()).label : button.dataset.defaultLabel;
+  });
+  document.querySelectorAll("[data-notification-bell]").forEach((button) => { button.hidden = !currentUser; });
+};
+
+const installNotificationBells = () => {
+  document.querySelectorAll(".header-actions").forEach((actions) => {
+    if (actions.querySelector("[data-notification-bell]")) return;
+    const login = actions.querySelector(".header-login");
+    if (!login) return;
+    const button = document.createElement("button");
+    button.className = "notification-bell";
+    button.type = "button";
+    button.hidden = !currentUser;
+    button.dataset.notificationBell = "true";
+    button.setAttribute("aria-label", "開啟通知中心");
+    button.innerHTML = `<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg><span class="notification-dot" aria-hidden="true"></span>`;
+    actions.insertBefore(button, login);
+  });
+};
+
+const openNotificationCenter = async () => {
+  if (!currentUser) { openLoginModal(); return; }
+  const modal = ensureNotificationModal();
+  const list = modal.querySelector("[data-notification-list]");
+  modal.hidden = false;
+  body.classList.add("modal-open");
+  list.innerHTML = `<p class="content-copy">載入通知中…</p>`;
+  try {
+    const preferences = currentMemberProfile?.notificationPreferences || { announcements: true, classReminders: true, registrationUpdates: true };
+    const items = [];
+    if (preferences.announcements !== false || preferences.classReminders !== false) {
+      const announcements = await getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION);
+      announcements.sort((a, b) => getAnnouncementSortMs(b) - getAnnouncementSortMs(a)).slice(0, 12).forEach((entry) => {
+        items.push({ title: entry.title || "社團公告", copy: entry.note || entry.description || "請查看最新公告內容。", date: formatDateKey(entry.date || entry.startDate || "") });
+      });
+    }
+    if (preferences.registrationUpdates !== false && currentMemberProfile?.membershipStatus === "pending_payment") {
+      items.unshift({ title: "社員申請處理中", copy: "幹部確認款項後，系統會更新社員資格。", date: "" });
+    }
+    list.innerHTML = items.length ? items.map((item) => `<article class="notification-item"><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.copy)}</p>${item.date ? `<small>${escapeHtml(item.date)}</small>` : ""}</article>`).join("") : `<article class="content-card is-tight"><h3 class="content-title">目前沒有通知</h3><p class="content-copy">新公告與報名狀態會顯示在這裡。</p></article>`;
+  } catch (error) {
+    list.innerHTML = `<p class="content-copy">通知載入失敗，請稍後再試。</p>`;
+  }
+};
+
+const bindNotificationCenter = () => {
+  installNotificationBells();
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-notification-bell]")) void openNotificationCenter();
+  });
+  const modal = ensureNotificationModal();
+  const close = () => { modal.hidden = true; body.classList.remove("modal-open"); };
+  modal.querySelectorAll("[data-close-notifications]").forEach((button) => button.addEventListener("click", close));
+  modal.addEventListener("click", (event) => { if (event.target === modal || event.target.hasAttribute("data-modal-backdrop")) close(); });
+  modal.querySelector("[data-open-notification-settings]")?.addEventListener("click", () => {
+    close();
+    openLoginModal();
+    const { personalProfileForm } = getLoginModalElements();
+    populatePersonalProfileForm(personalProfileForm);
+    personalProfileForm.hidden = false;
   });
 };
 
@@ -1251,6 +1343,13 @@ const ensureClassSignupModal = () => {
   return document.querySelector("[data-class-signup-modal]");
 };
 
+const ensureNotificationModal = () => {
+  const existing = document.querySelector("[data-notification-modal]");
+  if (existing) return existing;
+  document.body.insertAdjacentHTML("beforeend", notificationModalMarkup);
+  return document.querySelector("[data-notification-modal]");
+};
+
 const getLoginModalElements = () => {
   const loginModal = ensureLoginModal();
 
@@ -1269,9 +1368,14 @@ const getLoginModalElements = () => {
     signupStudentIdInput: loginModal.querySelector("#signup-student-id"),
     signupDepartmentInput: loginModal.querySelector("#signup-department"),
     signupPhoneInput: loginModal.querySelector("#signup-phone"),
+    signupCodeInput: loginModal.querySelector("#signup-verification-code"),
+    privacyConsentInput: loginModal.querySelector("[name='privacyConsent']"),
+    sendRegistrationCodeButton: loginModal.querySelector("[data-send-registration-code]"),
     accountMembershipForm: loginModal.querySelector("[data-account-membership-form]"),
     accountMembershipSummary: loginModal.querySelector("[data-account-membership-summary]"),
     editAccountMembershipButton: loginModal.querySelector("[data-edit-account-membership]"),
+    personalProfileForm: loginModal.querySelector("[data-personal-profile-form]"),
+    editPersonalProfileButton: loginModal.querySelector("[data-edit-personal-profile]"),
     emailInput: loginModal.querySelector("#login-email"),
     passwordInput: loginModal.querySelector("#login-password"),
     statusCard: loginModal.querySelector("[data-auth-status]"),
@@ -1445,7 +1549,7 @@ const populateAccountMembershipForm = (form) => {
 };
 
 const updateAuthView = () => {
-  const { loginModal, loginForm, statusCard, statusEmail, statusHint, authSubmit, authSwitch, accountMembershipForm, accountMembershipSummary, editAccountMembershipButton } =
+  const { loginModal, loginForm, statusCard, statusEmail, statusHint, authSubmit, authSwitch, accountMembershipForm, accountMembershipSummary, editAccountMembershipButton, personalProfileForm } =
     getLoginModalElements();
 
   if (currentUser) {
@@ -1454,6 +1558,7 @@ const updateAuthView = () => {
     loginForm.hidden = true;
     statusCard.hidden = false;
     accountMembershipForm.hidden = true;
+    personalProfileForm.hidden = true;
     authSwitch.hidden = true;
     const statusCopy = getMembershipStatusCopy(getCurrentMembershipStatus());
     statusEmail.innerHTML = `
@@ -1474,6 +1579,7 @@ const updateAuthView = () => {
   loginModal.querySelector("[data-auth-subtitle]").textContent = authCopy[authMode].subtitle;
   loginForm.hidden = false;
   accountMembershipForm.hidden = true;
+  personalProfileForm.hidden = true;
   statusCard.hidden = true;
   authSwitch.hidden = false;
   statusEmail.textContent = "";
@@ -1524,6 +1630,7 @@ const ensureAuthReady = async () => {
         await setPersistence(auth, browserLocalPersistence);
       }
       db = getFirestore(app);
+      functions = getFunctions(app, "asia-east1");
     } catch (error) {
       authReadyPromise = null;
       setHint("Firebase SDK 載入失敗，請稍後再試。", "error");
@@ -1646,15 +1753,14 @@ const setPasswordResetHint = (message, tone = "default") => {
 };
 
 const openPasswordResetModal = () => {
-  const { loginModal, emailInput: loginEmailInput } = getLoginModalElements();
-  const { resetModal, form, emailInput } = getPasswordResetModalElements();
+  const { loginModal } = getLoginModalElements();
+  const { resetModal, form } = getPasswordResetModalElements();
   form.reset();
-  emailInput.value = loginEmailInput.value.trim().toLowerCase();
-  setPasswordResetHint("為保護帳號，個人資料必須完全相符，新密碼至少 8 個字元。");
+  setPasswordResetHint("如需重設密碼，請聯絡社團幹部核對身分後協助處理。");
   loginModal.hidden = true;
   resetModal.hidden = false;
   body.classList.add("modal-open");
-  window.setTimeout(() => (emailInput.value ? form.querySelector("#reset-name") : emailInput)?.focus(), 50);
+  window.setTimeout(() => resetModal.querySelector("[data-close-password-reset]")?.focus(), 50);
 };
 
 const closePasswordResetModal = () => {
@@ -1665,60 +1771,7 @@ const closePasswordResetModal = () => {
 
 const handlePasswordResetSubmit = async (event) => {
   event.preventDefault();
-  const { form, submitButton } = getPasswordResetModalElements();
-  const formData = new FormData(form);
-  const payload = {
-    email: String(formData.get("email") || "").trim().toLowerCase(),
-    name: String(formData.get("name") || "").trim(),
-    studentId: String(formData.get("studentId") || "").trim(),
-    department: String(formData.get("department") || "").trim(),
-    phone: String(formData.get("phone") || "").trim(),
-    newPassword: String(formData.get("newPassword") || ""),
-  };
-  const newPasswordConfirm = String(formData.get("newPasswordConfirm") || "");
-
-  if (Object.values(payload).some((value) => !value) || !newPasswordConfirm) {
-    setPasswordResetHint("請完整填寫個人資料、新密碼與確認新密碼。", "error");
-    return;
-  }
-  if (payload.newPassword.length < 8 || payload.newPassword.length > 128) {
-    setPasswordResetHint("新密碼必須為 8 至 128 個字元。", "error");
-    return;
-  }
-  if (payload.newPassword !== newPasswordConfirm) {
-    setPasswordResetHint("兩次輸入的新密碼不一致。", "error");
-    return;
-  }
-
-  submitButton.disabled = true;
-  submitButton.textContent = "驗證中…";
-  setPasswordResetHint("正在安全驗證資料，第一次使用可能需要幾秒鐘。");
-
-  try {
-    const endpoint = `https://asia-east1-${firebaseConfig.projectId}.cloudfunctions.net/requestVerifiedPasswordReset`;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data: payload }),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || result.error) {
-      const status = String(result.error?.status || "").toLowerCase();
-      if (status.includes("resource_exhausted")) {
-        throw new Error("嘗試次數過多，請一小時後再試。");
-      }
-      throw new Error(result.error?.message || "帳號或個人資料不正確。");
-    }
-
-    form.reset();
-    setPasswordResetHint("資料驗證成功，新密碼已更新，可以關閉視窗後登入。", "success");
-  } catch (error) {
-    console.error("Password reset request failed:", error);
-    setPasswordResetHint(error?.message || "目前無法更新密碼，請稍後再試。", "error");
-  } finally {
-    submitButton.disabled = false;
-    submitButton.textContent = "驗證並更新密碼";
-  }
+  setPasswordResetHint("目前未啟用自動密碼重設，請聯絡社團幹部協助處理。", "error");
 };
 
 const bindPasswordResetModalEvents = () => {
@@ -1968,9 +2021,7 @@ const renderClassSignupModalContent = (sessionId) => {
   }
 
   const { ownSignup, approvalData, canSignup, isSignupSession, signupOpen, statusLabel } = getPublicClassSignupModalState(session);
-  const sessionSignups = getSessionSignups(sessionId);
-  const activeTab = calendarModal.dataset.activeTab === "roster" ? "roster" : "signup";
-  const signupsMarkup = buildPublicSignupListMarkup(session, sessionSignups);
+  const signupCount = getSessionSignupCount(sessionId);
   const formMarkup = isSignupSession
     ? buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup, signupOpen)
     : `
@@ -2000,22 +2051,14 @@ const renderClassSignupModalContent = (sessionId) => {
         <p class="admin-calendar-modal-session-copy">${escapeHtml(session.description || session.reminder || "這一天有社課安排，請依照時間參與。")}</p>
         ${session.reminder ? `<p class="class-session-reminder">提醒：${escapeHtml(session.reminder)}</p>` : ""}
       </article>
-      <div class="class-signup-modal-tabs" role="tablist" aria-label="社課報名內容">
-        <button class="class-signup-modal-tab${activeTab === "signup" ? " is-active" : ""}" data-class-signup-tab="signup" type="button" role="tab" aria-selected="${activeTab === "signup"}">報名</button>
-        <button class="class-signup-modal-tab${activeTab === "roster" ? " is-active" : ""}" data-class-signup-tab="roster" type="button" role="tab" aria-selected="${activeTab === "roster"}">名單（${sessionSignups.length}）</button>
-      </div>
-      <section class="class-signup-modal-form-shell" data-class-signup-panel="signup"${activeTab === "signup" ? "" : " hidden"}>
+      <div class="class-capacity-summary"><strong>${escapeHtml(getRemainingCapacityMarkup(session))}</strong><span>${escapeHtml(`${signupCount} 人已報名`)}</span></div>
+      <section class="class-signup-modal-form-shell">
         ${formMarkup}
-      </section>
-      <section class="class-signup-modal-form-shell" data-class-signup-panel="roster"${activeTab === "roster" ? "" : " hidden"}>
-        <h3 class="content-title">報名名單</h3>
-        ${signupsMarkup}
       </section>
     </div>
   `;
 
   bindClassSignupBoardEvents();
-  bindClassSignupModalTabs(calendarModal);
 };
 
 const bindClassSignupModalTabs = (calendarModal) => {
@@ -3898,7 +3941,17 @@ function getSignupStatusLabel(signup = {}) {
 
 function getSessionSignups(sessionId) {
   return classSignupPageState.sessionSignups.filter((signup) => String(signup.sessionId || "") === String(sessionId || ""));
-}function getComputedSignupStatus(signup = {}, index = 0, session = {}) {
+}
+function getSessionSignupCount(sessionId) {
+  const stats = classSignupPageState.sessionSignups.find((entry) => String(entry.sessionId || entry.id || "") === String(sessionId || ""));
+  return Math.max(0, Number(stats?.signupCount || 0));
+}
+function getRemainingCapacityMarkup(session) {
+  const limit = getSessionSignupLimit(session);
+  const count = getSessionSignupCount(getClassSessionId(session));
+  return limit ? `剩餘 ${Math.max(0, limit - count)} 名` : "名額不限";
+}
+function getComputedSignupStatus(signup = {}, index = 0, session = {}) {
   if (signup.signupStatus === "accepted" || signup.signupStatus === "waitlisted") {
     return signup.signupStatus;
   }
@@ -3971,7 +4024,7 @@ function renderClassCalendarBoard(sessions = []) {
   const sessionMarkup = openSignupSessions
     .map((session) => {
       const sessionId = getClassSessionId(session);
-      const signupCount = getSessionSignups(sessionId).length;
+      const signupCount = getSessionSignupCount(sessionId);
       const signupLimit = getSessionSignupLimit(session);
       const signupCountLabel = signupLimit ? `${signupCount} / ${signupLimit} 人` : `${signupCount} 人已報名`;
 
@@ -4099,8 +4152,7 @@ function renderClassSessionBoard(sessions = []) {
       const isSignupSession = Boolean(session.signupRequired);
       const openForSignup = isSignupSession && isClassSignupWindowOpen(session);
       const statusLabel = isSignupSession ? (openForSignup ? "報名中" : "尚未開放") : "固定社課";
-      const sessionSignups = getSessionSignups(sessionId);
-      const liveSignupMarkup = isSignupSession ? buildPublicSignupListMarkup(session, sessionSignups) : "";
+      const liveSignupMarkup = isSignupSession ? `<div class="class-capacity-summary"><strong>${escapeHtml(getRemainingCapacityMarkup(session))}</strong></div>` : "";
 
       return `
         <article class="content-card class-session-card" id="session-${escapeHtml(sessionId)}">
@@ -4218,10 +4270,7 @@ function bindClassSignupBoardEvents() {
 
       try {
         await ensureAuthReady();
-        const batch = writeBatch(db);
-        batch.delete(getClassSignupDocRef(sessionId, currentUser.uid));
-        batch.delete(doc(db, CLASS_PUBLIC_ROSTER_COLLECTION, `${sessionId}-${currentUser.uid}`));
-        await batch.commit();
+        await callBackend("deleteClassSessionSignup", { sessionId });
         await refreshClassSignupPageSafe({ force: true });
       } catch (error) {
         console.error("Delete class signup failed:", error);
@@ -4300,9 +4349,7 @@ async function handleClassSignupSubmit(event) {
     return;
   }
 
-  const sessionSignups = getSessionSignups(sessionId).sort((a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt));
   const ownExistingSignup = classSignupPageState.ownSignups.find((signup) => signup.sessionId === sessionId) || null;
-  const ownExistingRosterEntry = sessionSignups.find((signup) => signup.userId === currentUser.uid) || null;
   const currentMembershipStatus = currentMemberProfile?.membershipStatus || currentMemberProfile?.status || "pending_payment";
   const isFormalMember = currentUserIsAdmin || currentMembershipStatus === "formal_member";
 
@@ -4314,43 +4361,7 @@ async function handleClassSignupSubmit(event) {
   submitButton.disabled = true;
 
   try {
-    const signupRef = getClassSignupDocRef(sessionId, currentUser.uid);
-    const publicRosterRef = doc(db, CLASS_PUBLIC_ROSTER_COLLECTION, `${sessionId}-${currentUser.uid}`);
-    const batch = writeBatch(db);
-    batch.set(
-      signupRef,
-      {
-        sessionId,
-        userId: currentUser.uid,
-        email: currentUser.email || "",
-        maskedName: maskPublicName(name || currentMemberProfile?.name || currentUser.email || ""),
-        studentId: studentId || currentMemberProfile?.studentId || "",
-        note,
-        membershipStatusAtSignup: currentMembershipStatus,
-        isFormalMemberAtSignup: isFormalMember,
-        dropInPaymentStatus: isFormalMember ? "not_required" : ownExistingSignup?.dropInPaymentStatus || "unpaid",
-        sessionDate: session.date || "",
-        sessionWeekday: session.weekday || "",
-        sessionTitle: session.title || "",
-        sessionTimeLabel: session.timeLabel || "",
-        sessionReminder: session.reminder || "",
-        createdAt: ownExistingSignup?.createdAt || serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      },
-    );
-    batch.set(
-      publicRosterRef,
-      {
-        sessionId,
-        userId: currentUser.uid,
-        name: name || currentMemberProfile?.name || currentUser.email || "",
-        studentId: studentId || currentMemberProfile?.studentId || "",
-        createdAt: ownExistingRosterEntry?.createdAt || serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
-    await batch.commit();
+    await callBackend("upsertClassSessionSignup", { sessionId, note });
 
     await refreshClassSignupPageSafe({ force: true });
   } catch (error) {
@@ -4368,7 +4379,7 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
   const calendar = document.querySelector("[data-class-calendar]");
   const rosterBoard = document.querySelector("[data-class-roster-board]");
 
-  if (!calendar || !rosterBoard) {
+  if (!calendar) {
     return;
   }
 
@@ -4380,7 +4391,7 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
       </article>
     `;
     calendar.innerHTML = message;
-    rosterBoard.innerHTML = message;
+    if (rosterBoard) rosterBoard.innerHTML = message;
     return;
   }
 
@@ -4389,7 +4400,7 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
     if (force || !classSignupPageState.loaded) {
       const [sessions, allSignups, ownSignups, approvalDoc] = await Promise.all([
         loadWithFallback("社課日期", loadWarnings, () => getCollectionEntries(CLASS_SESSION_COLLECTION), []),
-        loadWithFallback("公開報名名單", loadWarnings, () => getCollectionEntries(CLASS_PUBLIC_ROSTER_COLLECTION), []),
+        loadWithFallback("剩餘名額", loadWarnings, () => getCollectionEntries(CLASS_SESSION_STATS_COLLECTION), []),
         currentUser?.uid
           ? loadWithFallback(
               "我的報名",
@@ -4413,7 +4424,7 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
     }
 
     renderClassCalendarBoard(classSignupPageState.sessions);
-    renderClassRosterBoard(classSignupPageState.sessions);
+    if (rosterBoard) renderClassRosterBoard(classSignupPageState.sessions);
     const { calendarModal: classSignupModal } = getClassSignupModalElements();
     const activeSessionId = classSignupModal?.dataset.sessionId || "";
     if (classSignupModal && !classSignupModal.hidden && activeSessionId) {
@@ -4438,7 +4449,7 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
       </article>
     `;
     calendar.innerHTML = message;
-    rosterBoard.innerHTML = message;
+    if (rosterBoard) rosterBoard.innerHTML = message;
   }
 }
 
@@ -6055,10 +6066,89 @@ function bindAdminClassCreationForms() {
   }
 }
 
+const callBackend = async (name, data = {}) => {
+  const readyAuth = await ensureAuthReady();
+  if (!readyAuth || !functions || !httpsCallable) {
+    throw new Error("後端服務目前無法使用，請稍後再試。");
+  }
+  const result = await httpsCallable(functions, name)(data);
+  return result.data;
+};
+
+const handleSendRegistrationCode = async () => {
+  const { emailInput, sendRegistrationCodeButton, loginModal } = getLoginModalElements();
+  const email = String(emailInput?.value || "").trim().toLowerCase();
+  if (!email.includes("@")) {
+    setHint("請先輸入有效的電子郵件信箱。", "error");
+    emailInput?.focus();
+    return;
+  }
+  sendRegistrationCodeButton.disabled = true;
+  try {
+    const result = await callBackend("requestRegistrationCode", { email });
+    registrationCodeRequestedFor = email;
+    const display = loginModal.querySelector("[data-registration-code-display]");
+    display.hidden = false;
+    display.querySelector("strong").textContent = result.code;
+    setHint("驗證碼已顯示在畫面上，請在 10 分鐘內輸入。", "success");
+  } catch (error) {
+    setHint(error?.message || "驗證碼產生失敗，請稍後再試。", "error");
+  } finally {
+    sendRegistrationCodeButton.disabled = false;
+  }
+};
+
+const populatePersonalProfileForm = (form) => {
+  if (!(form instanceof HTMLFormElement)) return;
+  const profile = currentMemberProfile || {};
+  ["name", "studentId", "department", "phone"].forEach((key) => {
+    const input = form.elements.namedItem(key);
+    if (input instanceof HTMLInputElement) input.value = profile[key] || (key === "department" ? profile.school || "" : "");
+  });
+  const preferences = profile.notificationPreferences || {};
+  const defaults = { notificationAnnouncements: true, notificationClassReminders: true, notificationRegistrationUpdates: true, notificationEmail: false };
+  Object.entries(defaults).forEach(([name, fallback]) => {
+    const input = form.elements.namedItem(name);
+    if (input instanceof HTMLInputElement) input.checked = preferences[name.replace("notification", "").replace(/^./, (c) => c.toLowerCase())] ?? fallback;
+  });
+};
+
+const handlePersonalProfileSubmit = async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const hint = form.querySelector("[data-personal-profile-hint]");
+  if (!currentUser?.uid) return;
+  const values = Object.fromEntries(new FormData(form));
+  const name = String(values.name || "").trim();
+  const studentId = String(values.studentId || "").trim();
+  const department = String(values.department || "").trim();
+  const phone = String(values.phone || "").trim();
+  if (!name || !studentId || !department || !phone) {
+    setMessageTone(hint, "請完整填寫姓名、學號、系別與聯絡電話。", "error");
+    return;
+  }
+  try {
+    await setDoc(getMemberDocRef(currentUser.uid), {
+      name, studentId, department, school: department, phone,
+      notificationPreferences: {
+        announcements: Boolean(form.elements.namedItem("notificationAnnouncements")?.checked),
+        classReminders: Boolean(form.elements.namedItem("notificationClassReminders")?.checked),
+        registrationUpdates: Boolean(form.elements.namedItem("notificationRegistrationUpdates")?.checked),
+        email: Boolean(form.elements.namedItem("notificationEmail")?.checked),
+      },
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    await loadCurrentMemberStatus(currentUser);
+    setMessageTone(hint, "個人資料與通知設定已儲存。", "success");
+  } catch (error) {
+    setMessageTone(hint, error?.message || "儲存失敗，請稍後再試。", "error");
+  }
+};
+
 const handleAuthSubmit = async (event) => {
   event.preventDefault();
 
-  const { emailInput, passwordInput, confirmInput, authSubmit, signupNameInput, signupStudentIdInput, signupDepartmentInput, signupPhoneInput } = getLoginModalElements();
+  const { emailInput, passwordInput, confirmInput, authSubmit, signupNameInput, signupStudentIdInput, signupDepartmentInput, signupPhoneInput, signupCodeInput, privacyConsentInput } = getLoginModalElements();
   const email = emailInput.value.trim().toLowerCase();
   const password = passwordInput.value;
   const passwordConfirm = confirmInput.value;
@@ -6067,6 +6157,7 @@ const handleAuthSubmit = async (event) => {
     studentId: String(signupStudentIdInput?.value || "").trim(),
     department: String(signupDepartmentInput?.value || "").trim(),
     phone: String(signupPhoneInput?.value || "").trim(),
+    verificationCode: String(signupCodeInput?.value || "").trim(),
     ...readMembershipPaymentForm(event.currentTarget),
   };
 
@@ -6095,6 +6186,16 @@ const handleAuthSubmit = async (event) => {
     return;
   }
 
+  if (authMode === "signup" && (!/^\d{6}$/.test(signupProfile.verificationCode) || registrationCodeRequestedFor !== email)) {
+    setHint("請先產生並輸入畫面顯示的 6 位數驗證碼。", "error");
+    return;
+  }
+
+  if (authMode === "signup" && !privacyConsentInput?.checked) {
+    setHint("必須閱讀並同意個人資料蒐集說明後才能建立帳號。", "error");
+    return;
+  }
+
   if (authMode === "signup") {
     const paymentValidationMessage = validateMembershipPaymentData(signupProfile);
     if (paymentValidationMessage) {
@@ -6111,10 +6212,10 @@ const handleAuthSubmit = async (event) => {
       return;
     }
 
-    const credential =
-      authMode === "signup"
-        ? await createUserWithEmailAndPassword(readyAuth, email, password)
-        : await signInWithEmailAndPassword(readyAuth, email, password);
+    if (authMode === "signup") {
+      await callBackend("completeVerifiedRegistration", { email, password, profile: signupProfile, verificationCode: signupProfile.verificationCode, privacyConsent: true });
+    }
+    const credential = await signInWithEmailAndPassword(readyAuth, email, password);
 
     currentUser = credential.user;
     let profileSyncFailed = false;
@@ -6123,7 +6224,7 @@ const handleAuthSubmit = async (event) => {
       await ensureBootstrapAdminDoc(credential.user);
       await Promise.all([
         loadAdminStatus(credential.user),
-        syncMemberProfile(
+        authMode === "signup" ? Promise.resolve() : syncMemberProfile(
           credential.user,
           authMode === "signup" ? "signup" : "signin",
           authMode === "signup" ? signupProfile : {},
@@ -6156,6 +6257,7 @@ const handleAuthSubmit = async (event) => {
       profileSyncFailed ? "error" : "success",
     );
     event.target.reset();
+    registrationCodeRequestedFor = "";
   } catch (error) {
     setHint(getFriendlyAuthError(error), "error");
   } finally {
@@ -6327,21 +6429,38 @@ const handleAccountMembershipSubmit = async (event) => {
 };
 
 const bindLoginModalEvents = () => {
-  const { loginModal, loginForm, authTabs, authSubmit, closeButtons, accountMembershipForm, editAccountMembershipButton } = getLoginModalElements();
+  const { loginModal, loginForm, authTabs, authSubmit, closeButtons, accountMembershipForm, editAccountMembershipButton, personalProfileForm, editPersonalProfileButton, sendRegistrationCodeButton, emailInput } = getLoginModalElements();
 
   authTabs.forEach((tab) => {
     tab.addEventListener("click", () => setAuthMode(tab.dataset.authTab));
   });
 
   loginForm.addEventListener("submit", handleAuthSubmit);
+  sendRegistrationCodeButton.addEventListener("click", handleSendRegistrationCode);
+  emailInput.addEventListener("input", () => {
+    if (registrationCodeRequestedFor && registrationCodeRequestedFor !== emailInput.value.trim().toLowerCase()) {
+      registrationCodeRequestedFor = "";
+      const display = loginModal.querySelector("[data-registration-code-display]");
+      if (display) display.hidden = true;
+    }
+  });
   bindMembershipPaymentFormControls(loginForm);
   bindMembershipPaymentFormControls(accountMembershipForm);
   accountMembershipForm.addEventListener("submit", handleAccountMembershipSubmit);
   editAccountMembershipButton.addEventListener("click", () => {
+    personalProfileForm.hidden = true;
     populateAccountMembershipForm(accountMembershipForm);
     accountMembershipForm.hidden = false;
     accountMembershipForm.scrollIntoView({ behavior: "smooth", block: "start" });
   });
+  personalProfileForm.addEventListener("submit", handlePersonalProfileSubmit);
+  editPersonalProfileButton.addEventListener("click", () => {
+    accountMembershipForm.hidden = true;
+    populatePersonalProfileForm(personalProfileForm);
+    personalProfileForm.hidden = false;
+    personalProfileForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  personalProfileForm.querySelector("[data-personal-profile-cancel]")?.addEventListener("click", () => { personalProfileForm.hidden = true; });
   accountMembershipForm.querySelector("[data-account-membership-cancel]")?.addEventListener("click", () => {
     accountMembershipForm.hidden = true;
   });
@@ -7042,6 +7161,7 @@ const init = async () => {
   ensureActionSuccessModal();
   ensurePublicCalendarModal();
   ensureClassSignupModal();
+  ensureNotificationModal();
   bindLoginModalEvents();
   bindPasswordResetModalEvents();
   bindApplicationModalEvents();
@@ -7049,6 +7169,7 @@ const init = async () => {
   bindActionSuccessModalEvents();
   bindPublicCalendarModalEvents();
   bindClassSignupModalEvents();
+  bindNotificationCenter();
   bindOpenButtons();
   bindAcademicYearSetting();
   bindMembershipPaymentSetting();
