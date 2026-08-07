@@ -802,6 +802,64 @@ body.spa-navigating .page-main {
   line-height: 1.9;
 }
 
+.faq-question-card {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.faq-question-form textarea {
+  width: 100%;
+  min-height: 150px;
+  padding: 18px;
+  border: 1px solid rgba(15, 76, 129, 0.14);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(240, 246, 252, 0.96));
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.7;
+  resize: vertical;
+  box-shadow: 0 12px 26px rgba(15, 76, 129, 0.08);
+}
+
+.faq-question-form textarea:focus {
+  outline: none;
+  border-color: rgba(15, 76, 129, 0.32);
+  box-shadow: 0 16px 32px rgba(15, 76, 129, 0.12);
+}
+
+.faq-question-form-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.faq-question-form-actions .content-copy {
+  margin: 0;
+}
+
+.faq-admin-sections,
+.faq-question-admin-list {
+  display: grid;
+  gap: 20px;
+}
+
+.faq-admin-sections > div {
+  display: grid;
+  gap: 14px;
+}
+
+.faq-question-admin-card {
+  gap: 14px;
+}
+
+.faq-question-admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .faq-grid {
   display: grid;
   gap: 20px;

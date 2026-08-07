@@ -117,39 +117,30 @@
           </section>
 
           <section class="section-shell">
-            <div class="section-header">
-              <div class="section-kicker">Next Step</div>
-              <h2 class="page-title">還有問題的話，照這個順序找答案</h2>
-              <p class="section-description">
-                這樣可以先把重複問題留在網站上，真正需要人工回覆的再交給社團幹部處理。
-              </p>
-            </div>
-
-            <div class="timeline-grid">
-              <article class="timeline-card">
-                <div class="timeline-index">01</div>
-                <h3 class="timeline-title">先看訊息公告頁</h3>
-                <p class="timeline-copy">
-                  近期時間、社課異動、體驗名額與活動消息，通常都會先更新在訊息公告頁。
-                </p>
-              </article>
-
-              <article class="timeline-card">
-                <div class="timeline-index">02</div>
-                <h3 class="timeline-title">再回到報名頁</h3>
-                <p class="timeline-copy">
-                  如果你已經決定要加入，就直接到加入社團或社課報名頁，看對應流程與準備內容。
-                </p>
-              </article>
-
-              <article class="timeline-card">
-                <div class="timeline-index">03</div>
-                <h3 class="timeline-title">最後再私訊聯絡</h3>
-                <p class="timeline-copy">
-                  若你的情況比較特殊，例如旁聽、借拍或時間配合，再透過 IG 或 Gmail 聯絡會最快。
-                </p>
-              </article>
-            </div>
+            <article class="content-card faq-question-card">
+              <div class="section-header">
+                <div class="section-kicker">Ask a Question</div>
+                <h2 class="page-title">直接問問題</h2>
+                <p class="section-description">送出後會由管理員查看；回答完成後，問題與回覆會出現在上方 FAQ。</p>
+              </div>
+              <form class="form-grid faq-question-form" data-faq-question-form>
+                <div class="form-field">
+                  <label for="public-faq-question">你的問題</label>
+                  <textarea
+                    id="public-faq-question"
+                    name="question"
+                    rows="5"
+                    maxlength="500"
+                    required
+                    placeholder="請輸入想詢問的內容"
+                  ></textarea>
+                </div>
+                <div class="faq-question-form-actions">
+                  <button class="button-primary" data-faq-question-submit type="submit">送出問題</button>
+                  <p class="content-copy" data-faq-question-status aria-live="polite"></p>
+                </div>
+              </form>
+            </article>
           </section>
         </div>
       </main>

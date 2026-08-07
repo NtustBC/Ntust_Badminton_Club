@@ -86,6 +86,7 @@ const CLASS_SESSION_COLLECTION = "classSessions";
 const CLASS_SIGNUP_COLLECTION = "classSessionSignups";
 const CLASS_ANNOUNCEMENT_COLLECTION = "classAnnouncements";
 const FAQ_COLLECTION = "faqEntries";
+const FAQ_QUESTION_COLLECTION = "faqQuestions";
 const SITE_SETTINGS_COLLECTION = "siteSettings";
 const CURRENT_TERM_SETTINGS_DOC = "currentTerm";
 const CLASS_WEEKDAY_LABELS = {
@@ -126,6 +127,7 @@ let membersDashboardCache = {
   classSessionSignups: [],
   announcements: [],
   faqs: [],
+  faqQuestions: [],
   loadWarnings: [],
   loaded: false,
 };
@@ -766,6 +768,7 @@ const getApprovedMemberDocId = (applicationId) => `application-${applicationId}`
 const getApprovedMemberDocRef = (applicationId) => doc(db, "members", getApprovedMemberDocId(applicationId));
 const getClassAnnouncementDocRef = (announcementId) => doc(db, CLASS_ANNOUNCEMENT_COLLECTION, announcementId);
 const getFaqDocRef = (faqId) => doc(db, FAQ_COLLECTION, faqId);
+const getFaqQuestionDocRef = (questionId) => doc(db, FAQ_QUESTION_COLLECTION, questionId);
 const getSiteSettingsDocRef = (settingId) => doc(db, SITE_SETTINGS_COLLECTION, settingId);
 const getClassSessionSortMs = (session) => getDateKeyMs(session.date || session.sessionDate);
 const getAnnouncementSortMs = (announcement) => getTimestampMs(announcement.createdAt || announcement.updatedAt || announcement.date);
@@ -3098,6 +3101,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
             loadWithFallback("社課報名", dashboardWarnings, () => getCollectionEntries(CLASS_SIGNUP_COLLECTION), []),
             loadWithFallback("公告", dashboardWarnings, () => getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION), []),
             loadWithFallback("FAQ", dashboardWarnings, () => getCollectionEntries(FAQ_COLLECTION), []),
+            loadWithFallback("待回答問題", dashboardWarnings, () => getCollectionEntries(FAQ_QUESTION_COLLECTION), []),
           ]);
           const members = await loadWithFallback("社員名單", dashboardWarnings, () => getCollectionEntries("members"), []);
 
@@ -3113,13 +3117,14 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
           renderMembersExportToolbar(earlyDisplayMembers);
           renderMembersList(earlyDisplayMembers);
 
-          const [classSessions, classSessionSignups, announcements, faqs] = await supportingDataPromise;
+          const [classSessions, classSessionSignups, announcements, faqs, faqQuestions] = await supportingDataPromise;
           membersDashboardCache = {
             members,
             classSessions,
             classSessionSignups,
             announcements,
             faqs,
+            faqQuestions,
             loadWarnings: dashboardWarnings,
             loaded: true,
           };
@@ -3148,6 +3153,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
     renderMembersList(displayMembers);
     renderAdminClassCalendarCompact(membersDashboardCache.classSessions, membersDashboardCache.classSessionSignups);
     renderAdminAnnouncements(membersDashboardCache.announcements);
+    renderAdminFaqQuestions(membersDashboardCache.faqQuestions);
     renderAdminFaqs(membersDashboardCache.faqs);
     if (preserveExpandedRows) {
       restoreExpandedMemberKeys(expandedMemberKeys);
@@ -4054,8 +4060,12 @@ function renderFaqBoard(faqEntries = []) {
     answer: "不算。註冊時會填寫入社資料，註冊後可以登入並送出報名；社費是入社時一次付清，完成社費繳納並由幹部標記後，才會成為正式社員。尚未成為社員者，報名單場社課時才需要依場次繳零打費。",
     pinned: true,
   };
-  const hasRequiredFaq = faqEntries.some((faq) => String(faq.question || "").trim() === requiredFaq.question);
-  const sortedFaqs = [requiredFaq, ...faqEntries.filter((faq) => !(hasRequiredFaq && String(faq.question || "").trim() === requiredFaq.question))].sort((a, b) => {
+  const answeredFaqs = faqEntries.filter((faq) => String(faq.answer || faq.body || "").trim());
+  const hasRequiredFaq = answeredFaqs.some((faq) => String(faq.question || "").trim() === requiredFaq.question);
+  const sortedFaqs = [
+    requiredFaq,
+    ...answeredFaqs.filter((faq) => !(hasRequiredFaq && String(faq.question || "").trim() === requiredFaq.question)),
+  ].sort((a, b) => {
     if (a.pinned) return -1;
     if (b.pinned) return 1;
     return getFaqSortMs(b) - getFaqSortMs(a);
@@ -4142,6 +4152,54 @@ async function refreshFaqPageSafe({ force = false } = {}) {
       </article>
     `;
   }
+}
+
+function bindFaqQuestionForm() {
+  const form = document.querySelector("[data-faq-question-form]");
+  if (!form || form.dataset.initialized === "true") {
+    return;
+  }
+
+  form.dataset.initialized = "true";
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const question = String(form.querySelector("[name='question']")?.value || "").trim();
+    const submitButton = form.querySelector("[data-faq-question-submit]");
+    const status = form.querySelector("[data-faq-question-status]");
+
+    if (question.length < 2) {
+      window.alert("請輸入想詢問的問題。");
+      return;
+    }
+
+    submitButton.disabled = true;
+    if (status) {
+      status.textContent = "問題送出中…";
+    }
+
+    try {
+      await ensureAuthReady();
+      const questionRef = doc(collection(db, FAQ_QUESTION_COLLECTION));
+      await setDoc(questionRef, {
+        question,
+        status: "pending",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      form.reset();
+      if (status) {
+        status.textContent = "問題已送出，管理員回答後會顯示在上方 FAQ。";
+      }
+    } catch (error) {
+      console.error("Submit FAQ question failed:", error);
+      if (status) {
+        status.textContent = "問題送出失敗，請稍後再試一次。";
+      }
+      window.alert(`問題送出失敗：${error?.message || "請稍後再試一次。"}`);
+    } finally {
+      submitButton.disabled = false;
+    }
+  });
 }
 
 function renderAdminAnnouncements(announcements = []) {
@@ -4241,6 +4299,126 @@ function renderAdminFaqs(faqEntries = []) {
   bindAdminFaqListResize();
   syncAdminFaqListHeight();
   initFaqAccordion();
+}
+
+function renderAdminFaqQuestions(questionEntries = []) {
+  const container = document.querySelector("[data-faq-question-admin-list]");
+  if (!container) {
+    return;
+  }
+
+  const sortedQuestions = [...questionEntries].sort((a, b) => {
+    const statusOrder = { pending: 0, answered: 1 };
+    const statusDifference = (statusOrder[a.status] ?? 2) - (statusOrder[b.status] ?? 2);
+    return statusDifference || getFaqSortMs(b) - getFaqSortMs(a);
+  });
+
+  if (sortedQuestions.length === 0) {
+    container.innerHTML = `
+      <article class="content-card is-tight">
+        <h3 class="content-title">目前沒有待處理問題</h3>
+        <p class="content-copy">訪客從 FAQ 頁送出問題後，會依序顯示在這裡。</p>
+      </article>
+    `;
+    return;
+  }
+
+  container.innerHTML = sortedQuestions
+    .map((entry, index) => {
+      const answered = entry.status === "answered" && String(entry.answer || "").trim();
+      return `
+        <article class="content-card is-tight faq-question-admin-card">
+          <div class="faq-question-admin-header">
+            <span class="timeline-index">${String(index + 1).padStart(2, "0")}</span>
+            <span class="member-status-badge">${answered ? "已回答" : "待回答"}</span>
+          </div>
+          <h4 class="content-title">${escapeHtml(entry.question || "未填寫問題")}</h4>
+          <form class="form-grid faq-form" data-faq-question-answer-form data-question-id="${escapeHtml(entry.id)}">
+            <div class="form-field">
+              <label for="faq-question-answer-${escapeHtml(entry.id)}">回答</label>
+              <textarea id="faq-question-answer-${escapeHtml(entry.id)}" name="answer" rows="4" placeholder="輸入回答後會發布到 FAQ">${escapeHtml(entry.answer || "")}</textarea>
+            </div>
+            <div class="application-actions class-admin-actions">
+              <button class="button-primary" type="submit">${answered ? "更新回答" : "發布回答"}</button>
+              <button class="button-secondary application-save" data-faq-question-delete data-question-id="${escapeHtml(entry.id)}" type="button">刪除問題</button>
+            </div>
+          </form>
+        </article>
+      `;
+    })
+    .join("");
+
+  bindAdminFaqQuestionActions(container);
+}
+
+function bindAdminFaqQuestionActions(container) {
+  container.querySelectorAll("[data-faq-question-answer-form]").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const questionId = String(form.dataset.questionId || "").trim();
+      const answer = String(form.querySelector("[name='answer']")?.value || "").trim();
+      const entry = membersDashboardCache.faqQuestions.find((question) => question.id === questionId);
+      const submitButton = form.querySelector("[type='submit']");
+      if (!questionId || !entry || !answer) {
+        window.alert("請先輸入回答內容。");
+        return;
+      }
+
+      submitButton.disabled = true;
+      try {
+        const batch = writeBatch(db);
+        batch.set(
+          getFaqDocRef(questionId),
+          {
+            question: entry.question || "",
+            answer,
+            sourceQuestionId: questionId,
+            createdAt: entry.createdAt || serverTimestamp(),
+            answeredAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+        batch.set(
+          getFaqQuestionDocRef(questionId),
+          {
+            answer,
+            status: "answered",
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+        await batch.commit();
+        await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+      } catch (error) {
+        console.error("Answer FAQ question failed:", error);
+        window.alert(`回答問題失敗：${error?.message || "請稍後再試一次。"}`);
+        submitButton.disabled = false;
+      }
+    });
+  });
+
+  container.querySelectorAll("[data-faq-question-delete]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const questionId = String(button.dataset.questionId || "").trim();
+      if (!questionId || !window.confirm("確定要刪除這個問題嗎？已發布的 FAQ 回答也會一併移除。")) {
+        return;
+      }
+
+      button.disabled = true;
+      try {
+        const batch = writeBatch(db);
+        batch.delete(getFaqQuestionDocRef(questionId));
+        batch.delete(getFaqDocRef(questionId));
+        await batch.commit();
+        await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+      } catch (error) {
+        console.error("Delete FAQ question failed:", error);
+        window.alert(`刪除問題失敗：${error?.message || "請稍後再試一次。"}`);
+        button.disabled = false;
+      }
+    });
+  });
 }
 
 function bindAdminAnnouncementActions() {
@@ -5928,6 +6106,7 @@ const syncSpaNavigationState = (targetUrl) => {
 const activateCurrentPage = async () => {
   bindOpenButtons();
   bindAcademicYearSetting();
+  bindFaqQuestionForm();
   initFaqAccordion();
   initMembersAutoRefresh();
   initPublicBoardAutoRefresh();

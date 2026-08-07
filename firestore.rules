@@ -102,6 +102,15 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    match /faqQuestions/{questionId} {
+      allow create: if request.resource.data.keys().hasOnly(["question", "status", "createdAt", "updatedAt"])
+        && request.resource.data.question is string
+        && request.resource.data.question.size() >= 2
+        && request.resource.data.question.size() <= 500
+        && request.resource.data.status == "pending";
+      allow read, update, delete: if isAdmin();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
