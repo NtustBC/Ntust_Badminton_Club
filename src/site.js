@@ -13,9 +13,8 @@ let doc;
 let getDoc;
 let getDocs;
 let getFirestore;
-let getFunctions;
-let httpsCallable;
 let query;
+let runTransaction;
 let serverTimestamp;
 let setDoc;
 let setPersistence;
@@ -47,9 +46,8 @@ const ensureFirebaseModules = async () => {
         getDoc,
         getDocs,
         getFirestore,
-        getFunctions,
-        httpsCallable,
         query,
+        runTransaction,
         serverTimestamp,
         setDoc,
         setPersistence,
@@ -113,12 +111,13 @@ if (firebaseConfigured) {
 
 let auth = null;
 let db = null;
-let functions = null;
 let currentUser = null;
 let currentUserIsAdmin = false;
 let currentMemberStatus = "non_member";
 let currentMemberProfile = null;
 let registrationCodeRequestedFor = "";
+let registrationCodeValue = "";
+let registrationCodeExpiresAt = 0;
 let configuredAcademicYear = "";
 let configuredAcademicTerm = "";
 let configuredAcademicPeriodKey = "";
@@ -1789,7 +1788,6 @@ const ensureAuthReady = async () => {
         await setPersistence(auth, browserLocalPersistence);
       }
       db = getFirestore(app);
-      functions = getFunctions(app, "asia-east1");
     } catch (error) {
       authReadyPromise = null;
       setHint("Firebase SDK 載入失敗，請稍後再試。", "error");
@@ -4403,11 +4401,11 @@ function bindClassSignupBoardEvents() {
       }
 
       try {
-        await ensureAuthReady();
-        await callBackend("deleteClassSessionSignup", { sessionId });
+        await deleteClassSessionSignupDirect(sessionId);
         await refreshClassSignupPageSafe({ force: true });
       } catch (error) {
         console.error("Delete class signup failed:", error);
+        window.alert(`刪除報名失敗：${error?.message || "請稍後再試一次。"}`);
       }
     });
   });
@@ -4465,6 +4463,76 @@ function bindClassSignupModalEvents() {
   }
 }
 
+async function upsertClassSessionSignupDirect(session, { note = "", name = "", studentId = "" } = {}) {
+  await ensureAuthReady();
+  if (!db || !runTransaction || !currentUser?.uid) {
+    throw new Error("Firestore 目前無法使用，請稍後再試。");
+  }
+
+  const sessionId = getClassSessionId(session);
+  const sessionRef = getClassSessionDocRef(sessionId);
+  const signupRef = getClassSignupDocRef(sessionId, currentUser.uid);
+  const statsRef = doc(db, CLASS_SESSION_STATS_COLLECTION, sessionId);
+
+  await runTransaction(db, async (transaction) => {
+    const sessionSnapshot = await transaction.get(sessionRef);
+    const signupSnapshot = await transaction.get(signupRef);
+    const statsSnapshot = await transaction.get(statsRef);
+    if (!sessionSnapshot.exists()) throw new Error("找不到這場社課。");
+
+    const currentSession = sessionSnapshot.data();
+    if (currentSession.signupRequired !== true) throw new Error("這場社課不需要報名。");
+    if (!isClassSignupWindowOpen(currentSession)) throw new Error("目前不在報名期間內。");
+
+    if (signupSnapshot.exists()) {
+      transaction.update(signupRef, { note: note.slice(0, 500), updatedAt: serverTimestamp() });
+      return;
+    }
+
+    const signupCount = statsSnapshot.exists() ? Math.max(0, Number(statsSnapshot.data().signupCount || 0)) : 0;
+    const signupLimit = getSessionSignupLimit(currentSession);
+    if (signupLimit && signupCount >= signupLimit) throw new Error("這場社課已額滿。");
+    const isFormalMember = hasFormalMemberAccess(classSignupPageState.approval);
+    transaction.set(signupRef, {
+      sessionId,
+      userId: currentUser.uid,
+      email: currentUser.email || "",
+      name: name || currentMemberProfile?.name || currentUser.displayName || "",
+      studentId: studentId || currentMemberProfile?.studentId || "",
+      note: note.slice(0, 500),
+      membershipStatusAtSignup: isFormalMember ? "formal_member" : String(currentMemberProfile?.membershipStatus || "non_member"),
+      isFormalMemberAtSignup: isFormalMember,
+      dropInPaymentStatus: isFormalMember ? "not_required" : "unpaid",
+      sessionDate: currentSession.date || "",
+      sessionWeekday: currentSession.weekday || "",
+      sessionTitle: currentSession.title || "",
+      sessionTimeLabel: currentSession.timeLabel || "",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    transaction.set(statsRef, { sessionId, signupCount: signupCount + 1, updatedAt: serverTimestamp() }, { merge: true });
+  });
+}
+
+async function deleteClassSessionSignupDirect(sessionId) {
+  await ensureAuthReady();
+  if (!db || !runTransaction || !currentUser?.uid) {
+    throw new Error("Firestore 目前無法使用，請稍後再試。");
+  }
+  const signupRef = getClassSignupDocRef(sessionId, currentUser.uid);
+  const statsRef = doc(db, CLASS_SESSION_STATS_COLLECTION, sessionId);
+  await runTransaction(db, async (transaction) => {
+    const signupSnapshot = await transaction.get(signupRef);
+    const statsSnapshot = await transaction.get(statsRef);
+    if (!signupSnapshot.exists()) return;
+    transaction.delete(signupRef);
+    if (statsSnapshot.exists()) {
+      const signupCount = Math.max(0, Number(statsSnapshot.data().signupCount || 0) - 1);
+      transaction.set(statsRef, { sessionId, signupCount, updatedAt: serverTimestamp() }, { merge: true });
+    }
+  });
+}
+
 async function handleClassSignupSubmit(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -4483,16 +4551,15 @@ async function handleClassSignupSubmit(event) {
     return;
   }
 
-  const ownExistingSignup = classSignupPageState.ownSignups.find((signup) => signup.sessionId === sessionId) || null;
   submitButton.disabled = true;
 
   try {
-    await callBackend("upsertClassSessionSignup", { sessionId, note });
+    await upsertClassSessionSignupDirect(session, { note, name, studentId });
 
     await refreshClassSignupPageSafe({ force: true });
   } catch (error) {
     console.error("Class signup submit failed:", error);
-    const errorCode = String(error?.code || "").replace(/^functions\//, "");
+    const errorCode = String(error?.code || "").replace(/^firestore\//, "");
     window.alert(`社課報名失敗：${error?.message || "請稍後再試一次。"}${errorCode ? `（${errorCode}）` : ""}`);
   } finally {
     submitButton.disabled = false;
@@ -5935,6 +6002,7 @@ function bindAdminClassCalendarActions() {
             deleteDoc(doc(db, CLASS_PUBLIC_ROSTER_COLLECTION, signup.id)),
           ]),
         );
+        await deleteDoc(doc(db, CLASS_SESSION_STATS_COLLECTION, sessionId));
         await deleteDoc(getClassSessionDocRef(sessionId));
 
         if (adminClassSessionEditingId === sessionId) {
@@ -6097,6 +6165,7 @@ async function handleAdminCalendarEventDelete() {
           deleteDoc(doc(db, CLASS_PUBLIC_ROSTER_COLLECTION, signup.id)),
         ]),
       );
+      await deleteDoc(doc(db, CLASS_SESSION_STATS_COLLECTION, eventId));
       await deleteDoc(getClassSessionDocRef(eventId));
     }
 
@@ -6209,15 +6278,6 @@ function bindAdminClassCreationForms() {
   }
 }
 
-const callBackend = async (name, data = {}) => {
-  const readyAuth = await ensureAuthReady();
-  if (!readyAuth || !functions || !httpsCallable) {
-    throw new Error("後端服務目前無法使用，請稍後再試。");
-  }
-  const result = await httpsCallable(functions, name)(data);
-  return result.data;
-};
-
 const handleSendRegistrationCode = async () => {
   const { emailInput, sendRegistrationCodeButton, loginModal } = getLoginModalElements();
   const email = String(emailInput?.value || "").trim().toLowerCase();
@@ -6228,12 +6288,16 @@ const handleSendRegistrationCode = async () => {
   }
   sendRegistrationCodeButton.disabled = true;
   try {
-    const result = await callBackend("requestRegistrationCode", { email });
+    const randomValue = new Uint32Array(1);
+    window.crypto.getRandomValues(randomValue);
+    const code = String(randomValue[0] % 1000000).padStart(6, "0");
     registrationCodeRequestedFor = email;
+    registrationCodeValue = code;
+    registrationCodeExpiresAt = Date.now() + 10 * 60 * 1000;
     const display = loginModal.querySelector("[data-registration-code-display]");
     display.hidden = false;
-    display.querySelector("strong").textContent = result.code;
-    setHint("驗證碼已顯示在畫面上，請在 10 分鐘內輸入。", "success");
+    display.querySelector("strong").textContent = code;
+    setHint("畫面確認碼已產生，請在 10 分鐘內輸入。此流程不會寄送 Email。", "success");
   } catch (error) {
     setHint(error?.message || "驗證碼產生失敗，請稍後再試。", "error");
   } finally {
@@ -6334,7 +6398,13 @@ const handleAuthSubmit = async (event) => {
     return;
   }
 
-  if (authMode === "signup" && (!/^\d{6}$/.test(signupProfile.verificationCode) || registrationCodeRequestedFor !== email)) {
+  if (
+    authMode === "signup" &&
+    (!/^\d{6}$/.test(signupProfile.verificationCode) ||
+      registrationCodeRequestedFor !== email ||
+      signupProfile.verificationCode !== registrationCodeValue ||
+      Date.now() > registrationCodeExpiresAt)
+  ) {
     setHint("請先產生並輸入畫面顯示的 6 位數驗證碼。", "error");
     return;
   }
@@ -6360,10 +6430,37 @@ const handleAuthSubmit = async (event) => {
       return;
     }
 
+    const credential = authMode === "signup"
+      ? await createUserWithEmailAndPassword(readyAuth, email, password)
+      : await signInWithEmailAndPassword(readyAuth, email, password);
+
     if (authMode === "signup") {
-      await callBackend("completeVerifiedRegistration", { email, password, profile: signupProfile, verificationCode: signupProfile.verificationCode, privacyConsent: true });
+      const membershipStatus = signupProfile.membershipIntent === "join" ? "pending_payment" : "not_applied";
+      await setDoc(getMemberDocRef(credential.user.uid), {
+        uid: credential.user.uid,
+        email,
+        name: signupProfile.name,
+        displayName: signupProfile.name,
+        studentId: signupProfile.studentId.toUpperCase(),
+        department: signupProfile.department,
+        school: signupProfile.department,
+        phone: signupProfile.phone,
+        membershipIntent: signupProfile.membershipIntent,
+        paymentMethod: signupProfile.paymentMethod,
+        cashPaymentSlot: signupProfile.cashPaymentSlot,
+        transferAt: signupProfile.transferAt,
+        transferLastFive: signupProfile.transferLastFive,
+        membershipStatus,
+        status: membershipStatus,
+        paymentStatus: "unpaid",
+        notificationPreferences: { announcements: true, classReminders: true, registrationUpdates: true },
+        privacyConsent: { version: "2026-08-07", accepted: true, acceptedAt: serverTimestamp() },
+        source: "spark_signup",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        lastLoginAt: serverTimestamp(),
+      });
     }
-    const credential = await signInWithEmailAndPassword(readyAuth, email, password);
 
     currentUser = credential.user;
     let profileSyncFailed = false;
@@ -6406,6 +6503,8 @@ const handleAuthSubmit = async (event) => {
     );
     event.target.reset();
     registrationCodeRequestedFor = "";
+    registrationCodeValue = "";
+    registrationCodeExpiresAt = 0;
   } catch (error) {
     setHint(getFriendlyAuthError(error), "error");
   } finally {
@@ -6588,6 +6687,8 @@ const bindLoginModalEvents = () => {
   emailInput.addEventListener("input", () => {
     if (registrationCodeRequestedFor && registrationCodeRequestedFor !== emailInput.value.trim().toLowerCase()) {
       registrationCodeRequestedFor = "";
+      registrationCodeValue = "";
+      registrationCodeExpiresAt = 0;
       const display = loginModal.querySelector("[data-registration-code-display]");
       if (display) display.hidden = true;
     }

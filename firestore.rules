@@ -36,6 +36,46 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/classSessions/$(sessionId))
         && get(/databases/$(database)/documents/classSessions/$(sessionId)).data.allowNonMembers == true;
     }
+
+    function ownClassSignupPath(sessionId) {
+      let signupId = sessionId + "-" + request.auth.uid;
+      return /databases/$(database)/documents/classSessionSignups/$(signupId);
+    }
+
+    function classStatsPath(sessionId) {
+      return /databases/$(database)/documents/classSessionStats/$(sessionId);
+    }
+
+    function canJoinClassSession(sessionId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/classSessions/$(sessionId))
+        && get(/databases/$(database)/documents/classSessions/$(sessionId)).data.signupRequired == true
+        && (isAdmin() || hasFormalMemberRecord() || isOfficialMember() || classSessionAllowsNonMembers(sessionId));
+    }
+
+    function validOwnSignupCreate(sessionId) {
+      let session = get(/databases/$(database)/documents/classSessions/$(sessionId)).data;
+      let limit = session.get("signupLimit", 0);
+      let statsAfter = getAfter(classStatsPath(sessionId)).data.signupCount;
+      let statsBefore = exists(classStatsPath(sessionId)) ? get(classStatsPath(sessionId)).data.signupCount : 0;
+      return canJoinClassSession(sessionId)
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.sessionId == sessionId
+        && request.resource.data.keys().hasOnly([
+          "sessionId", "userId", "email", "name", "studentId", "note",
+          "membershipStatusAtSignup", "isFormalMemberAtSignup", "dropInPaymentStatus",
+          "sessionDate", "sessionWeekday", "sessionTitle", "sessionTimeLabel",
+          "createdAt", "updatedAt"
+        ])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 100
+        && request.resource.data.studentId is string && request.resource.data.studentId.size() <= 30
+        && request.resource.data.note is string && request.resource.data.note.size() <= 500
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && statsAfter == statsBefore + 1
+        && (limit == null || !(limit is int) || limit <= 0 || statsAfter <= limit);
+    }
     match /admins/{userId} {
       allow get: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
       allow list: if isAdmin();
@@ -48,7 +88,6 @@ service cloud.firestore {
       allow create: if isAdmin() || (
         isSignedIn() &&
         request.auth.uid == userId &&
-        request.auth.token.email_verified == true &&
         request.resource.data.email == request.auth.token.email &&
         request.resource.data.membershipStatus in ["not_applied", "pending_payment"] &&
         request.resource.data.status == request.resource.data.membershipStatus &&
@@ -113,7 +152,27 @@ service cloud.firestore {
 
     match /classSessionSignups/{signupId} {
       allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow create, update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+        isSignedIn()
+        && signupId == request.resource.data.sessionId + "-" + request.auth.uid
+        && validOwnSignupCreate(request.resource.data.sessionId)
+      );
+      allow update: if isAdmin() || (
+        isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["note", "updatedAt"])
+        && request.resource.data.note is string
+        && request.resource.data.note.size() <= 500
+        && request.resource.data.updatedAt == request.time
+      );
+      allow delete: if isAdmin() || (
+        isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && (
+          !exists(classStatsPath(resource.data.sessionId)) ||
+          getAfter(classStatsPath(resource.data.sessionId)).data.signupCount == get(classStatsPath(resource.data.sessionId)).data.signupCount - 1
+        )
+      );
     }
 
     match /classPublicRosters/{rosterId} {
@@ -122,7 +181,36 @@ service cloud.firestore {
 
     match /classSessionStats/{sessionId} {
       allow read: if true;
-      allow write: if false;
+      allow create: if isAdmin() || (
+        isSignedIn()
+        && request.resource.data.keys().hasOnly(["sessionId", "signupCount", "updatedAt"])
+        && request.resource.data.sessionId == sessionId
+        && request.resource.data.signupCount == 1
+        && request.resource.data.updatedAt == request.time
+        && !exists(ownClassSignupPath(sessionId))
+        && existsAfter(ownClassSignupPath(sessionId))
+      );
+      allow update: if isAdmin() || (
+        isSignedIn()
+        && request.resource.data.keys().hasOnly(["sessionId", "signupCount", "updatedAt"])
+        && request.resource.data.sessionId == resource.data.sessionId
+        && request.resource.data.signupCount is int
+        && request.resource.data.signupCount >= 0
+        && request.resource.data.updatedAt == request.time
+        && (
+          (
+            request.resource.data.signupCount == resource.data.signupCount + 1
+            && !exists(ownClassSignupPath(sessionId))
+            && existsAfter(ownClassSignupPath(sessionId))
+          ) ||
+          (
+            request.resource.data.signupCount == resource.data.signupCount - 1
+            && exists(ownClassSignupPath(sessionId))
+            && !existsAfter(ownClassSignupPath(sessionId))
+          )
+        )
+      );
+      allow delete: if isAdmin();
     }
 
     match /registrationVerifications/{verificationId} {
