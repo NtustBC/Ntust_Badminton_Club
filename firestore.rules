@@ -30,6 +30,12 @@ service cloud.firestore {
           get(/databases/$(database)/documents/members/$(request.auth.uid)).data.status == "formal_member"
         );
     }
+
+    function classSessionAllowsNonMembers(sessionId) {
+      return sessionId is string
+        && exists(/databases/$(database)/documents/classSessions/$(sessionId))
+        && get(/databases/$(database)/documents/classSessions/$(sessionId)).data.allowNonMembers == true;
+    }
     match /admins/{userId} {
       allow get: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
       allow list: if isAdmin();
@@ -75,10 +81,11 @@ service cloud.firestore {
     }
 
     match /classSessionSignups/{signupId} {
-      allow read: if true;
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.sessionId is string
+        && (isAdmin() || hasFormalMemberRecord() || classSessionAllowsNonMembers(request.resource.data.sessionId))
         && (
           !request.resource.data.keys().hasAny(["dropInPaymentStatus"]) ||
           request.resource.data.dropInPaymentStatus == "unpaid" ||
@@ -87,7 +94,30 @@ service cloud.firestore {
       allow update: if isAdmin() || (
         isSignedIn() &&
         resource.data.userId == request.auth.uid &&
+        (hasFormalMemberRecord() || classSessionAllowsNonMembers(resource.data.sessionId)) &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(["paymentStatus", "paidAt", "dropInPaymentStatus", "dropInPaidAt", "signupStatus"])
+      );
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    match /classPublicRosters/{rosterId} {
+      allow read: if true;
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly(["sessionId", "userId", "name", "studentId", "createdAt", "updatedAt"])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.sessionId is string
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 100
+        && request.resource.data.studentId is string
+        && request.resource.data.studentId.size() <= 30
+        && (isAdmin() || hasFormalMemberRecord() || classSessionAllowsNonMembers(request.resource.data.sessionId));
+      allow update: if isAdmin() || (
+        isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.sessionId == resource.data.sessionId
+        && request.resource.data.keys().hasOnly(["sessionId", "userId", "name", "studentId", "createdAt", "updatedAt"])
+        && (hasFormalMemberRecord() || classSessionAllowsNonMembers(resource.data.sessionId))
       );
       allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
     }

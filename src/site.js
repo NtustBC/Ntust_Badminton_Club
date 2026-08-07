@@ -84,6 +84,7 @@ const PUBLIC_PAGE_REFRESH_MS = 60 * 1000;
 const CLASS_SIGNUP_WINDOW_DAYS = 7;
 const CLASS_SESSION_COLLECTION = "classSessions";
 const CLASS_SIGNUP_COLLECTION = "classSessionSignups";
+const CLASS_PUBLIC_ROSTER_COLLECTION = "classPublicRosters";
 const CLASS_ANNOUNCEMENT_COLLECTION = "classAnnouncements";
 const FAQ_COLLECTION = "faqEntries";
 const FAQ_QUESTION_COLLECTION = "faqQuestions";
@@ -99,7 +100,6 @@ const CLASS_WEEKDAY_LABELS = {
   sun: "星期日",
 };
 const DATE_WEEKDAY_ORDER = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
-const CLASS_SUNDAY_SLOTS = ["13:00~14:30", "14:30~16:00"];
 const bootstrapAdminEmailNormalized = bootstrapAdminEmail.trim().toLowerCase();
 const firebaseConfigured = Object.values(firebaseConfig).every(Boolean);
 
@@ -568,6 +568,10 @@ const adminClassCalendarModalMarkup = `
             <input id="admin-calendar-event-time" name="timeLabel" type="text" placeholder="例如：19:00 - 21:00" />
           </div>
           <div class="form-field">
+            <label for="admin-calendar-event-location">地點</label>
+            <input id="admin-calendar-event-location" name="location" type="text" placeholder="例如：臺科大體育館 2F" required />
+          </div>
+          <div class="form-field">
             <label for="admin-calendar-event-note">備註</label>
             <textarea id="admin-calendar-event-note" name="note" rows="4" placeholder="可以填無"></textarea>
           </div>
@@ -576,6 +580,10 @@ const adminClassCalendarModalMarkup = `
             社課需要報名
           </label>
           <div class="admin-calendar-signup-settings" data-admin-calendar-signup-settings>
+            <label class="admin-calendar-signup-toggle">
+              <input name="allowNonMembers" type="checkbox" />
+              開放非社員報名參加
+            </label>
             <div class="form-field">
               <label for="admin-calendar-signup-open">報名開始</label>
               <input id="admin-calendar-signup-open" name="signupOpenAt" type="datetime-local" />
@@ -1508,6 +1516,7 @@ const getAdminCalendarEventsForDate = (dateKey) => {
       id: getClassSessionId(session),
       title: session.title || "未命名社課",
       timeLabel: getClassSessionTimeLabel(session),
+      location: session.location || "",
       note: session.reminder || session.description || "",
       source: session,
     }));
@@ -1519,6 +1528,7 @@ const getAdminCalendarEventsForDate = (dateKey) => {
       id: getAdminCalendarAnnouncementId(announcement),
       title: announcement.title || "未命名公告",
       timeLabel: getAnnouncementTimeLabel(announcement),
+      location: announcement.location || "",
       note: getAnnouncementNote(announcement),
       source: announcement,
     }));
@@ -1596,17 +1606,17 @@ const getPublicClassSignupModalState = (session) => {
   const sessionId = getClassSessionId(session);
   const ownSignup = classSignupPageState.ownSignups.find((signup) => signup.sessionId === sessionId) || null;
   const approvalData = classSignupPageState.approval;
-  const canSignup = Boolean(currentUser);
-  const isSundaySignup = String(session.weekday || "").toLowerCase() === "sun" && Boolean(session.signupRequired);
-  const rosterPublished = Boolean(session.rosterPublished);
-  const signupOpen = isSundaySignup && isClassSignupWindowOpen(session);
-  const statusLabel = rosterPublished ? "已公布名單" : isSundaySignup ? (signupOpen ? "開放報名" : "尚未開放") : "固定社課";
+  const isFormalMember = currentUserIsAdmin || currentMemberStatus === "formal_member";
+  const canSignup = Boolean(currentUser) && (isFormalMember || Boolean(session.allowNonMembers));
+  const isSignupSession = Boolean(session.signupRequired);
+  const signupOpen = isSignupSession && isClassSignupWindowOpen(session);
+  const statusLabel = isSignupSession ? (signupOpen ? "開放報名" : "尚未開放") : "固定社課";
 
   return {
     ownSignup,
     approvalData,
     canSignup,
-    isSundaySignup,
+    isSignupSession,
     signupOpen,
     statusLabel,
   };
@@ -1636,14 +1646,14 @@ const renderClassSignupModalContent = (sessionId) => {
     return;
   }
 
-  const { ownSignup, approvalData, canSignup, isSundaySignup, signupOpen, statusLabel } = getPublicClassSignupModalState(session);
+  const { ownSignup, approvalData, canSignup, isSignupSession, signupOpen, statusLabel } = getPublicClassSignupModalState(session);
   const sessionSignups = getSessionSignups(sessionId);
   const signupsMarkup = buildPublicSignupListMarkup(session, sessionSignups);
-  const formMarkup = isSundaySignup
+  const formMarkup = isSignupSession
     ? buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup, signupOpen)
     : `
         <div class="class-session-note">
-          <p class="content-copy">此場次不需要填寫志願，請直接依照行事曆出席即可。</p>
+          <p class="content-copy">此場次不需要報名，請直接依照行事曆出席即可。</p>
         </div>
       `;
 
@@ -1664,6 +1674,7 @@ const renderClassSignupModalContent = (sessionId) => {
           </div>
           <span class="member-row-status">${escapeHtml(statusLabel)}</span>
         </div>
+        ${session.location ? `<p class="admin-calendar-modal-session-copy"><strong>地點：</strong>${escapeHtml(session.location)}</p>` : ""}
         <p class="admin-calendar-modal-session-copy">${escapeHtml(session.description || session.reminder || "這一天有社課安排，請依照時間參與。")}</p>
         ${session.reminder ? `<p class="class-session-reminder">提醒：${escapeHtml(session.reminder)}</p>` : ""}
       </article>
@@ -1734,6 +1745,7 @@ const buildPublicCalendarEventMarkup = (event, { includeSignupAction = false } =
         </div>
         ${event.timeLabel ? `<span class="member-row-status">${escapeHtml(event.timeLabel)}</span>` : ""}
       </div>
+      ${event.location ? `<p class="admin-calendar-modal-session-copy"><strong>地點：</strong>${escapeHtml(event.location)}</p>` : ""}
       <p class="admin-calendar-modal-session-copy">${escapeHtml(note)}</p>
       ${signupButton ? `<div class="admin-calendar-modal-session-actions">${signupButton}</div>` : ""}
     </article>
@@ -1800,6 +1812,7 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   form.querySelector("[name='eventType']").value = event?.type || "class";
   form.querySelector("[name='title']").value = event?.title || "";
   form.querySelector("[name='timeLabel']").value = event?.timeLabel || "";
+  form.querySelector("[name='location']").value = event?.location || event?.source?.location || "";
   form.querySelector("[name='note']").value = event?.note || "";
   form.querySelector("[name='signupOpenAt']").value = event?.type === "class" ? formatDateTimeLocalValue(event.source?.signupOpenAt) : "";
   form.querySelector("[name='signupCloseAt']").value = event?.type === "class" ? formatDateTimeLocalValue(event.source?.signupCloseAt) : "";
@@ -1808,6 +1821,14 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   const signupRequired = form.querySelector("[name='signupRequired']");
   if (signupRequired instanceof HTMLInputElement) {
     signupRequired.checked = event?.type === "class" ? Boolean(event.source?.signupRequired ?? true) : false;
+  }
+  const allowNonMembers = form.querySelector("[name='allowNonMembers']");
+  if (allowNonMembers instanceof HTMLInputElement) {
+    allowNonMembers.checked = event?.type === "class" ? Boolean(event.source?.allowNonMembers) : false;
+  }
+  const eventTypeSelect = form.querySelector("[name='eventType']");
+  if (eventTypeSelect instanceof HTMLSelectElement) {
+    eventTypeSelect.disabled = Boolean(eventId);
   }
   const signupToggle = form.querySelector(".admin-calendar-signup-toggle");
   const signupSettings = form.querySelector("[data-admin-calendar-signup-settings]");
@@ -1827,7 +1848,7 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   if (stateNode) {
     stateNode.textContent = eventId
       ? `目前正在編輯「${event?.title || "未命名內容"}」，儲存後會直接覆蓋原本資料。`
-      : "這一天還沒有內容，直接填寫下方欄位即可新增。";
+      : "目前為新增模式，可建立社課或公告；同一天可以儲存多筆內容。";
   }
   if (saveButton) {
     saveButton.textContent = eventId ? "更新內容" : "儲存";
@@ -1860,22 +1881,28 @@ const openAdminClassCalendarModal = (dateKey, trigger = null) => {
       <p class="admin-calendar-modal-empty">這一天還沒有社課或公告，可以直接在下方新增。</p>
     `;
   } else {
-    list.innerHTML = events
-      .map((event) => {
-        const typeLabel = event.type === "class" ? "社課" : "公告";
-        return `
-          <button class="admin-calendar-event-chip is-${escapeHtml(event.type)}" data-admin-calendar-event-edit type="button" data-event-type="${escapeHtml(event.type)}" data-event-id="${escapeHtml(event.id)}">
-            <span>${escapeHtml(typeLabel)}</span>
-            <strong>${escapeHtml(event.title)}</strong>
-            <small>${escapeHtml(event.timeLabel || "未填時間")}</small>
-          </button>
-        `;
-      })
-      .join("");
+    list.innerHTML = `
+      <div class="admin-calendar-modal-list-header">
+        <p class="content-copy">選擇既有內容進行編輯，或新增同一天的另一筆內容。</p>
+        <button class="button-secondary" data-admin-calendar-event-add type="button">新增同日內容</button>
+      </div>
+      ${events
+        .map((event) => {
+          const typeLabel = event.type === "class" ? "社課" : "公告";
+          return `
+            <button class="admin-calendar-event-chip is-${escapeHtml(event.type)}" data-admin-calendar-event-edit type="button" data-event-type="${escapeHtml(event.type)}" data-event-id="${escapeHtml(event.id)}">
+              <span>${escapeHtml(typeLabel)}</span>
+              <strong>${escapeHtml(event.title)}</strong>
+              <small>${escapeHtml(event.timeLabel || "未填時間")}${event.location ? ` · ${escapeHtml(event.location)}` : ""}</small>
+            </button>
+          `;
+        })
+        .join("")}
+    `;
   }
 
   if (form) {
-    setAdminCalendarEventForm(events.length > 0 ? events[0] : null, dateKey);
+    setAdminCalendarEventForm(null, dateKey);
   }
 
   calendarModal.hidden = false;
@@ -2739,9 +2766,10 @@ const bindMemberDeleteButtons = (container) => {
       button.textContent = "刪除中…";
 
       try {
-        const [applicationsSnapshot, signupsSnapshot] = await Promise.all([
+        const [applicationsSnapshot, signupsSnapshot, publicRosterSnapshot] = await Promise.all([
           getDocs(query(collection(db, "applications"), where("email", "==", email))),
           getDocs(query(collection(db, CLASS_SIGNUP_COLLECTION), where("userId", "==", memberId))),
+          getDocs(query(collection(db, CLASS_PUBLIC_ROSTER_COLLECTION), where("userId", "==", memberId))),
         ]);
         const batch = writeBatch(db);
         batch.delete(doc(db, "members", memberId));
@@ -2749,6 +2777,7 @@ const bindMemberDeleteButtons = (container) => {
         batch.delete(getApprovalDocRef(email));
         applicationsSnapshot.docs.forEach((snapshot) => batch.delete(snapshot.ref));
         signupsSnapshot.docs.forEach((snapshot) => batch.delete(snapshot.ref));
+        publicRosterSnapshot.docs.forEach((snapshot) => batch.delete(snapshot.ref));
         await batch.commit();
 
         membersDashboardCache.members = membersDashboardCache.members.filter((member) => member.id !== memberId);
@@ -3206,10 +3235,6 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
   }
 };
 
-function getClassSignupOptionMarkup(selectedValue = "") {
-  return buildSelectOptionsMarkup([...CLASS_SUNDAY_SLOTS, "不方便參加"], selectedValue);
-}
-
 function groupClassSignupsBySession(signups = []) {
   return signups.reduce((acc, signup) => {
     const sessionId = String(signup.sessionId || "").trim();
@@ -3308,18 +3333,16 @@ function buildPublicSignupListMarkup(session, signups = []) {
     <div class="class-roster-list" aria-label="${escapeHtml(sessionId)} 報名名單">
       <p class="content-copy">${escapeHtml(limitCopy)}，目前 ${sortedSignups.length} 人報名。</p>
       ${sortedSignups
-        .map((signup, index) => {
-          const computedStatus = getComputedSignupStatus(signup, index, session);
-          return `
+        .map(
+          (signup, index) => `
             <div class="class-roster-item">
               <span class="class-roster-index">#${String(index + 1).padStart(2, "0")}</span>
               <div>
                 <p class="class-roster-name">${escapeHtml(signup.name || "未填姓名")} / ${escapeHtml(signup.studentId || "未填學號")}</p>
-                <p class="class-roster-copy">${escapeHtml(getSignupStatusLabel({ ...signup, signupStatus: computedStatus }))} ・ ${escapeHtml(getSignupPaymentLabel(signup))}</p>
               </div>
             </div>
-          `;
-        })
+          `,
+        )
         .join("")}
     </div>
   `;
@@ -3334,10 +3357,10 @@ function renderClassCalendarBoard(sessions = []) {
 
   const openSignupSessions = [...sessions]
     .filter((session) => {
-      const isSundaySignup = String(session.weekday || "").toLowerCase() === "sun" && Boolean(session.signupRequired);
-      return isSundaySignup && isClassSignupWindowOpen(session);
+      const isSignupSession = Boolean(session.signupRequired);
+      return isSignupSession && isClassSignupWindowOpen(session);
     })
-    .sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
+    .sort((a, b) => getClassSessionSortMs(a.session) - getClassSessionSortMs(b.session));
 
   const sessionMarkup = openSignupSessions
     .map((session) => {
@@ -3353,10 +3376,11 @@ function renderClassCalendarBoard(sessions = []) {
               <p class="section-kicker">${escapeHtml(getWeekdayLabel(session.weekday) || "可報名社課")}</p>
               <h3 class="content-title">${escapeHtml(getClassSessionDateLabel(session))}</h3>
               <p class="content-copy">${escapeHtml(getClassSessionTimeLabel(session) || "時間待定")} ・ ${escapeHtml(session.title || "社課")}</p>
+              ${session.location ? `<p class="content-copy">地點：${escapeHtml(session.location)}</p>` : ""}
             </div>
             <span class="member-row-status">開放報名</span>
           </div>
-          <p class="content-copy">${escapeHtml(signupCountLabel)}，點選查看並填寫報名資料。</p>
+          <p class="content-copy">${escapeHtml(signupCountLabel)}，${session.allowNonMembers ? "社員與非社員皆可報名" : "僅限正式社員報名"}。</p>
         </button>
       `;
     })
@@ -3394,8 +3418,6 @@ function renderClassCalendarBoard(sessions = []) {
 function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup, signupOpen) {
   const nameValue = currentMemberProfile?.name || approvalData?.name || currentUser?.displayName || currentUser?.email || "";
   const studentIdValue = currentMemberProfile?.studentId || approvalData?.studentId || "";
-  const firstChoice = ownSignup?.firstChoice || "";
-  const secondChoice = ownSignup?.secondChoice || "";
   const noteValue = ownSignup?.note || "";
   const sessionId = getClassSessionId(session);
   const deleteButton = ownSignup
@@ -3405,7 +3427,7 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
   if (!canSignup) {
     return `
       <div class="class-session-locked">
-        <p class="content-copy">請先登入或註冊帳號。註冊時填完入社資料後，就可以送出報名。</p>
+        <p class="content-copy">${currentUser ? "本場社課僅開放正式社員報名。" : "請先登入或註冊帳號後再報名。"}</p>
       </div>
     `;
   }
@@ -3429,20 +3451,6 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
         <div class="form-field">
           <label>學號</label>
           <input name="studentId" type="text" value="${escapeHtml(studentIdValue)}" readonly />
-        </div>
-      </div>
-      <div class="class-signup-grid">
-        <div class="form-field">
-          <label for="class-first-${escapeHtml(sessionId)}">第一志願</label>
-          <select id="class-first-${escapeHtml(sessionId)}" name="firstChoice" data-class-choice>
-            ${getClassSignupOptionMarkup(firstChoice)}
-          </select>
-        </div>
-        <div class="form-field">
-          <label for="class-second-${escapeHtml(sessionId)}">第二志願</label>
-          <select id="class-second-${escapeHtml(sessionId)}" name="secondChoice" data-class-choice>
-            ${getClassSignupOptionMarkup(secondChoice)}
-          </select>
         </div>
       </div>
       <div class="form-field">
@@ -3482,38 +3490,11 @@ function renderClassSessionBoard(sessions = []) {
     .map((session) => {
       const sessionId = getClassSessionId(session);
       const ownSignup = ownedBySession[sessionId] || null;
-      const isSundaySignup = String(session.weekday || "").toLowerCase() === "sun" && Boolean(session.signupRequired);
-      const rosterPublished = Boolean(session.rosterPublished);
-      const openForSignup = isSundaySignup && isClassSignupWindowOpen(session);
-      const statusLabel = rosterPublished
-        ? "名單已公布"
-        : isSundaySignup
-          ? openForSignup
-            ? "報名中"
-            : "尚未開放"
-          : "固定社課";
+      const isSignupSession = Boolean(session.signupRequired);
+      const openForSignup = isSignupSession && isClassSignupWindowOpen(session);
+      const statusLabel = isSignupSession ? (openForSignup ? "報名中" : "尚未開放") : "固定社課";
       const sessionSignups = getSessionSignups(sessionId);
-      const liveSignupMarkup = isSundaySignup ? buildPublicSignupListMarkup(session, sessionSignups) : "";
-      const rosterMarkup =
-        rosterPublished && Array.isArray(session.publishedRoster) && session.publishedRoster.length > 0
-          ? `
-            <div class="class-roster-list">
-              ${session.publishedRoster
-                .map(
-                  (entry, index) => `
-                    <div class="class-roster-item">
-                      <span class="class-roster-index">#${String(index + 1).padStart(2, "0")}</span>
-                      <div>
-                        <p class="class-roster-name">${escapeHtml(entry.name || "未填姓名")} / ${escapeHtml(entry.studentId || "未填學號")}</p>
-                        <p class="class-roster-copy">${escapeHtml(entry.firstChoice || "未填志願一")} ・ ${escapeHtml(entry.secondChoice || "未填志願二")}</p>
-                      </div>
-                    </div>
-                  `,
-                )
-                .join("")}
-            </div>
-          `
-          : "";
+      const liveSignupMarkup = isSignupSession ? buildPublicSignupListMarkup(session, sessionSignups) : "";
 
       return `
         <article class="content-card class-session-card" id="session-${escapeHtml(sessionId)}">
@@ -3528,12 +3509,11 @@ function renderClassSessionBoard(sessions = []) {
           <p class="content-copy">${escapeHtml(session.description || session.reminder || "請依照行事曆確認社課日期。")}</p>
           ${session.reminder ? `<p class="class-session-reminder">提醒：${escapeHtml(session.reminder)}</p>` : ""}
           ${
-            isSundaySignup
+            isSignupSession
               ? buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup, openForSignup)
-              : `<div class="class-session-note"><p class="content-copy">此場次不需要填寫志願，請直接依行事曆出席即可。</p></div>`
+              : `<div class="class-session-note"><p class="content-copy">此場次不需要報名，請直接依行事曆出席即可。</p></div>`
           }
           ${liveSignupMarkup}
-          ${rosterMarkup}
         </article>
       `;
     })
@@ -3548,23 +3528,30 @@ function renderClassRosterBoard(sessions = []) {
     return;
   }
 
-  const publishedSessions = [...sessions]
-    .filter((session) => Boolean(session.rosterPublished))
-    .sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
+  const groupedSignups = groupClassSignupsBySession(classSignupPageState.sessionSignups);
+  const sessionsWithSignups = [...sessions]
+    .map((session) => ({
+      session,
+      signups: [...(groupedSignups[getClassSessionId(session)] || [])].sort(
+        (a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt),
+      ),
+    }))
+    .filter((entry) => entry.signups.length > 0)
+    .sort((a, b) => getClassSessionSortMs(a.session) - getClassSessionSortMs(b.session));
 
-  if (publishedSessions.length === 0) {
+  if (sessionsWithSignups.length === 0) {
     container.innerHTML = `
       <article class="content-card is-tight">
-        <h3 class="content-title">尚未公布社課名單</h3>
-        <p class="content-copy">管理員在星期五公布後，這裡會自動顯示名單。</p>
+        <h3 class="content-title">目前還沒有報名名單</h3>
+        <p class="content-copy">有人完成報名後，姓名與學號會立即顯示在這裡。</p>
       </article>
     `;
     return;
   }
 
-  container.innerHTML = publishedSessions
+  container.innerHTML = sessionsWithSignups
     .map(
-      (session) => `
+      ({ session, signups }) => `
         <article class="content-card class-roster-card">
           <div class="class-session-header">
             <div>
@@ -3572,30 +3559,21 @@ function renderClassRosterBoard(sessions = []) {
               <h3 class="content-title">${escapeHtml(session.title || "社課名單")}</h3>
               <p class="content-copy">${escapeHtml(getClassSessionDateLabel(session))} ・ ${escapeHtml(getClassSessionTimeLabel(session) || "時間待定")}</p>
             </div>
-            <span class="member-row-status">已公布</span>
+            <span class="member-row-status">${escapeHtml(`${signups.length} 人報名`)}</span>
           </div>
-          <p class="content-copy">${escapeHtml(session.reminder || "依公布名單出席。")}</p>
-          ${
-            Array.isArray(session.publishedRoster) && session.publishedRoster.length > 0
-              ? `
-                <div class="class-roster-list">
-                  ${session.publishedRoster
-                    .map(
-                      (entry, index) => `
-                        <div class="class-roster-item">
-                          <span class="class-roster-index">#${String(index + 1).padStart(2, "0")}</span>
-                          <div>
-                            <p class="class-roster-name">${escapeHtml(entry.name || "未填姓名")} / ${escapeHtml(entry.studentId || "未填學號")}</p>
-                            <p class="class-roster-copy">${escapeHtml(entry.firstChoice || "未填志願一")} ・ ${escapeHtml(entry.secondChoice || "未填志願二")}</p>
-                          </div>
-                        </div>
-                      `,
-                    )
-                    .join("")}
-                </div>
-              `
-              : `<p class="content-copy">目前還沒有名單內容。</p>`
-          }
+          ${session.location ? `<p class="content-copy">地點：${escapeHtml(session.location)}</p>` : ""}
+          <div class="class-roster-list">
+            ${signups
+              .map(
+                (entry, index) => `
+                  <div class="class-roster-item">
+                    <span class="class-roster-index">#${String(index + 1).padStart(2, "0")}</span>
+                    <p class="class-roster-name">${escapeHtml(entry.studentId || "未填學號")}　${escapeHtml(entry.name || "未填姓名")}</p>
+                  </div>
+                `,
+              )
+              .join("")}
+          </div>
         </article>
       `,
     )
@@ -3634,7 +3612,10 @@ function bindClassSignupBoardEvents() {
 
       try {
         await ensureAuthReady();
-        await deleteDoc(getClassSignupDocRef(sessionId, currentUser.uid));
+        const batch = writeBatch(db);
+        batch.delete(getClassSignupDocRef(sessionId, currentUser.uid));
+        batch.delete(doc(db, CLASS_PUBLIC_ROSTER_COLLECTION, `${sessionId}-${currentUser.uid}`));
+        await batch.commit();
         await refreshClassSignupPageSafe({ force: true });
       } catch (error) {
         console.error("Delete class signup failed:", error);
@@ -3700,21 +3681,11 @@ async function handleClassSignupSubmit(event) {
   const form = event.currentTarget;
   const submitButton = form.querySelector("[data-class-signup-submit]");
   const sessionId = String(form.dataset.sessionId || form.querySelector("[name='sessionId']")?.value || "").trim();
-  const firstChoice = String(form.querySelector("[name='firstChoice']")?.value || "").trim();
-  const secondChoice = String(form.querySelector("[name='secondChoice']")?.value || "").trim();
   const note = String(form.querySelector("[name='note']")?.value || "").trim();
   const name = String(form.querySelector("[name='name']")?.value || "").trim();
   const studentId = String(form.querySelector("[name='studentId']")?.value || "").trim();
 
   if (!currentUser?.uid || !sessionId) {
-    return;
-  }
-
-  if (!firstChoice || !secondChoice) {
-    return;
-  }
-
-  if (firstChoice === secondChoice) {
     return;
   }
 
@@ -3724,15 +3695,23 @@ async function handleClassSignupSubmit(event) {
   }
 
   const sessionSignups = getSessionSignups(sessionId).sort((a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt));
-  const ownExistingSignup = sessionSignups.find((signup) => signup.userId === currentUser.uid) || null;
+  const ownExistingSignup = classSignupPageState.ownSignups.find((signup) => signup.sessionId === sessionId) || null;
+  const ownExistingRosterEntry = sessionSignups.find((signup) => signup.userId === currentUser.uid) || null;
   const currentMembershipStatus = currentMemberProfile?.membershipStatus || currentMemberProfile?.status || "pending_payment";
-  const isFormalMember = currentMembershipStatus === "formal_member";
+  const isFormalMember = currentUserIsAdmin || currentMembershipStatus === "formal_member";
+
+  if (!isFormalMember && !session.allowNonMembers) {
+    window.alert("本場社課僅開放正式社員報名。");
+    return;
+  }
 
   submitButton.disabled = true;
 
   try {
     const signupRef = getClassSignupDocRef(sessionId, currentUser.uid);
-    await setDoc(
+    const publicRosterRef = doc(db, CLASS_PUBLIC_ROSTER_COLLECTION, `${sessionId}-${currentUser.uid}`);
+    const batch = writeBatch(db);
+    batch.set(
       signupRef,
       {
         sessionId,
@@ -3740,8 +3719,6 @@ async function handleClassSignupSubmit(event) {
         email: currentUser.email || "",
         name: name || currentMemberProfile?.name || currentUser.email || "",
         studentId: studentId || currentMemberProfile?.studentId || "",
-        firstChoice,
-        secondChoice,
         note,
         membershipStatusAtSignup: currentMembershipStatus,
         isFormalMemberAtSignup: isFormalMember,
@@ -3751,11 +3728,24 @@ async function handleClassSignupSubmit(event) {
         sessionTitle: session.title || "",
         sessionTimeLabel: session.timeLabel || "",
         sessionReminder: session.reminder || "",
-        createdAt: serverTimestamp(),
+        createdAt: ownExistingSignup?.createdAt || serverTimestamp(),
         updatedAt: serverTimestamp(),
       },
       { merge: true },
     );
+    batch.set(
+      publicRosterRef,
+      {
+        sessionId,
+        userId: currentUser.uid,
+        name: name || currentMemberProfile?.name || currentUser.email || "",
+        studentId: studentId || currentMemberProfile?.studentId || "",
+        createdAt: ownExistingRosterEntry?.createdAt || serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+    await batch.commit();
 
     await refreshClassSignupPageSafe({ force: true });
   } catch (error) {
@@ -3794,7 +3784,7 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
     if (force || !classSignupPageState.loaded) {
       const [sessions, allSignups, ownSignups, approvalDoc] = await Promise.all([
         loadWithFallback("社課日期", loadWarnings, () => getCollectionEntries(CLASS_SESSION_COLLECTION), []),
-        loadWithFallback("報名名單", loadWarnings, () => getCollectionEntries(CLASS_SIGNUP_COLLECTION), []),
+        loadWithFallback("公開報名名單", loadWarnings, () => getCollectionEntries(CLASS_PUBLIC_ROSTER_COLLECTION), []),
         currentUser?.uid
           ? loadWithFallback(
               "我的報名",
@@ -3978,6 +3968,7 @@ function renderAnnouncementsBoard(announcements = []) {
           id: getAdminCalendarAnnouncementId(announcement),
           title: announcement.title || "公告",
           timeLabel: getAnnouncementTimeLabel(announcement),
+          location: announcement.location || "",
           note: getAnnouncementNote(announcement),
           source: announcement,
         }));
@@ -4841,8 +4832,6 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
                           <div class="member-row-meta">
                             <span>學號：${escapeHtml(signup.studentId || "未填寫")}</span>
                             <span>身分：${escapeHtml(isFormalMember ? "正式社員" : "非社員零打")}</span>
-                            <span>第一志願：${escapeHtml(signup.firstChoice || "未填寫")}</span>
-                            <span>第二志願：${escapeHtml(signup.secondChoice || "未填寫")}</span>
                             <span>備註：${escapeHtml(signup.note || "無")}</span>
                           </div>
                           ${paymentAction ? `<div class="application-actions">${paymentAction}</div>` : ""}
@@ -4961,6 +4950,11 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
           <p class="section-description">點選任何日期都可以新增社課或公告。</p>
         </div>
         <div class="admin-calendar-nav">
+          <label class="admin-calendar-date-jump">
+            <span>快速選擇日期</span>
+            <input data-admin-calendar-date-jump type="date" value="${escapeHtml(todayKey)}" />
+          </label>
+          <button class="button-secondary" data-admin-calendar-today type="button">今天</button>
           <button class="button-secondary" data-admin-calendar-prev type="button">上個月</button>
           <button class="button-secondary" data-admin-calendar-next type="button">下個月</button>
         </div>
@@ -4984,6 +4978,23 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
   container.querySelector("[data-admin-calendar-next]")?.addEventListener("click", () => {
     adminClassCalendarMonthOffset += 1;
     renderAdminClassCalendarCompact(sessions, signups);
+  });
+
+  container.querySelector("[data-admin-calendar-today]")?.addEventListener("click", () => {
+    adminClassCalendarMonthOffset = 0;
+    renderAdminClassCalendarCompact(sessions, signups);
+    window.setTimeout(() => openAdminClassCalendarModal(formatDateInputValue(new Date())), 0);
+  });
+
+  container.querySelector("[data-admin-calendar-date-jump]")?.addEventListener("change", (event) => {
+    const dateKey = String(event.target.value || "");
+    const date = parseDateKey(dateKey);
+    if (!date) {
+      return;
+    }
+    adminClassCalendarMonthOffset = getAdminCalendarMonthOffset(date);
+    renderAdminClassCalendarCompact(sessions, signups);
+    window.setTimeout(() => openAdminClassCalendarModal(dateKey), 0);
   });
 
   bindAdminClassCalendarActions();
@@ -5061,6 +5072,11 @@ function bindAdminClassCalendarActions() {
     });
   });
 
+  document.querySelector("[data-admin-calendar-event-add]")?.addEventListener("click", () => {
+    const dateKey = getAdminClassCalendarModalElements().form?.querySelector("[name='date']")?.value || "";
+    setAdminCalendarEventForm(null, dateKey);
+  });
+
   document.querySelectorAll("[data-class-dropin-payment]").forEach((button) => {
     if (button.dataset.initialized === "true") {
       return;
@@ -5113,61 +5129,6 @@ function bindAdminClassCalendarActions() {
     });
   });
 
-  document.querySelectorAll("[data-class-session-publish]").forEach((button) => {
-    if (button.dataset.initialized === "true") {
-      return;
-    }
-
-    button.dataset.initialized = "true";
-    button.addEventListener("click", async () => {
-      const sessionId = button.dataset.sessionId || "";
-      const session = membersDashboardCache.classSessions.find((item) => getClassSessionId(item) === sessionId);
-      if (!session) {
-        return;
-      }
-
-      const confirmed = window.confirm("確定要公布這一場社課的名單嗎？");
-      if (!confirmed) {
-        return;
-      }
-
-      try {
-        const grouped = groupClassSignupsBySession(membersDashboardCache.classSessionSignups);
-        const sessionSignups = (grouped[sessionId] || []).sort(
-          (a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt),
-        );
-
-        const publishedRoster = sessionSignups.map((signup) => ({
-          name: signup.name || "",
-          studentId: signup.studentId || "",
-          firstChoice: signup.firstChoice || "",
-          secondChoice: signup.secondChoice || "",
-          note: signup.note || "",
-          email: signup.email || "",
-          userId: signup.userId || "",
-          submittedAt: formatTimestamp(signup.submittedAt || signup.createdAt),
-        }));
-
-        await setDoc(
-          getClassSessionDocRef(sessionId),
-          {
-            ...session,
-            rosterPublished: true,
-            publishedRoster,
-            publishedAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true },
-        );
-
-        await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
-      } catch (error) {
-        console.error("Publish roster failed:", error);
-        window.alert(`公布名單失敗：${error?.message || "請稍後再試一次。"}`);
-      }
-    });
-  });
-
   document.querySelectorAll("[data-class-session-delete]").forEach((button) => {
     if (button.dataset.initialized === "true") {
       return;
@@ -5187,7 +5148,12 @@ function bindAdminClassCalendarActions() {
 
       try {
         const relatedSignups = membersDashboardCache.classSessionSignups.filter((signup) => String(signup.sessionId || "") === sessionId);
-        await Promise.all(relatedSignups.map((signup) => deleteDoc(doc(db, CLASS_SIGNUP_COLLECTION, signup.id))));
+        await Promise.all(
+          relatedSignups.flatMap((signup) => [
+            deleteDoc(doc(db, CLASS_SIGNUP_COLLECTION, signup.id)),
+            deleteDoc(doc(db, CLASS_PUBLIC_ROSTER_COLLECTION, signup.id)),
+          ]),
+        );
         await deleteDoc(getClassSessionDocRef(sessionId));
 
         if (adminClassSessionEditingId === sessionId) {
@@ -5212,15 +5178,17 @@ async function handleAdminCalendarEventSubmit(event) {
   const eventType = String(form.querySelector("[name='eventType']")?.value || form.dataset.editingType || "class").trim();
   const title = String(form.querySelector("[name='title']")?.value || "").trim();
   const timeLabel = String(form.querySelector("[name='timeLabel']")?.value || "").trim();
+  const location = String(form.querySelector("[name='location']")?.value || "").trim();
   const note = String(form.querySelector("[name='note']")?.value || "").trim() || "無";
   const signupRequired = Boolean(form.querySelector("[name='signupRequired']")?.checked);
+  const allowNonMembers = Boolean(form.querySelector("[name='allowNonMembers']")?.checked);
   const signupOpenAt = String(form.querySelector("[name='signupOpenAt']")?.value || "").trim();
   const signupCloseAt = String(form.querySelector("[name='signupCloseAt']")?.value || "").trim();
   const signupLimit = Number(form.querySelector("[name='signupLimit']")?.value || 0);
   const weekday = getWeekdayKeyFromDateValue(date);
 
-  if (!date || !title || !timeLabel) {
-    window.alert("請先填寫標題與時間。");
+  if (!date || !title || !timeLabel || !location) {
+    window.alert("請先填寫標題、時間與地點。");
     return;
   }
 
@@ -5236,6 +5204,7 @@ async function handleAdminCalendarEventSubmit(event) {
           date,
           title,
           timeLabel,
+          location,
           reminder: note,
           body: note,
           createdAt: existing?.exists() ? existing.data()?.createdAt || serverTimestamp() : serverTimestamp(),
@@ -5254,9 +5223,11 @@ async function handleAdminCalendarEventSubmit(event) {
           weekday,
           title,
           timeLabel,
+          location,
           description: note,
           reminder: note,
           signupRequired,
+          allowNonMembers: signupRequired && allowNonMembers,
           signupOpenAt,
           signupCloseAt,
           signupLimit: Number.isFinite(signupLimit) && signupLimit > 0 ? Math.floor(signupLimit) : null,
@@ -5307,7 +5278,12 @@ async function handleAdminCalendarEventDelete() {
       await deleteDoc(getClassAnnouncementDocRef(eventId));
     } else {
       const relatedSignups = membersDashboardCache.classSessionSignups.filter((signup) => String(signup.sessionId || "") === eventId);
-      await Promise.all(relatedSignups.map((signup) => deleteDoc(doc(db, CLASS_SIGNUP_COLLECTION, signup.id))));
+      await Promise.all(
+        relatedSignups.flatMap((signup) => [
+          deleteDoc(doc(db, CLASS_SIGNUP_COLLECTION, signup.id)),
+          deleteDoc(doc(db, CLASS_PUBLIC_ROSTER_COLLECTION, signup.id)),
+        ]),
+      );
       await deleteDoc(getClassSessionDocRef(eventId));
     }
 
