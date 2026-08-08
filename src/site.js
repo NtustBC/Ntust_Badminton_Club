@@ -2533,7 +2533,7 @@ function renderAdminCalendarDefaultShortcuts(form, dateKey = "") {
   container.hidden = false;
   container.innerHTML = `
     <span>套用預設社課：</span>
-    ${sorted.map((item, index) => `<button class="class-default-shortcut${item.weekday === weekday ? " is-matching-day" : ""}" data-class-default-shortcut="${index}" type="button">${escapeHtml(`${getWeekdayLabel(item.weekday)} ${item.startTime}–${item.endTime}`)}</button>`).join("")}
+    ${sorted.map((item, index) => `<button class="class-default-shortcut${item.weekday === weekday ? " is-matching-day" : ""}" data-class-default-shortcut="${index}" type="button">${escapeHtml(`${getWeekdayLabel(item.weekday)} ${item.startTime}–${item.endTime} · ${item.signupLimit ? `${item.signupLimit} 人` : "不限人數"}`)}</button>`).join("")}
   `;
   container.querySelectorAll("[data-class-default-shortcut]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2542,8 +2542,9 @@ function renderAdminCalendarDefaultShortcuts(form, dateKey = "") {
       form.querySelector("[name='startTime']").value = item.startTime;
       form.querySelector("[name='endTime']").value = item.endTime;
       if (item.location) form.querySelector("[name='location']").value = item.location;
+      form.querySelector("[name='signupLimit']").value = item.signupLimit || "";
       if (item.title && !form.querySelector("[name='title']").value) form.querySelector("[name='title']").value = item.title;
-      showToast("已套用預設社課時間。", { tone: "success" });
+      showToast("已套用預設社課時間與人數上限。", { tone: "success" });
     });
   });
 }
@@ -7266,6 +7267,7 @@ const normalizeClassScheduleDefault = (value = {}) => {
   const weekday = DATE_WEEKDAY_ORDER.includes(String(value.weekday || "")) ? String(value.weekday) : "";
   const startTime = String(value.startTime || "").trim();
   const endTime = String(value.endTime || "").trim();
+  const signupLimit = Number(value.signupLimit || 0);
   if (!weekday || !/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime) || startTime >= endTime) return null;
   return {
     weekday,
@@ -7273,6 +7275,7 @@ const normalizeClassScheduleDefault = (value = {}) => {
     endTime,
     title: String(value.title || "社課").trim().slice(0, 100),
     location: String(value.location || "").trim().slice(0, 200),
+    signupLimit: Number.isFinite(signupLimit) && signupLimit > 0 ? Math.floor(signupLimit) : null,
   };
 };
 
@@ -7281,6 +7284,7 @@ const getClassDefaultRowMarkup = (item = {}) => `
     <div class="form-field"><label>星期</label><select name="weekday">${DATE_WEEKDAY_ORDER.map((key) => `<option value="${key}"${item.weekday === key ? " selected" : ""}>${escapeHtml(getWeekdayLabel(key))}</option>`).join("")}</select></div>
     <div class="form-field"><label>開始</label><input name="startTime" type="time" step="300" value="${escapeHtml(item.startTime || "")}" required /></div>
     <div class="form-field"><label>結束</label><input name="endTime" type="time" step="300" value="${escapeHtml(item.endTime || "")}" required /></div>
+    <div class="form-field"><label>人數上限（選填）</label><input name="signupLimit" min="1" placeholder="不限" type="number" value="${escapeHtml(item.signupLimit || "")}" /></div>
     <div class="form-field"><label>標題</label><input name="title" type="text" value="${escapeHtml(item.title || "社課")}" /></div>
     <div class="form-field"><label>地點（選填）</label><input name="location" type="text" value="${escapeHtml(item.location || "")}" /></div>
     <button class="member-delete-button" data-class-default-remove type="button">移除</button>
@@ -7290,7 +7294,7 @@ const getClassDefaultRowMarkup = (item = {}) => `
 const renderClassDefaultSettings = () => {
   const list = document.querySelector("[data-class-default-list]");
   if (!list) return;
-  list.innerHTML = (classScheduleDefaults.length ? classScheduleDefaults : [{ weekday: "fri", startTime: "", endTime: "", title: "社課", location: "" }])
+  list.innerHTML = (classScheduleDefaults.length ? classScheduleDefaults : [{ weekday: "fri", startTime: "", endTime: "", signupLimit: "", title: "社課", location: "" }])
     .map(getClassDefaultRowMarkup)
     .join("");
   list.querySelectorAll("[data-class-default-remove]").forEach((button) => button.addEventListener("click", () => button.closest("[data-class-default-row]")?.remove()));
@@ -7314,6 +7318,7 @@ const bindClassDefaultSettings = () => {
       weekday: row.querySelector("[name='weekday']")?.value,
       startTime: row.querySelector("[name='startTime']")?.value,
       endTime: row.querySelector("[name='endTime']")?.value,
+      signupLimit: row.querySelector("[name='signupLimit']")?.value,
       title: row.querySelector("[name='title']")?.value,
       location: row.querySelector("[name='location']")?.value,
     }));

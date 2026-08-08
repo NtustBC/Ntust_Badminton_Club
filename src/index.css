@@ -3942,7 +3942,7 @@ button.admin-calendar-day:focus-visible {
 .admin-section-nav a:hover, .admin-section-nav a:focus-visible { background: rgba(25, 78, 63, 0.1); }
 .admin-category { display: grid; gap: 1rem; margin-bottom: 2.5rem; scroll-margin-top: 8rem; }
 .class-default-list { display: grid; gap: 0.8rem; }
-.class-default-row { display: grid; grid-template-columns: 0.8fr 0.8fr 0.8fr 1fr 1.4fr auto; align-items: end; gap: 0.75rem; padding: 0.9rem; border: 1px solid rgba(17, 24, 39, 0.1); border-radius: 0.9rem; }
+.class-default-row { display: grid; grid-template-columns: 0.75fr 0.75fr 0.75fr 0.9fr 1fr 1.4fr auto; align-items: end; gap: 0.75rem; padding: 0.9rem; border: 1px solid rgba(17, 24, 39, 0.1); border-radius: 0.9rem; }
 .admin-calendar-default-shortcuts { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.8rem; }
 .class-default-shortcut { border: 1px solid rgba(25, 78, 63, 0.24); border-radius: 999px; background: #fff; color: inherit; padding: 0.45rem 0.7rem; cursor: pointer; }
 .class-default-shortcut.is-matching-day { border-color: #194e3f; background: rgba(25, 78, 63, 0.1); font-weight: 700; }
