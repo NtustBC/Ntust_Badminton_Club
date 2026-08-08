@@ -405,6 +405,28 @@ body.spa-navigating .page-main {
   line-height: 1.9;
 }
 
+.privacy-policy-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.privacy-policy-grid .privacy-card {
+  display: grid;
+  gap: 14px;
+}
+
+.privacy-policy-grid .privacy-copy {
+  margin: 0;
+}
+
+.privacy-rights-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 1.4rem;
+  color: var(--muted);
+  line-height: 1.9;
+}
+
 .hero-copy {
   max-width: 760px;
   margin: 26px 0 0;
@@ -2168,24 +2190,12 @@ body.spa-navigating .page-main {
   color: var(--brand);
 }
 
-.class-signup-member-toggle {
-  min-width: 2.5rem;
-  color: var(--muted);
-  font-size: 0.85rem;
-  font-weight: 700;
-  text-align: right;
+.class-signup-member-row[open] .faq-icon-line-horizontal {
+  transform: translate(-50%, -50%) rotate(45deg);
 }
 
-.class-signup-member-toggle::after {
-  content: "展開";
-}
-
-.class-signup-member-row[open] .class-signup-member-toggle {
-  color: var(--brand);
-}
-
-.class-signup-member-row[open] .class-signup-member-toggle::after {
-  content: "收合";
+.class-signup-member-row[open] .faq-icon-line-vertical {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 .class-signup-member-row .member-row-detail .member-row-email {

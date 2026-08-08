@@ -475,7 +475,7 @@ const loginModalMarkup = `
             </div>
             <label class="privacy-consent-option">
               <input name="privacyConsent" type="checkbox" />
-              <span>我已閱讀並同意<a href="./privacy.html" target="_blank" rel="noreferrer">隱私權政策與個人資料蒐集、處理及利用說明</a>，並同意社團基於帳號、社員資格、活動報名及通知目的使用上述資料。</span>
+              <span>我已閱讀並同意<a href="./privacy.html" target="_blank" rel="noreferrer">隱私權政策與個人資料蒐集聲明</a>，並同意社團基於帳號、社員資格、活動報名及通知目的使用上述資料。</span>
             </label>
           </div>
           <p class="login-note" data-login-hint>${authCopy.signin.hint}</p>
@@ -5685,7 +5685,10 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
                               <span class="member-row-index">#${String(index + 1).padStart(2, "0")} ${escapeHtml(signup.name || "未填姓名")}</span>
                               <span class="member-row-summary-side">
                                 <span class="member-row-status">${escapeHtml(getSignupStatusLabel({ ...signup, signupStatus: computedStatus }))} / ${escapeHtml(paymentLabel)}</span>
-                                <span class="class-signup-member-toggle" aria-hidden="true"></span>
+                                <span class="faq-icon" aria-hidden="true">
+                                  <span class="faq-icon-line faq-icon-line-horizontal"></span>
+                                  <span class="faq-icon-line faq-icon-line-vertical"></span>
+                                </span>
                               </span>
                             </span>
                           </summary>
@@ -5696,7 +5699,10 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
                               <span>身分：${escapeHtml(isFormalMember ? "正式社員" : "非社員零打")}</span>
                               <span>備註：${escapeHtml(signup.note || "無")}</span>
                             </div>
-                            ${paymentAction ? `<div class="application-actions">${paymentAction}</div>` : ""}
+                            <div class="application-actions">
+                              ${paymentAction}
+                              <button class="button-secondary application-save" data-class-signup-admin-delete type="button" data-signup-id="${escapeHtml(signup.id || `${sessionId}-${signup.userId}`)}" data-signup-name="${escapeHtml(signup.name || signup.email || "這位成員")}" data-session-id="${escapeHtml(sessionId)}">刪除報名</button>
+                            </div>
                           </div>
                         </details>
                       `;
@@ -5985,6 +5991,47 @@ function bindAdminClassCalendarActions() {
         console.error("Update drop-in payment status failed:", error);
         window.alert(`更新零打費狀態失敗：${error?.message || "請稍後再試一次。"}`);
       } finally {
+        button.disabled = false;
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-class-signup-admin-delete]").forEach((button) => {
+    if (button.dataset.initialized === "true") {
+      return;
+    }
+
+    button.dataset.initialized = "true";
+    button.addEventListener("click", async () => {
+      const signupId = String(button.dataset.signupId || "").trim();
+      const sessionId = String(button.dataset.sessionId || "").trim();
+      const signupName = String(button.dataset.signupName || "這位成員").trim();
+      if (!signupId || !sessionId || !window.confirm(`確定要刪除 ${signupName} 的這筆社課報名嗎？`)) {
+        return;
+      }
+
+      button.disabled = true;
+      try {
+        const signupRef = doc(db, CLASS_SIGNUP_COLLECTION, signupId);
+        const statsRef = doc(db, CLASS_SESSION_STATS_COLLECTION, sessionId);
+        await runTransaction(db, async (transaction) => {
+          const signupSnapshot = await transaction.get(signupRef);
+          const statsSnapshot = await transaction.get(statsRef);
+          if (!signupSnapshot.exists()) return;
+          transaction.delete(signupRef);
+          if (statsSnapshot.exists()) {
+            transaction.set(statsRef, {
+              sessionId,
+              signupCount: Math.max(0, Number(statsSnapshot.data().signupCount || 1) - 1),
+              updatedAt: serverTimestamp(),
+            }, { merge: true });
+          }
+        });
+        await deleteDoc(doc(db, CLASS_PUBLIC_ROSTER_COLLECTION, signupId));
+        await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+      } catch (error) {
+        console.error("Delete class signup failed:", error);
+        window.alert(`刪除報名失敗：${error?.message || "請稍後再試一次。"}`);
         button.disabled = false;
       }
     });
