@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /Ntust_Badminton_Club/members.html
+
+Sitemap: https://ntustbc.github.io/Ntust_Badminton_Club/sitemap.xml
