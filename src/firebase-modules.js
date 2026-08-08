@@ -1,5 +1,9 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
 import {
+  initializeAppCheck,
+  ReCaptchaV3Provider,
+} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app-check.js";
+import {
   browserLocalPersistence,
   createUserWithEmailAndPassword,
   getAuth,
@@ -35,8 +39,10 @@ export {
   getDocs,
   getFirestore,
   initializeApp,
+  initializeAppCheck,
   onAuthStateChanged,
   query,
+  ReCaptchaV3Provider,
   runTransaction,
   serverTimestamp,
   setDoc,

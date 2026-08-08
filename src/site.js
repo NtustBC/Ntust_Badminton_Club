@@ -1,6 +1,8 @@
-import { bootstrapAdminEmail, firebaseConfig } from "./firebase-config.js";
+import { appCheckSiteKey, firebaseConfig } from "./firebase-config.js";
 
 let initializeApp;
+let initializeAppCheck;
+let ReCaptchaV3Provider;
 let browserLocalPersistence;
 let createUserWithEmailAndPassword;
 let getAuth;
@@ -34,6 +36,8 @@ const ensureFirebaseModules = async () => {
       const firebaseModules = await import("./firebase-modules.js");
       ({
         initializeApp,
+        initializeAppCheck,
+        ReCaptchaV3Provider,
         browserLocalPersistence,
         createUserWithEmailAndPassword,
         getAuth,
@@ -102,7 +106,6 @@ const CLASS_WEEKDAY_LABELS = {
   sun: "星期日",
 };
 const DATE_WEEKDAY_ORDER = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
-const bootstrapAdminEmailNormalized = bootstrapAdminEmail.trim().toLowerCase();
 const firebaseConfigured = Object.values(firebaseConfig).every(Boolean);
 
 if (firebaseConfigured) {
@@ -851,10 +854,10 @@ const syncGlobalNavigationLabels = () => {
 const getLoginButtons = () => document.querySelectorAll("[data-open-login]");
 const getApplicationButtons = () => document.querySelectorAll("[data-open-application]");
 const getApprovalDocId = (email) => email.trim().toLowerCase();
-const getApplicationDocId = (email, applicationType = "club") =>
-  `${applicationType.trim().toLowerCase()}-${encodeURIComponent(email.trim().toLowerCase())}`;
+const getApplicationDocId = (userId, applicationType = "club") =>
+  `${applicationType.trim().toLowerCase()}-${String(userId || "").trim()}`;
 const getApplicationCooldownKey = (email, applicationType = "club") =>
-  `${STORAGE_KEYS.applicationCooldownPrefix}:${getApplicationDocId(email, applicationType)}`;
+  `${STORAGE_KEYS.applicationCooldownPrefix}:${applicationType.trim().toLowerCase()}-${encodeURIComponent(email.trim().toLowerCase())}`;
 const parseDateKey = (value) => {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || "").trim());
   if (!match) {
@@ -978,8 +981,6 @@ const getLegacyTimeParts = (value = "") => {
   return matches ? { startTime: matches[1].padStart(5, "0"), endTime: matches[2].padStart(5, "0") } : { startTime: "", endTime: "" };
 };
 const getClassSessionTimeLabel = (session) => buildEventTimeLabel(session.startTime, session.endTime, session.timeLabel || session.time);
-const isBootstrapAdminEmail = (email) => email.trim().toLowerCase() === bootstrapAdminEmailNormalized;
-
 const rememberLoginButtonLabels = () => {
   getLoginButtons().forEach((button) => {
     if (!button.dataset.defaultLabel) {
@@ -1785,11 +1786,6 @@ const loadAdminStatus = async (user) => {
     return false;
   }
 
-  if (isBootstrapAdminEmail(user.email || "")) {
-    currentUserIsAdmin = true;
-    return true;
-  }
-
   const adminDoc = await getDoc(getAdminDocRef(user.uid));
   currentUserIsAdmin = adminDoc.exists();
   return currentUserIsAdmin;
@@ -1809,6 +1805,12 @@ const ensureAuthReady = async () => {
     try {
       await ensureFirebaseModules();
       const app = initializeApp(firebaseConfig);
+      if (appCheckSiteKey && initializeAppCheck && ReCaptchaV3Provider) {
+        initializeAppCheck(app, {
+          provider: new ReCaptchaV3Provider(appCheckSiteKey),
+          isTokenAutoRefreshEnabled: true,
+        });
+      }
       auth = getAuth(app);
       if (setPersistence && browserLocalPersistence) {
         await setPersistence(auth, browserLocalPersistence);
@@ -1854,8 +1856,7 @@ const ensureAuthReady = async () => {
 
         if (
           memberStatusResult.status === "fulfilled" &&
-          !currentMemberProfile &&
-          !isBootstrapAdminEmail(user.email || "")
+          !currentMemberProfile
         ) {
           try {
             await syncMemberProfile(user, "session");
@@ -2532,7 +2533,12 @@ const applyLanguage = (lang) => {
 };
 
 const syncMemberProfile = async (user, source, profile = {}) => {
-  if (!db || !user?.uid || isBootstrapAdminEmail(user.email || "")) {
+  if (!db || !user?.uid) {
+    return;
+  }
+
+  const adminDoc = await getDoc(getAdminDocRef(user.uid));
+  if (adminDoc.exists()) {
     return;
   }
 
@@ -2594,32 +2600,9 @@ const syncMemberProfile = async (user, source, profile = {}) => {
   }
 };
 
-const ensureBootstrapAdminDoc = async (user) => {
-  if (!db || !user?.uid || !isBootstrapAdminEmail(user.email || "")) {
-    return;
-  }
-
-  const adminRef = getAdminDocRef(user.uid);
-  const existingAdmin = await getDoc(adminRef);
-  if (existingAdmin.exists()) {
-    return;
-  }
-
-  await setDoc(adminRef, {
-    uid: user.uid,
-    email: user.email || "",
-    role: "admin",
-    createdAt: serverTimestamp(),
-  });
-};
-
 const ensureSignupApproved = async (email) => {
   if (!db) {
     return false;
-  }
-
-  if (isBootstrapAdminEmail(email)) {
-    return true;
   }
 
   const approvalDoc = await getDoc(getApprovalDocRef(email));
@@ -3301,7 +3284,6 @@ const createMemberFromApprovedApplication = (application) => ({
 const mergeMembersWithApprovedApplications = (members = []) =>
   members
     .map((member) => ({ ...member, origin: "members" }))
-    .filter((member) => !isBootstrapAdminEmail(String(member.email || "")))
     .sort(
       (a, b) =>
         getTimestampMs(a.submittedAt || a.createdAt || a.approvedAt) -
@@ -5018,6 +5000,11 @@ function bindFaqQuestionForm() {
 
     try {
       await ensureAuthReady();
+      if (!currentUser?.uid) {
+        if (status) status.textContent = "請先登入後再送出問題。";
+        openLoginModal(submitButton);
+        return;
+      }
       const questionRef = doc(collection(db, FAQ_QUESTION_COLLECTION));
       await setDoc(questionRef, {
         question,
@@ -6507,7 +6494,6 @@ const handleAuthSubmit = async (event) => {
     let profileSyncFailed = false;
 
     try {
-      await ensureBootstrapAdminDoc(credential.user);
       await Promise.all([
         loadAdminStatus(credential.user),
         authMode === "signup" ? Promise.resolve() : syncMemberProfile(
@@ -6585,7 +6571,12 @@ const handleApplicationSubmit = async (event) => {
   try {
     await ensureAuthReady();
 
-    const applicationRef = doc(db, "applications", getApplicationDocId(email, applicationType));
+    if (!currentUser?.uid || currentUser.email?.trim().toLowerCase() !== email) {
+      setApplicationHint("請先使用相同 Email 登入，再送出社員申請。", "error");
+      return;
+    }
+
+    const applicationRef = doc(db, "applications", getApplicationDocId(currentUser.uid, applicationType));
     await setDoc(applicationRef, {
       name,
       studentId,

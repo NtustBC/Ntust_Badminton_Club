@@ -7,7 +7,7 @@ const crypto = require("crypto");
 admin.initializeApp();
 
 const REGION = "asia-east1";
-const BOOTSTRAP_ADMIN_EMAIL = "admin@gmail.com";
+const CALLABLE_OPTIONS = { region: REGION, enforceAppCheck: true };
 const PASSWORD_RESET_WINDOW_MS = 60 * 60 * 1000;
 const PASSWORD_RESET_MAX_ATTEMPTS = 5;
 
@@ -66,21 +66,17 @@ async function consumePasswordResetAttempt(email) {
   });
 }
 
-exports.requestVerifiedPasswordReset = onCall({ region: REGION }, async () => {
+exports.requestVerifiedPasswordReset = onCall(CALLABLE_OPTIONS, async () => {
   throw new HttpsError("failed-precondition", "目前未啟用自動密碼重設，請聯絡社團幹部協助處理。");
 });
-exports.deleteMemberAccount = onCall({ region: REGION }, async (request) => {
+exports.deleteMemberAccount = onCall(CALLABLE_OPTIONS, async (request) => {
   const callerUid = request.auth?.uid;
-  const callerEmail = String(request.auth?.token?.email || "").trim().toLowerCase();
   if (!callerUid) {
     throw new HttpsError("unauthenticated", "請先登入管理員帳號。");
   }
 
-  const callerIsBootstrapAdmin = callerEmail === BOOTSTRAP_ADMIN_EMAIL;
-  const callerAdminSnapshot = callerIsBootstrapAdmin
-    ? null
-    : await admin.firestore().collection("admins").doc(callerUid).get();
-  if (!callerIsBootstrapAdmin && !callerAdminSnapshot?.exists) {
+  const callerAdminSnapshot = await admin.firestore().collection("admins").doc(callerUid).get();
+  if (!callerAdminSnapshot.exists) {
     throw new HttpsError("permission-denied", "只有管理員可以刪除帳號。");
   }
 
@@ -108,10 +104,6 @@ exports.deleteMemberAccount = onCall({ region: REGION }, async (request) => {
       logger.error("Failed to load target Authentication account.", { uid, error: error?.message || String(error) });
       throw new HttpsError("internal", "無法讀取 Authentication 帳號。");
     }
-  }
-
-  if (targetEmail === BOOTSTRAP_ADMIN_EMAIL) {
-    throw new HttpsError("failed-precondition", "系統管理員帳號不能刪除。");
   }
 
   try {
@@ -152,7 +144,7 @@ async function getSessionSignupSeedCount(sessionId) {
   return snapshot.size;
 }
 
-exports.upsertClassSessionSignup = onCall({ region: REGION }, async (request) => {
+exports.upsertClassSessionSignup = onCall(CALLABLE_OPTIONS, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "請先登入後再報名。");
   const sessionId = String(request.data?.sessionId || "").trim();
@@ -180,7 +172,7 @@ exports.upsertClassSessionSignup = onCall({ region: REGION }, async (request) =>
     if (!memberSnapshot.exists) throw new HttpsError("failed-precondition", "請先完成個人資料。");
     const session = sessionSnapshot.data();
     const member = memberSnapshot.data();
-    const isAdmin = authEmail === BOOTSTRAP_ADMIN_EMAIL || adminSnapshot.exists;
+    const isAdmin = adminSnapshot.exists;
     const isFormalMember = hasFormalMembership(member, approvalSnapshot.exists);
     if (!isAdmin && !isFormalMember && session.allowNonMembers !== true) throw new HttpsError("permission-denied", "本場社課僅限正式社員報名。");
     if (session.signupRequired !== true) throw new HttpsError("failed-precondition", "這場社課不需要報名。");
@@ -216,7 +208,7 @@ exports.upsertClassSessionSignup = onCall({ region: REGION }, async (request) =>
   }
 });
 
-exports.deleteClassSessionSignup = onCall({ region: REGION }, async (request) => {
+exports.deleteClassSessionSignup = onCall(CALLABLE_OPTIONS, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "請先登入。");
   const sessionId = String(request.data?.sessionId || "").trim();

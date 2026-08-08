@@ -1,28 +1,34 @@
-# 註冊驗證與安全功能部署
+# Firebase 安全功能部署
 
-本次新增的畫面驗證碼與有名額鎖定的社課報名由 Firebase Cloud Functions 執行；只更新 GitHub Pages 靜態檔案並不會啟用這些後端功能。目前所有系統寄信皆已停用。
+Firestore Rules 與 Cloud Functions 必須另外部署；只更新 GitHub Pages 靜態檔案不會套用後端權限修正。目前所有系統寄信皆已停用。
 
 ## 部署前設定
 
-1. 不需要設定 Resend、SMTP 或郵件 API Key。
-2. 部署 Functions 與 Firestore Rules：
+1. 確認 Firestore 的 `admins/{uid}` 至少已有一位真實管理員；系統不再接受任何硬編碼管理員 Email。
+2. 不需要設定 Resend、SMTP 或郵件 API Key。
+3. 在 Firebase App Check 為 Web App 註冊 reCAPTCHA v3，將 Site Key 填入 `src/firebase-config.js` 的 `appCheckSiteKey`。
+4. 先觀察 App Check metrics，確認正式站請求正常後，再於 Firebase Console 啟用 Cloud Firestore、Authentication 與 Functions enforcement。
+5. 部署 Functions 與 Firestore Rules：
 
    ```powershell
    firebase deploy --only functions,firestore
    ```
 
-3. Firebase Authentication 的 Authorized domains 必須包含正式網站網域。
+6. Firebase Authentication 的 Authorized domains 必須包含正式網站網域。
+7. Google Cloud Console 的 Firebase Browser Key 應只允許必要 Firebase API，網站限制加入 `https://ntustbc.github.io/*`；本機開發來源僅在需要時加入。
 
 ## 上線前驗收
 
-- 使用尚未註冊的信箱產生畫面 6 位數驗證碼，確認 10 分鐘後失效且錯誤輸入最多 5 次。
 - 未勾選個資同意時不得建立帳號；完成註冊後，`members/{uid}.privacyConsent` 應有版本與時間。
+- 一般帳號即使竄改前端狀態，也無法讀取其他人的 `members` 或建立 `admins/{uid}`。
+- 非社員報名開放場次時，不得偽造 `isFormalMemberAtSignup` 或 `dropInPaymentStatus`。
+- 未登入訪客不得新增 `faqQuestions`；登入後可以送出問題。
 - 建立一場上限 1 人的社課，兩個帳號同時報名時只能有一筆成功。
 - 未登入與一般社員都無法讀取 `classSessionSignups`、`classPublicRosters`、其他人的 `members` 資料。
 - 忘記密碼畫面只提示聯絡幹部，且不會發出網路寄信請求。
 
-## 建議後續強化
+## 持續維護
 
-- 啟用 Firebase App Check，再將公開 callable functions 設為 `enforceAppCheck: true`，降低機器人重複產生帳號與濫用。
-- 將目前以 `admin@gmail.com` 判定的 bootstrap 管理員改為 Firebase Custom Claims；完成遷移前不要刪除現有 `admins` 文件，以免管理員被鎖在系統外。
-- 定期清除過期的 `registrationVerifications` 與 rate-limit 文件，可使用 Firestore TTL。
+- 新增社員可自行修改的欄位時，必須同步更新 `members` 的 Rules 白名單與欄位驗證。
+- 新增外部 Script、API、圖片或字型來源時，必須同步審查所有 HTML 的 Content Security Policy。
+- 若管理員數量與權限層級增加，建議改用 Firebase Custom Claims，並僅由 Admin SDK 設定聲明。

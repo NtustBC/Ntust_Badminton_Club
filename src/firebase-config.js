@@ -1,4 +1,6 @@
-export const bootstrapAdminEmail = "admin@gmail.com";
+// Set this after registering the web app in Firebase App Check.
+// Keep empty until the matching provider is configured in Firebase Console.
+export const appCheckSiteKey = "";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyDORSooTWK-51ima5-BmsWGT76-jesffnc",
