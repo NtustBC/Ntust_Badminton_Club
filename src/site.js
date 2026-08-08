@@ -6670,6 +6670,10 @@ const populatePersonalProfileForm = (form) => {
   if (membershipSettingsButton instanceof HTMLButtonElement) {
     membershipSettingsButton.hidden = hasFormalMemberAccess();
   }
+  const dangerZone = form.querySelector(".account-danger-zone");
+  if (dangerZone instanceof HTMLElement) {
+    dangerZone.hidden = currentUserIsAdmin;
+  }
 };
 
 const handlePersonalProfileSubmit = async (event) => {

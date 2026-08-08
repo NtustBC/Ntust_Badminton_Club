@@ -1716,6 +1716,10 @@ body.spa-navigating .page-main {
   line-height: 1.6;
 }
 
+.account-danger-zone[hidden] {
+  display: none;
+}
+
 .account-membership-actions,
 .member-payment-cell {
   display: flex;
@@ -3215,10 +3219,11 @@ button.admin-calendar-day:focus-visible {
 
 .admin-calendar-signup-settings {
   display: grid;
-  gap: 16px;
-  padding: 18px;
-  border-radius: 16px;
-  background: #f7f9fc;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid rgba(15, 76, 129, 0.08);
+  border-radius: 20px;
+  background: linear-gradient(145deg, rgba(247, 250, 253, 0.98), rgba(238, 245, 251, 0.92));
 }
 
 .admin-calendar-signup-settings[hidden] {
@@ -3227,12 +3232,57 @@ button.admin-calendar-day:focus-visible {
 
 .admin-calendar-signup-time-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.admin-calendar-signup-time-grid .form-field,
+.admin-calendar-limit-field {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.75fr) minmax(0, 1.25fr);
+  align-items: center;
+  gap: 18px;
+  padding: 15px 18px;
+  border: 1px solid rgba(15, 76, 129, 0.1);
+  border-left: 4px solid rgba(15, 76, 129, 0.5);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 20px rgba(15, 76, 129, 0.045);
+}
+
+.admin-calendar-signup-time-grid .form-field:nth-child(2) {
+  border-left-color: #287bc1;
+}
+
+.admin-calendar-signup-time-grid .form-field:nth-child(3) {
+  border-left-color: #5b7492;
+}
+
+.admin-calendar-signup-time-grid .form-field label,
+.admin-calendar-limit-field label {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.admin-calendar-signup-time-grid .form-field input,
+.admin-calendar-limit-field input {
+  min-width: 0;
+  min-height: 56px;
+  border-radius: 14px;
+  box-shadow: none;
 }
 
 .admin-calendar-limit-field {
-  max-width: 260px;
+  max-width: none;
+  grid-template-columns: minmax(210px, 0.75fr) minmax(180px, 0.55fr) minmax(0, 0.7fr);
+  border-left-color: #d18a16;
+}
+
+.admin-calendar-limit-field::after {
+  content: "留空代表不限人數";
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 600;
 }
 
 .admin-calendar-date-time-grid {
@@ -4022,6 +4072,9 @@ button.admin-calendar-day:focus-visible {
   .class-default-row .member-delete-button { grid-column: 1 / -1; }
   .account-danger-zone { align-items: stretch; flex-direction: column; }
   .account-danger-zone .member-delete-button { width: 100%; }
+  .admin-calendar-signup-time-grid .form-field,
+  .admin-calendar-limit-field { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .admin-calendar-limit-field::after { margin-top: -2px; }
   .admin-section-nav { top: 4.5rem; overflow-x: auto; flex-wrap: nowrap; }
   .admin-section-nav a { flex: 0 0 auto; }
 }
