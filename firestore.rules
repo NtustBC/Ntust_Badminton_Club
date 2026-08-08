@@ -260,7 +260,7 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isAdmin() || (
         isSignedIn()
-        && request.resource.data.keys().hasOnly(["sessionId", "signupCount", "updatedAt"])
+        && request.resource.data.keys().hasOnly(["sessionId", "signupCount", "waitlistCount", "updatedAt"])
         && request.resource.data.sessionId == sessionId
         && request.resource.data.signupCount == 1
         && request.resource.data.updatedAt == request.time
@@ -269,10 +269,11 @@ service cloud.firestore {
       );
       allow update: if isAdmin() || (
         isSignedIn()
-        && request.resource.data.keys().hasOnly(["sessionId", "signupCount", "updatedAt"])
+        && request.resource.data.keys().hasOnly(["sessionId", "signupCount", "waitlistCount", "updatedAt"])
         && request.resource.data.sessionId == resource.data.sessionId
         && request.resource.data.signupCount is int
         && request.resource.data.signupCount >= 0
+        && request.resource.data.get("waitlistCount", 0) == resource.data.get("waitlistCount", 0)
         && request.resource.data.updatedAt == request.time
         && (
           (

@@ -78,20 +78,6 @@
               <p class="page-copy" data-members-hero-copy>
                 這裡會顯示透過 Firebase 註冊進來的社員帳號，方便你快速查看目前註冊數、信箱與最近登入時間。
               </p>
-              <form class="academic-year-setting" data-academic-year-setting hidden>
-                <div class="form-field">
-                  <label for="current-academic-year">設定目前學年度與學期</label>
-                  <div class="academic-year-setting-row">
-                    <input id="current-academic-year" data-current-academic-year-input inputmode="numeric" pattern="[0-9]*" type="text" placeholder="例如：115" />
-                    <select data-current-academic-term aria-label="設定目前學期">
-                      <option value="上學期">第一學期</option>
-                      <option value="下學期">第二學期</option>
-                    </select>
-                    <button class="button-primary" type="submit">儲存</button>
-                  </div>
-                  <p class="content-copy" data-current-academic-year-hint>系統會在 2/1、8/1 後首次開啟管理頁時自動切換學期並將社員轉為前社員；也可以在這裡手動調整。</p>
-                </div>
-              </form>
             </div>
 
             <div class="side-card">
@@ -124,7 +110,38 @@
             <div data-members-content hidden>
               <div class="member-summary-grid" data-members-summary></div>
 
-              <section class="content-card is-tight membership-payment-setting-card">
+              <nav class="admin-section-nav" aria-label="管理功能分類">
+                <a href="#admin-semester-settings">學期預設</a>
+                <a href="#admin-member-management">社員管理</a>
+                <a href="#admin-calendar-management">行事曆</a>
+                <a href="#admin-faq-management">FAQ</a>
+              </nav>
+
+              <section class="admin-category" id="admin-semester-settings">
+                <div class="section-header is-compact">
+                  <div class="section-kicker">Semester Defaults</div>
+                  <h3 class="content-title">本學期預設資料</h3>
+                  <p class="section-description">集中管理學年度、入社繳費方式與每週社課時段。</p>
+                </div>
+
+                <article class="content-card is-tight">
+                  <form class="academic-year-setting" data-academic-year-setting hidden>
+                    <div class="form-field">
+                      <label for="current-academic-year">目前學年度與學期</label>
+                      <div class="academic-year-setting-row">
+                        <input id="current-academic-year" data-current-academic-year-input inputmode="numeric" pattern="[0-9]*" type="text" placeholder="例如：115" />
+                        <select data-current-academic-term aria-label="設定目前學期">
+                          <option value="上學期">第一學期</option>
+                          <option value="下學期">第二學期</option>
+                        </select>
+                        <button class="button-primary" type="submit">儲存</button>
+                      </div>
+                      <p class="content-copy" data-current-academic-year-hint>系統會在 2/1、8/1 後首次開啟管理頁時自動切換學期並將社員轉為前社員；也可以在這裡手動調整。</p>
+                    </div>
+                  </form>
+                </article>
+
+              <article class="content-card is-tight membership-payment-setting-card">
                 <div class="member-filter-header">
                   <div>
                     <p class="section-kicker">Membership Payment</p>
@@ -162,9 +179,26 @@
                   <p class="login-note" data-membership-payment-setting-hint></p>
                   <button class="button-primary" data-membership-payment-setting-save type="submit">儲存繳費資訊</button>
                 </form>
+              </article>
+
+                <article class="content-card is-tight class-default-setting-card">
+                  <div class="member-filter-header">
+                    <div>
+                      <p class="section-kicker">Weekly Classes</p>
+                      <h3 class="content-title">每週社課時間</h3>
+                      <p class="content-copy">可設定多個不同時段；新增行事曆內容時會顯示成快捷鍵。</p>
+                    </div>
+                    <button class="button-secondary" data-class-default-add type="button">新增時段</button>
+                  </div>
+                  <form class="form-grid" data-class-default-form>
+                    <div class="class-default-list" data-class-default-list></div>
+                    <p class="login-note" data-class-default-hint></p>
+                    <button class="button-primary" data-class-default-save type="submit">儲存社課時間</button>
+                  </form>
+                </article>
               </section>
 
-              <section class="content-card is-tight member-filter-card">
+              <section class="content-card is-tight member-filter-card" id="admin-member-management">
                 <div class="member-filter-header">
                   <div>
                     <p class="section-kicker">Filter</p>
@@ -201,18 +235,18 @@
                 </div>
                 <div class="member-list" data-members-list></div>
               </section>
-              <section class="member-section">
+              <section class="member-section" id="admin-calendar-management">
                 <div class="section-header is-compact">
                   <div class="section-kicker">Class Schedule</div>
                   <h3 class="content-title">社課與公告行事曆</h3>
-                  <p class="section-description">點選日期即可新增或編輯社課與公告，所有內容會同步到前台頁面。</p>
+                  <p class="section-description">點選日期先查看內容；按「新增內容」或選擇既有項目後才會開啟編輯表單。</p>
                 </div>
                 <article class="content-card is-tight class-session-calendar-card">
                   <div data-class-session-calendar></div>
                 </article>
               </section>
 
-              <section class="member-section">
+              <section class="member-section" id="admin-faq-management">
                 <div class="section-header is-compact">
                   <div class="section-kicker">FAQ</div>
                   <h3 class="content-title">FAQ 管理</h3>
@@ -259,7 +293,6 @@
                   <p class="brand-subtitle">NTUST BADMINTON CLUB</p>
                 </div>
               </div>
-              <p class="footer-copy">社員名單頁目前以 Firebase Authentication 與 Firestore 為基礎管理。</p>
               <div class="language-switch">
                 <label class="language-label" for="footer-language-members">LANGUAGE</label>
                 <select id="footer-language-members" class="language-select" data-language-select aria-label="選擇語言">

@@ -27,6 +27,10 @@ import {
   where,
   writeBatch,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import {
+  getFunctions,
+  httpsCallable,
+} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 
 export {
   browserLocalPersistence,
@@ -38,8 +42,10 @@ export {
   getDoc,
   getDocs,
   getFirestore,
+  getFunctions,
   initializeApp,
   initializeAppCheck,
+  httpsCallable,
   onAuthStateChanged,
   query,
   ReCaptchaV3Provider,

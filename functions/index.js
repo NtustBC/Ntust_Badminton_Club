@@ -8,6 +8,7 @@ admin.initializeApp();
 
 const REGION = "asia-east1";
 const CALLABLE_OPTIONS = { region: REGION, enforceAppCheck: true };
+const CLASS_SIGNUP_CALLABLE_OPTIONS = { region: REGION, enforceAppCheck: false };
 const PASSWORD_RESET_WINDOW_MS = 60 * 60 * 1000;
 const PASSWORD_RESET_MAX_ATTEMPTS = 5;
 
@@ -141,10 +142,19 @@ exports.deleteMemberAccount = onCall(CALLABLE_OPTIONS, async (request) => {
 
 async function getSessionSignupSeedCount(sessionId) {
   const snapshot = await admin.firestore().collection("classSessionSignups").where("sessionId", "==", sessionId).get();
-  return snapshot.size;
+  return snapshot.docs.filter((entry) => entry.data().signupStatus !== "waitlisted").length;
 }
 
-exports.upsertClassSessionSignup = onCall(CALLABLE_OPTIONS, async (request) => {
+async function getSessionSignupCounts(sessionId) {
+  const snapshot = await admin.firestore().collection("classSessionSignups").where("sessionId", "==", sessionId).get();
+  return snapshot.docs.reduce((counts, entry) => {
+    if (entry.data().signupStatus === "waitlisted") counts.waitlistCount += 1;
+    else counts.signupCount += 1;
+    return counts;
+  }, { signupCount: 0, waitlistCount: 0 });
+}
+
+exports.upsertClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "請先登入後再報名。");
   const sessionId = String(request.data?.sessionId || "").trim();
@@ -190,17 +200,26 @@ exports.upsertClassSessionSignup = onCall(CALLABLE_OPTIONS, async (request) => {
       const existingData = existingSignup.exists ? existingSignup.data() : {};
       const count = currentStats.exists ? Number(currentStats.data().signupCount || 0) : seedCount;
       const limit = Number(session.signupLimit || 0);
-      if (!existingSignup.exists && limit > 0 && count >= limit) throw new HttpsError("resource-exhausted", "這場社課已額滿。");
+      const signupStatus = existingSignup.exists
+        ? existingData.signupStatus || "accepted"
+        : limit > 0 && count >= limit ? "waitlisted" : "accepted";
       transaction.set(signupRef, {
         sessionId, userId: uid, email: request.auth.token?.email || "", name: member.name || "", studentId: member.studentId || "", note,
         membershipStatusAtSignup: isFormalMember ? "formal_member" : String(member.membershipStatus || "non_member"),
         isFormalMemberAtSignup: isFormalMember, dropInPaymentStatus: isFormalMember ? "not_required" : existingData.dropInPaymentStatus || "unpaid",
         sessionDate: session.date || "", sessionWeekday: session.weekday || "", sessionTitle: session.title || "", sessionTimeLabel: session.timeLabel || "",
-        createdAt: existingData.createdAt || admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        signupStatus, createdAt: existingData.createdAt || admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
-      transaction.set(statsRef, { sessionId, signupCount: existingSignup.exists ? count : count + 1, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      const waitlistCount = currentStats.exists ? Number(currentStats.data().waitlistCount || 0) : 0;
+      transaction.set(statsRef, {
+        sessionId,
+        signupCount: existingSignup.exists || signupStatus === "waitlisted" ? count : count + 1,
+        waitlistCount: existingSignup.exists ? waitlistCount : waitlistCount + Number(signupStatus === "waitlisted"),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
     });
-    return { ok: true };
+    const savedSignup = await signupRef.get();
+    return { ok: true, signupStatus: savedSignup.data()?.signupStatus || "accepted" };
   } catch (error) {
     if (error instanceof HttpsError) throw error;
     logger.error("Class session signup failed.", { uid, sessionId, stage, code: error?.code || "unknown", message: error?.message || String(error) });
@@ -208,7 +227,7 @@ exports.upsertClassSessionSignup = onCall(CALLABLE_OPTIONS, async (request) => {
   }
 });
 
-exports.deleteClassSessionSignup = onCall(CALLABLE_OPTIONS, async (request) => {
+exports.deleteClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "請先登入。");
   const sessionId = String(request.data?.sessionId || "").trim();
@@ -216,10 +235,22 @@ exports.deleteClassSessionSignup = onCall(CALLABLE_OPTIONS, async (request) => {
   const signupRef = firestore.collection("classSessionSignups").doc(`${sessionId}-${uid}`);
   const statsRef = firestore.collection("classSessionStats").doc(sessionId);
   await firestore.runTransaction(async (transaction) => {
-    const [signup, stats] = await Promise.all([transaction.get(signupRef), transaction.get(statsRef)]);
+    const signupsQuery = firestore.collection("classSessionSignups").where("sessionId", "==", sessionId);
+    const [signup, stats, sessionSignups] = await Promise.all([transaction.get(signupRef), transaction.get(statsRef), transaction.get(signupsQuery)]);
     if (!signup.exists) return;
+    const removedStatus = signup.data().signupStatus || "accepted";
+    const nextWaitlisted = sessionSignups.docs
+      .filter((entry) => entry.id !== signup.id && entry.data().signupStatus === "waitlisted")
+      .sort((a, b) => Number(a.data().createdAt?.toMillis?.() || 0) - Number(b.data().createdAt?.toMillis?.() || 0))[0];
     transaction.delete(signupRef);
-    transaction.set(statsRef, { sessionId, signupCount: Math.max(0, Number(stats.data()?.signupCount || 1) - 1), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    let signupCount = Math.max(0, Number(stats.data()?.signupCount || 0) - Number(removedStatus !== "waitlisted"));
+    let waitlistCount = Math.max(0, Number(stats.data()?.waitlistCount || 0) - Number(removedStatus === "waitlisted"));
+    if (removedStatus !== "waitlisted" && nextWaitlisted) {
+      transaction.set(nextWaitlisted.ref, { signupStatus: "accepted", promotedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      signupCount += 1;
+      waitlistCount = Math.max(0, waitlistCount - 1);
+    }
+    transaction.set(statsRef, { sessionId, signupCount, waitlistCount, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   });
   return { ok: true };
 });
@@ -228,6 +259,6 @@ exports.syncClassSessionStats = onDocumentWritten({ document: "classSessionSignu
   const sessionId = String(event.data.after.data()?.sessionId || event.data.before.data()?.sessionId || "");
   if (!sessionId) return;
   const firestore = admin.firestore();
-  const count = await getSessionSignupSeedCount(sessionId);
-  await firestore.collection("classSessionStats").doc(sessionId).set({ sessionId, signupCount: count, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  const counts = await getSessionSignupCounts(sessionId);
+  await firestore.collection("classSessionStats").doc(sessionId).set({ sessionId, ...counts, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
 });

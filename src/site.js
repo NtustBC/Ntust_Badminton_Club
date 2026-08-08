@@ -1,4 +1,6 @@
 import { appCheckSiteKey, firebaseConfig } from "./firebase-config.js";
+import { downloadCsv } from "./csv.js";
+import { clearLoadingState, renderLoadingSkeleton, setButtonLoading, showToast } from "./ui.js";
 
 let initializeApp;
 let initializeAppCheck;
@@ -15,6 +17,8 @@ let doc;
 let getDoc;
 let getDocs;
 let getFirestore;
+let getFunctions;
+let httpsCallable;
 let query;
 let runTransaction;
 let serverTimestamp;
@@ -50,6 +54,8 @@ const ensureFirebaseModules = async () => {
         getDoc,
         getDocs,
         getFirestore,
+        getFunctions,
+        httpsCallable,
         query,
         runTransaction,
         serverTimestamp,
@@ -114,11 +120,13 @@ if (firebaseConfigured) {
 
 let auth = null;
 let db = null;
+let functionsClient = null;
 let currentUser = null;
 let currentUserIsAdmin = false;
 let currentMemberStatus = "non_member";
 let currentMemberProfile = null;
 let notificationIndicatorRequestId = 0;
+let notificationRefreshTimer = null;
 let configuredAcademicYear = "";
 let configuredAcademicTerm = "";
 let configuredAcademicPeriodKey = "";
@@ -130,6 +138,7 @@ let membershipPaymentSettings = {
   cashOfficeLabel: "中午至社辦繳費",
   cashClassLabel: "社課現場繳費",
 };
+let classScheduleDefaults = [];
 let authMode = "signin";
 let authReadyPromise = null;
 let lastLoginTrigger = null;
@@ -665,7 +674,7 @@ const adminClassCalendarModalMarkup = `
       </div>
       <div class="modal-body">
         <div class="admin-calendar-modal-list" data-admin-calendar-modal-list></div>
-        <form class="form-grid admin-calendar-event-form" data-admin-calendar-event-form>
+        <form class="form-grid admin-calendar-event-form" data-admin-calendar-event-form hidden>
           <input name="eventId" type="hidden" value="" />
           <p class="admin-calendar-form-state" data-admin-calendar-form-state>這一天還沒有內容，直接填寫下方欄位即可新增。</p>
           <section class="admin-calendar-form-section">
@@ -710,9 +719,10 @@ const adminClassCalendarModalMarkup = `
                 <input id="admin-calendar-event-end-time" name="endTime" step="300" type="time" />
               </div>
             </div>
+            <div class="admin-calendar-default-shortcuts" data-admin-calendar-default-shortcuts hidden></div>
             <div class="form-field">
-              <label for="admin-calendar-event-location">地點</label>
-              <input id="admin-calendar-event-location" name="location" type="text" placeholder="例如：臺科大體育館 2F" required />
+              <label for="admin-calendar-event-location">地點（選填）</label>
+              <input id="admin-calendar-event-location" name="location" type="text" placeholder="例如：臺科大體育館 2F" />
             </div>
           </section>
           <section class="admin-calendar-form-section">
@@ -722,7 +732,7 @@ const adminClassCalendarModalMarkup = `
             </div>
             <div class="form-field">
               <label for="admin-calendar-event-note">備註</label>
-              <textarea id="admin-calendar-event-note" name="note" rows="4" placeholder="例如：請自備球拍與飲用水；若無補充可填無"></textarea>
+              <textarea id="admin-calendar-event-note" name="note" rows="4" placeholder="例如：請自備球拍與飲用水；沒有補充可留空"></textarea>
             </div>
           </section>
           <section class="admin-calendar-form-section admin-calendar-signup-panel" data-admin-calendar-signup-panel>
@@ -1138,6 +1148,20 @@ const loadNotificationItems = async () => {
   if (preferences.registrationUpdates !== false && currentMemberProfile?.membershipStatus === "pending_payment") {
     items.unshift({ id: "membership:pending-payment", title: "社員申請處理中", copy: "幹部確認款項後，系統會更新社員資格。", date: "", sortMs: Date.now() });
   }
+  if (preferences.registrationUpdates !== false && currentMemberProfile?.membershipStatusChange) {
+    const change = currentMemberProfile.membershipStatusChange;
+    const previousStatus = getManagedMembershipStatus(change.previousStatus || "non_member");
+    const nextStatus = getManagedMembershipStatus(change.nextStatus || currentMemberProfile.membershipStatus || "non_member");
+    const changedAtMs = getTimestampMs(change.changedAt);
+    const changeKey = Number.isFinite(changedAtMs) ? String(changedAtMs) : `${previousStatus}-${nextStatus}`;
+    items.unshift({
+      id: `membership-status:${changeKey}:${nextStatus}`,
+      title: `社員狀態已變更：${getMembershipStatusCopy(nextStatus).label}`,
+      copy: `你的社團身分已從「${getMembershipStatusCopy(previousStatus).label}」調整為「${getMembershipStatusCopy(nextStatus).label}」。如有疑問請聯絡社團幹部。`,
+      date: Number.isFinite(changedAtMs) ? new Date(changedAtMs).toLocaleString("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "",
+      sortMs: Number.isFinite(changedAtMs) ? changedAtMs : Date.now(),
+    });
+  }
   items.sort((a, b) => Number(b.sortMs || 0) - Number(a.sortMs || 0));
   return items;
 };
@@ -1146,11 +1170,18 @@ const setNotificationDotVisible = (visible) => {
   document.querySelectorAll(".notification-dot").forEach((dot) => { dot.hidden = !visible; });
 };
 
-const syncNotificationIndicator = async () => {
+const refreshNotificationMemberProfile = async () => {
+  if (!currentUser?.uid || !db) return;
+  const snapshot = await getDoc(getMemberDocRef(currentUser.uid));
+  if (snapshot.exists()) currentMemberProfile = { ...(currentMemberProfile || {}), ...snapshot.data() };
+};
+
+const syncNotificationIndicator = async ({ refreshProfile = false } = {}) => {
   const requestId = ++notificationIndicatorRequestId;
   setNotificationDotVisible(false);
   if (!currentUser?.uid || !db) return;
   try {
+    if (refreshProfile) await refreshNotificationMemberProfile();
     const items = await loadNotificationItems();
     if (requestId !== notificationIndicatorRequestId || !currentUser?.uid) return;
     const dismissedIds = new Set(Array.isArray(currentMemberProfile?.dismissedNotificationIds) ? currentMemberProfile.dismissedNotificationIds : []);
@@ -1167,31 +1198,47 @@ const openNotificationCenter = async () => {
   const list = modal.querySelector("[data-notification-list]");
   modal.hidden = false;
   body.classList.add("modal-open");
-  list.innerHTML = `<p class="content-copy">載入通知中…</p>`;
+  renderLoadingSkeleton(list, { rows: 3, label: "通知載入中" });
   try {
+    await refreshNotificationMemberProfile();
     const dismissedIds = new Set(Array.isArray(currentMemberProfile?.dismissedNotificationIds) ? currentMemberProfile.dismissedNotificationIds : []);
     const items = await loadNotificationItems();
     const visibleItems = items.filter((item) => item.id && !dismissedIds.has(item.id));
-    list.innerHTML = visibleItems.length ? visibleItems.slice(0, 20).map((item) => `
-      <article class="notification-item" data-notification-item data-notification-id="${escapeHtml(item.id)}">
+    list.innerHTML = visibleItems.length ? visibleItems.slice(0, 20).map((item) => {
+      const copy = String(item.copy || "").trim();
+      const hasCopy = copy && copy !== "無";
+      if (!hasCopy) {
+        return `
+          <article class="notification-item" data-notification-item data-notification-id="${escapeHtml(item.id)}">
+            <button class="notification-delete-button" data-dismiss-notification type="button" aria-label="刪除「${escapeHtml(item.title)}」通知">×</button>
+            <h3>${escapeHtml(item.title)}</h3>
+            ${item.date ? `<small>${escapeHtml(item.date)}</small>` : ""}
+          </article>`;
+      }
+      return `
+      <details class="notification-item" data-notification-item data-notification-id="${escapeHtml(item.id)}">
+        <summary class="notification-summary">
+          <span><h3>${escapeHtml(item.title)}</h3>${item.date ? `<small>${escapeHtml(item.date)}</small>` : ""}</span>
+          <span class="notification-expand-label">查看</span>
+        </summary>
         <button class="notification-delete-button" data-dismiss-notification type="button" aria-label="刪除「${escapeHtml(item.title)}」通知">×</button>
-        <h3>${escapeHtml(item.title)}</h3>
-        <p>${escapeHtml(item.copy)}</p>
-        ${item.date ? `<small>${escapeHtml(item.date)}</small>` : ""}
-      </article>
-    `).join("") : `<article class="notification-empty"><h3>目前沒有通知</h3><p>新公告與報名狀態會顯示在這裡。</p></article>`;
-
-    const currentReadIds = Array.isArray(currentMemberProfile?.readNotificationIds) ? currentMemberProfile.readNotificationIds : [];
-    const readNotificationIds = [...new Set([...currentReadIds, ...visibleItems.map((item) => item.id)])].slice(-200);
-    currentMemberProfile = { ...(currentMemberProfile || {}), readNotificationIds };
-    setNotificationDotVisible(false);
-    const readIdsChanged = readNotificationIds.length !== currentReadIds.length
-      || readNotificationIds.some((id, index) => id !== currentReadIds[index]);
-    if (currentUser?.uid && readIdsChanged) {
-      setDoc(getMemberDocRef(currentUser.uid), { readNotificationIds }, { merge: true }).catch((error) => {
-        console.warn("Mark notifications as read failed:", error);
+        <div class="notification-detail"><p>${escapeHtml(copy)}</p></div>
+      </details>`;
+    }).join("") : `<article class="notification-empty"><h3>目前沒有通知</h3><p>新公告與報名狀態會顯示在這裡。</p></article>`;
+    clearLoadingState(list);
+    list.querySelectorAll("[data-notification-item]").forEach((item) => {
+      item.addEventListener("toggle", () => {
+        if (!item.open || !currentUser?.uid) return;
+        const notificationId = String(item.dataset.notificationId || "");
+        const currentReadIds = Array.isArray(currentMemberProfile?.readNotificationIds) ? currentMemberProfile.readNotificationIds : [];
+        if (currentReadIds.includes(notificationId)) return;
+        const readNotificationIds = [...new Set([...currentReadIds, notificationId])].slice(-200);
+        currentMemberProfile = { ...(currentMemberProfile || {}), readNotificationIds };
+        setDoc(getMemberDocRef(currentUser.uid), { readNotificationIds }, { merge: true })
+          .then(() => syncNotificationIndicator())
+          .catch((error) => console.warn("Mark notification as read failed:", error));
       });
-    }
+    });
   } catch (error) {
     list.innerHTML = `<p class="content-copy">通知載入失敗，請稍後再試。</p>`;
   }
@@ -1199,6 +1246,14 @@ const openNotificationCenter = async () => {
 
 const bindNotificationCenter = () => {
   installHeaderAccountControls();
+  if (!notificationRefreshTimer) {
+    notificationRefreshTimer = window.setInterval(() => {
+      if (!document.hidden && currentUser?.uid) void syncNotificationIndicator({ refreshProfile: true });
+    }, PUBLIC_PAGE_REFRESH_MS);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && currentUser?.uid) void syncNotificationIndicator({ refreshProfile: true });
+    });
+  }
   document.addEventListener("click", async (event) => {
     const dismissButton = event.target.closest("[data-dismiss-notification]");
     if (dismissButton) {
@@ -1222,7 +1277,7 @@ const bindNotificationCenter = () => {
       } catch (error) {
         console.error("Dismiss notification failed:", error);
         dismissButton.disabled = false;
-        window.alert(`刪除通知失敗：${error?.message || "請稍後再試一次。"}`);
+        showToast(error?.message || "請稍後再試一次。", { tone: "error", title: "刪除通知失敗" });
       }
       return;
     }
@@ -1817,6 +1872,7 @@ const ensureAuthReady = async () => {
         await setPersistence(auth, browserLocalPersistence);
       }
       db = getFirestore(app);
+      functionsClient = getFunctions ? getFunctions(app, "asia-east1") : null;
     } catch (error) {
       authReadyPromise = null;
       setHint("Firebase SDK 載入失敗，請稍後再試。", "error");
@@ -2248,7 +2304,7 @@ const renderClassSignupModalContent = (sessionId) => {
         <p class="admin-calendar-modal-session-copy">${escapeHtml(session.description || session.reminder || "這一天有社課安排，請依照時間參與。")}</p>
         ${session.reminder ? `<p class="class-session-reminder">提醒：${escapeHtml(session.reminder)}</p>` : ""}
       </article>
-      <div class="class-capacity-summary"><strong>${escapeHtml(getRemainingCapacityMarkup(session))}</strong><span>${escapeHtml(`${signupCount} 人已報名`)}</span></div>
+      <div class="class-capacity-summary"><strong>${escapeHtml(getRemainingCapacityMarkup(session))}</strong><span>${escapeHtml(`${signupCount} 人正取${getSessionWaitlistCount(sessionId) ? `，${getSessionWaitlistCount(sessionId)} 人候補` : ""}`)}</span></div>
       <section class="class-signup-modal-form-shell">
         ${formMarkup}
       </section>
@@ -2314,7 +2370,8 @@ const closeClassSignupModal = () => {
 
 const buildPublicCalendarEventMarkup = (event, { includeSignupAction = false } = {}) => {
   const typeLabel = event.type === "class" ? "社課" : "公告";
-  const note = event.note || "無";
+  const note = String(event.note || "").trim();
+  const hasNote = note && note !== "無";
   const sessionId = event.type === "class" ? getClassSessionId(event.source || {}) : "";
   const canOpenSignup = includeSignupAction && sessionId && Boolean(event.source?.signupRequired);
   const signupButton =
@@ -2332,7 +2389,7 @@ const buildPublicCalendarEventMarkup = (event, { includeSignupAction = false } =
         ${event.timeLabel ? `<span class="member-row-status">${escapeHtml(event.timeLabel)}</span>` : ""}
       </div>
       ${event.location ? `<p class="admin-calendar-modal-session-copy"><strong>地點：</strong>${escapeHtml(event.location)}</p>` : ""}
-      <p class="admin-calendar-modal-session-copy">${escapeHtml(note)}</p>
+      ${hasNote ? `<p class="admin-calendar-modal-session-copy"><strong>備註：</strong>${escapeHtml(note)}</p>` : ""}
       ${signupButton ? `<div class="admin-calendar-modal-session-actions">${signupButton}</div>` : ""}
     </article>
   `;
@@ -2390,6 +2447,8 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   if (!form) {
     return;
   }
+
+  form.hidden = false;
 
   form.reset();
   const eventId = event?.id || "";
@@ -2454,7 +2513,37 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
 
   form.dataset.editingType = event?.type || "";
   form.dataset.editingId = eventId;
+  renderAdminCalendarDefaultShortcuts(form, sourceDate);
 };
+
+function renderAdminCalendarDefaultShortcuts(form, dateKey = "") {
+  const container = form?.querySelector("[data-admin-calendar-default-shortcuts]");
+  if (!container) return;
+  if (!classScheduleDefaults.length) {
+    container.hidden = true;
+    container.innerHTML = "";
+    return;
+  }
+
+  const weekday = getWeekdayKeyFromDateValue(dateKey);
+  const sorted = [...classScheduleDefaults].sort((a, b) => Number(a.weekday !== weekday) - Number(b.weekday !== weekday));
+  container.hidden = false;
+  container.innerHTML = `
+    <span>套用預設社課：</span>
+    ${sorted.map((item, index) => `<button class="class-default-shortcut${item.weekday === weekday ? " is-matching-day" : ""}" data-class-default-shortcut="${index}" type="button">${escapeHtml(`${getWeekdayLabel(item.weekday)} ${item.startTime}–${item.endTime}`)}</button>`).join("")}
+  `;
+  container.querySelectorAll("[data-class-default-shortcut]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = sorted[Number(button.dataset.classDefaultShortcut)];
+      if (!item) return;
+      form.querySelector("[name='startTime']").value = item.startTime;
+      form.querySelector("[name='endTime']").value = item.endTime;
+      if (item.location) form.querySelector("[name='location']").value = item.location;
+      if (item.title && !form.querySelector("[name='title']").value) form.querySelector("[name='title']").value = item.title;
+      showToast("已套用預設社課時間。", { tone: "success" });
+    });
+  });
+}
 
 const openAdminClassCalendarModal = (dateKey, trigger = null) => {
   const { calendarModal, title, subtitle, list, form } = getAdminClassCalendarModalElements();
@@ -2474,16 +2563,12 @@ const openAdminClassCalendarModal = (dateKey, trigger = null) => {
   title.textContent = dateLabel || "行事曆";
   subtitle.textContent = weekdayLabel ? `${weekdayLabel} · ${events.length} 筆內容` : `${events.length} 筆內容`;
 
-  if (events.length === 0) {
-    list.innerHTML = `
-      <p class="admin-calendar-modal-empty">這一天還沒有社課或公告，可以直接在下方新增。</p>
-    `;
-  } else {
-    list.innerHTML = `
+  list.innerHTML = `
       <div class="admin-calendar-modal-list-header">
-        <p class="content-copy">選擇既有內容進行編輯，或新增同一天的另一筆內容。</p>
-        <button class="button-secondary" data-admin-calendar-event-add type="button">新增同日內容</button>
+        <p class="content-copy">${events.length ? "選擇既有內容進行編輯，或新增同一天的另一筆內容。" : "這一天目前沒有社課或公告。"}</p>
+        <button class="button-primary" data-admin-calendar-event-add type="button">新增內容</button>
       </div>
+      ${events.length ? `
       ${events
         .map((event) => {
           const typeLabel = event.type === "class" ? "社課" : "公告";
@@ -2495,12 +2580,13 @@ const openAdminClassCalendarModal = (dateKey, trigger = null) => {
             </button>
           `;
         })
-        .join("")}
+        .join("")}` : ""}
     `;
-  }
 
   if (form) {
-    setAdminCalendarEventForm(null, dateKey);
+    form.reset();
+    form.hidden = true;
+    form.querySelector("[name='date']").value = dateKey;
   }
 
   calendarModal.hidden = false;
@@ -2778,8 +2864,12 @@ const loadCurrentTermSettings = async () => {
       cashClassLabel:
         String(settingsData?.membershipPayment?.cashClassLabel || "").trim() || membershipPaymentSettings.cashClassLabel,
     };
+    classScheduleDefaults = Array.isArray(settingsData?.classScheduleDefaults)
+      ? settingsData.classScheduleDefaults.map(normalizeClassScheduleDefault).filter(Boolean)
+      : [];
     document.querySelectorAll("[data-login-form], [data-account-membership-form]").forEach(syncMembershipPaymentForm);
     syncMembershipPaymentSettingForm();
+    renderClassDefaultSettings();
   } catch (error) {
     console.warn("Load current term settings failed:", error);
   }
@@ -2809,6 +2899,12 @@ const applyAcademicPeriodRolloverIfNeeded = async () => {
         {
           membershipStatus: "former_member",
           status: "former_member",
+          membershipStatusChange: {
+            previousStatus: "formal_member",
+            nextStatus: "former_member",
+            changedAt: serverTimestamp(),
+            changedBy: currentUser?.uid || "system-rollover",
+          },
           membershipIntent: "not_join",
           paymentStatus: "unpaid",
           paymentMethod: "none",
@@ -3186,14 +3282,24 @@ const bindMemberActionButtons = (memberList) => {
           return;
         }
 
+        const previousStatus = getManagedMembershipStatus(
+          membersDashboardCache.members.find((member) => member.id === memberId) || "non_member",
+        );
+        const nextMembershipStatus = isPaid ? "formal_member" : "pending_payment";
         button.disabled = true;
         try {
           await setDoc(
             getMemberDocRef(memberId),
             {
               paymentStatus: nextPaymentStatus,
-              membershipStatus: isPaid ? "formal_member" : "pending_payment",
-              status: isPaid ? "formal_member" : "pending_payment",
+              membershipStatus: nextMembershipStatus,
+              status: nextMembershipStatus,
+              membershipStatusChange: {
+                previousStatus,
+                nextStatus: nextMembershipStatus,
+                changedAt: serverTimestamp(),
+                changedBy: currentUser?.uid || "",
+              },
               paidAt: isPaid ? serverTimestamp() : null,
               paymentConfirmedAt: isPaid ? serverTimestamp() : null,
               paymentConfirmedBy: isPaid ? currentUser?.uid || "" : "",
@@ -3426,6 +3532,12 @@ const bindMemberStatusSelects = (container) => {
       const memberUpdate = {
         membershipStatus: nextStatus,
         status: nextStatus,
+        membershipStatusChange: {
+          previousStatus,
+          nextStatus,
+          changedAt: serverTimestamp(),
+          changedBy: currentUser?.uid || "",
+        },
         paymentStatus: isAdmin ? "not_required" : isFormalMember ? "paid" : "unpaid",
         paidAt: isFormalMember ? serverTimestamp() : null,
         paymentConfirmedAt: isFormalMember ? serverTimestamp() : null,
@@ -3571,6 +3683,7 @@ const renderMembersExportToolbar = (members = []) => {
   }
 
   const filteredMembers = getFilteredMembersForExport(members);
+  const exportableMembers = filteredMembers.filter(isFormalMemberRecord);
   const filterLabel = `${memberFilters.year === "all" ? "全部學年度" : getAcademicYearLabel(memberFilters.year)} / ${
     memberFilters.term === "all" ? "全部學期" : getAcademicTermLabel(memberFilters.term)
   }`;
@@ -3681,6 +3794,7 @@ const renderMembersExportToolbar = (members = []) => {
         <h3 class="content-title">篩選結果名單</h3>
         <p class="content-copy">目前篩選：${escapeHtml(filterLabel)}，共 ${filteredMembers.length} 筆。可直接從下拉選單變更社員狀態。</p>
       </div>
+      <button class="button-primary" data-export-members-csv type="button"${exportableMembers.length ? "" : " disabled"}>匯出社員 CSV（${exportableMembers.length}）</button>
     </div>
     <div class="member-table-wrap">
       <table class="member-table">
@@ -3705,6 +3819,26 @@ const renderMembersExportToolbar = (members = []) => {
   bindMemberStatusSelects(tableCard);
   bindMemberActionButtons(tableCard);
   bindMemberDeleteButtons(tableCard);
+  tableCard.querySelector("[data-export-members-csv]")?.addEventListener("click", () => {
+    const rows = exportableMembers.map((member) => [
+      member.name || "",
+      member.studentId || "",
+      member.department || member.school || "",
+      member.email || "",
+      member.phone || "",
+      getAcademicYearLabel(member.academicYear),
+      getAcademicTermLabel(member.term),
+      getPaymentMethodLabel(member.paymentMethod || "none"),
+      "正式社員",
+    ]);
+    const period = `${memberFilters.year === "all" ? "全部學年度" : memberFilters.year}-${memberFilters.term === "all" ? "全部學期" : memberFilters.term}`;
+    downloadCsv({
+      filename: `臺科大羽球社-社員名單-${period}-${formatDateInputValue(new Date())}.csv`,
+      headers: ["姓名", "學號", "系級", "Email", "電話", "學年度", "學期", "付款方式", "社員狀態"],
+      rows,
+    });
+    showToast(`已匯出 ${rows.length} 位正式社員。`, { tone: "success" });
+  });
 };
 const renderMembersList = (members = []) => {
   const list = document.querySelector("[data-members-list]");
@@ -3919,6 +4053,11 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
   patchMembersFilterUI();
   const expandedMemberKeys = preserveExpandedRows ? getExpandedMemberKeys() : [];
   bindAdminClassCreationForms();
+  if ((force || !membersDashboardCache.loaded) && !membersDashboardLoadPromise) {
+    renderLoadingSkeleton(summary, { rows: 2, label: "管理摘要載入中" });
+    renderLoadingSkeleton(list, { rows: 4, label: "社員名單載入中" });
+    renderLoadingSkeleton(document.querySelector("[data-class-session-calendar]"), { rows: 3, label: "行事曆載入中" });
+  }
 
   try {
     if (force || !membersDashboardCache.loaded) {
@@ -3947,8 +4086,10 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
 
           const earlyDisplayMembers = mergeMembersWithApprovedApplications(members);
           renderMembersSummary(earlyDisplayMembers);
+          clearLoadingState(summary);
           renderMembersExportToolbar(earlyDisplayMembers);
           renderMembersList(earlyDisplayMembers);
+          clearLoadingState(list);
 
           const [classSessions, classSessionSignups, announcements, faqs, faqQuestions] = await supportingDataPromise;
           membersDashboardCache = {
@@ -4120,6 +4261,10 @@ function getSessionSignupCount(sessionId) {
   const stats = classSignupPageState.sessionSignups.find((entry) => String(entry.sessionId || entry.id || "") === String(sessionId || ""));
   return Math.max(0, Number(stats?.signupCount || 0));
 }
+function getSessionWaitlistCount(sessionId) {
+  const stats = classSignupPageState.sessionSignups.find((entry) => String(entry.sessionId || entry.id || "") === String(sessionId || ""));
+  return Math.max(0, Number(stats?.waitlistCount || 0));
+}
 function getRemainingCapacityMarkup(session) {
   const limit = getSessionSignupLimit(session);
   const count = getSessionSignupCount(getClassSessionId(session));
@@ -4275,6 +4420,7 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
 
   return `
     <form class="form-grid class-signup-form" data-class-signup-form data-session-id="${escapeHtml(sessionId)}">
+      ${ownSignup ? `<p class="signup-alert ${ownSignup.signupStatus === "waitlisted" ? "is-waitlisted" : "is-success"}"><strong>${escapeHtml(getSignupStatusLabel(ownSignup))}</strong>${ownSignup.signupStatus === "waitlisted" ? "目前在候補名單中，有人取消時會依順序自動遞補。" : "你的名額已保留。"}</p>` : ""}
       <input type="hidden" name="sessionId" value="${escapeHtml(sessionId)}" />
       <div class="class-signup-profile">
         <div class="form-field">
@@ -4291,7 +4437,7 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
         <textarea id="class-note-${escapeHtml(sessionId)}" name="note" rows="3" placeholder="如果有需要補充的資訊可以寫在這裡">${escapeHtml(noteValue)}</textarea>
       </div>
       <div class="class-signup-actions">
-        <button class="button-primary" data-class-signup-submit type="submit">${ownSignup ? "更新報名" : "送出報名"}</button>
+        <button class="button-primary" data-class-signup-submit type="submit">${ownSignup ? "更新報名資料" : getSessionSignupLimit(session) && getSessionSignupCount(sessionId) >= getSessionSignupLimit(session) ? "加入候補" : "送出報名"}</button>
         ${deleteButton}
       </div>
     </form>
@@ -4443,11 +4589,14 @@ function bindClassSignupBoardEvents() {
       }
 
       try {
-        await deleteClassSessionSignupDirect(sessionId);
+        setButtonLoading(button, true, "取消中…");
+        await deleteClassSessionSignup(sessionId);
         await refreshClassSignupPageSafe({ force: true });
+        showToast("已取消報名；若有候補者，系統會自動依序遞補。", { tone: "success" });
       } catch (error) {
         console.error("Delete class signup failed:", error);
-        window.alert(`刪除報名失敗：${error?.message || "請稍後再試一次。"}`);
+        showToast(error?.message || "請稍後再試一次。", { tone: "error", title: "取消報名失敗" });
+        setButtonLoading(button, false);
       }
     });
   });
@@ -4556,6 +4705,24 @@ async function upsertClassSessionSignupDirect(session, { note = "", name = "", s
   });
 }
 
+async function upsertClassSessionSignup(session, values) {
+  if (functionsClient && httpsCallable) {
+    try {
+      const result = await httpsCallable(functionsClient, "upsertClassSessionSignup")({
+        sessionId: getClassSessionId(session),
+        note: values.note || "",
+      });
+      return result.data || { ok: true, signupStatus: "accepted" };
+    } catch (error) {
+      const code = String(error?.code || "");
+      if (!code.includes("not-found") && !code.includes("unavailable")) throw error;
+      console.warn("Callable signup unavailable; using Firestore transaction fallback.", error);
+    }
+  }
+  await upsertClassSessionSignupDirect(session, values);
+  return { ok: true, signupStatus: "accepted" };
+}
+
 async function deleteClassSessionSignupDirect(sessionId) {
   await ensureAuthReady();
   if (!db || !runTransaction || !currentUser?.uid) {
@@ -4573,6 +4740,20 @@ async function deleteClassSessionSignupDirect(sessionId) {
       transaction.set(statsRef, { sessionId, signupCount, updatedAt: serverTimestamp() }, { merge: true });
     }
   });
+}
+
+async function deleteClassSessionSignup(sessionId) {
+  if (functionsClient && httpsCallable) {
+    try {
+      await httpsCallable(functionsClient, "deleteClassSessionSignup")({ sessionId });
+      return;
+    } catch (error) {
+      const code = String(error?.code || "");
+      if (!code.includes("not-found") && !code.includes("unavailable")) throw error;
+      console.warn("Callable cancellation unavailable; using Firestore transaction fallback.", error);
+    }
+  }
+  await deleteClassSessionSignupDirect(sessionId);
 }
 
 async function handleClassSignupSubmit(event) {
@@ -4593,18 +4774,23 @@ async function handleClassSignupSubmit(event) {
     return;
   }
 
-  submitButton.disabled = true;
+  setButtonLoading(submitButton, true, "送出中…");
 
   try {
-    await upsertClassSessionSignupDirect(session, { note, name, studentId });
+    const result = await upsertClassSessionSignup(session, { note, name, studentId });
 
     await refreshClassSignupPageSafe({ force: true });
+    showToast(result.signupStatus === "waitlisted" ? "本場已額滿，已依順序加入候補名單。" : "社課報名成功。", {
+      tone: result.signupStatus === "waitlisted" ? "info" : "success",
+      title: result.signupStatus === "waitlisted" ? "已加入候補" : "報名完成",
+    });
   } catch (error) {
     console.error("Class signup submit failed:", error);
     const errorCode = String(error?.code || "").replace(/^firestore\//, "");
-    window.alert(`社課報名失敗：${error?.message || "請稍後再試一次。"}${errorCode ? `（${errorCode}）` : ""}`);
+    const offline = !navigator.onLine || errorCode.includes("unavailable") || errorCode.includes("network");
+    showToast(offline ? "網路連線中斷，這次報名尚未寫入，請恢復連線後再試。" : `${error?.message || "請稍後再試一次。"}${errorCode ? `（${errorCode}）` : ""}`, { tone: "error", title: "社課報名失敗" });
   } finally {
-    submitButton.disabled = false;
+    setButtonLoading(submitButton, false);
   }
 }
 
@@ -4630,6 +4816,11 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
     calendar.innerHTML = message;
     if (rosterBoard) rosterBoard.innerHTML = message;
     return;
+  }
+
+  if (force || !classSignupPageState.loaded) {
+    renderLoadingSkeleton(calendar, { rows: 4, label: "社課資料載入中" });
+    if (rosterBoard) renderLoadingSkeleton(rosterBoard, { rows: 3, label: "報名名單載入中" });
   }
 
   try {
@@ -4661,7 +4852,11 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
     }
 
     renderClassCalendarBoard(classSignupPageState.sessions);
-    if (rosterBoard) renderClassRosterBoard(classSignupPageState.sessions);
+    clearLoadingState(calendar);
+    if (rosterBoard) {
+      renderClassRosterBoard(classSignupPageState.sessions);
+      clearLoadingState(rosterBoard);
+    }
     const { calendarModal: classSignupModal } = getClassSignupModalElements();
     const activeSessionId = classSignupModal?.dataset.sessionId || "";
     if (classSignupModal && !classSignupModal.hidden && activeSessionId) {
@@ -4757,7 +4952,6 @@ function renderAnnouncementsBoard(announcements = []) {
                   ${escapeHtml(getAnnouncementTimeLabel(announcement) || (getNoticeEventType(announcement) === "class" ? "社課" : "公告"))}
                 </span>
                 <strong class="announcement-calendar-title">${escapeHtml(announcement.title || (getNoticeEventType(announcement) === "class" ? "社課" : "公告"))}</strong>
-                <small class="announcement-calendar-note">${escapeHtml(announcement.body || announcement.message || announcement.reminder || "")}</small>
               `,
             )
             .join("")}
@@ -4857,6 +5051,10 @@ async function refreshAnnouncementsPageSafe({ force = false } = {}) {
     return;
   }
 
+  if (force || !announcementPageState.loaded) {
+    renderLoadingSkeleton(board, { rows: 4, label: "公告載入中" });
+  }
+
   try {
     const loadWarnings = [];
     if (force || !announcementPageState.loaded) {
@@ -4883,6 +5081,7 @@ async function refreshAnnouncementsPageSafe({ force = false } = {}) {
     }
 
     renderAnnouncementsBoard(announcementPageState.announcements);
+    clearLoadingState(board);
     if (announcementPageState.loadWarnings.length > 0) {
       board.insertAdjacentHTML(
         "afterbegin",
@@ -5174,11 +5373,9 @@ function renderAdminFaqQuestions(questionEntries = []) {
     return;
   }
 
-  const sortedQuestions = [...questionEntries].sort((a, b) => {
-    const statusOrder = { pending: 0, answered: 1 };
-    const statusDifference = (statusOrder[a.status] ?? 2) - (statusOrder[b.status] ?? 2);
-    return statusDifference || getFaqSortMs(b) - getFaqSortMs(a);
-  });
+  const sortedQuestions = questionEntries
+    .filter((entry) => entry.status !== "answered" && !String(entry.answer || "").trim())
+    .sort((a, b) => getFaqSortMs(b) - getFaqSortMs(a));
 
   if (sortedQuestions.length === 0) {
     container.innerHTML = `
@@ -5192,12 +5389,11 @@ function renderAdminFaqQuestions(questionEntries = []) {
 
   container.innerHTML = sortedQuestions
     .map((entry, index) => {
-      const answered = entry.status === "answered" && String(entry.answer || "").trim();
       return `
         <article class="content-card is-tight faq-question-admin-card">
           <div class="faq-question-admin-header">
             <span class="timeline-index">${String(index + 1).padStart(2, "0")}</span>
-            <span class="member-status-badge">${answered ? "已回答" : "待回答"}</span>
+            <span class="member-status-badge">待回答</span>
           </div>
           <h4 class="content-title">${escapeHtml(entry.question || "未填寫問題")}</h4>
           <form class="form-grid faq-form" data-faq-question-answer-form data-question-id="${escapeHtml(entry.id)}">
@@ -5206,7 +5402,7 @@ function renderAdminFaqQuestions(questionEntries = []) {
               <textarea id="faq-question-answer-${escapeHtml(entry.id)}" name="answer" rows="4" placeholder="輸入回答後會發布到 FAQ">${escapeHtml(entry.answer || "")}</textarea>
             </div>
             <div class="application-actions class-admin-actions">
-              <button class="button-primary" type="submit">${answered ? "更新回答" : "發布回答"}</button>
+              <button class="button-primary" type="submit">發布回答</button>
               <button class="button-secondary application-save" data-faq-question-delete data-question-id="${escapeHtml(entry.id)}" type="button">刪除問題</button>
             </div>
           </form>
@@ -5246,15 +5442,7 @@ function bindAdminFaqQuestionActions(container) {
           },
           { merge: true },
         );
-        batch.set(
-          getFaqQuestionDocRef(questionId),
-          {
-            answer,
-            status: "answered",
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true },
-        );
+        batch.delete(getFaqQuestionDocRef(questionId));
         await batch.commit();
         await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
       } catch (error) {
@@ -6132,7 +6320,7 @@ async function handleAdminCalendarEventSubmit(event) {
   const endTime = String(form.querySelector("[name='endTime']")?.value || "").trim();
   const timeLabel = buildEventTimeLabel(startTime, endTime);
   const location = String(form.querySelector("[name='location']")?.value || "").trim();
-  const note = String(form.querySelector("[name='note']")?.value || "").trim() || "無";
+    const note = String(form.querySelector("[name='note']")?.value || "").trim();
   const signupRequired = Boolean(form.querySelector("[name='signupRequired']")?.checked);
   const allowNonMembers = Boolean(form.querySelector("[name='allowNonMembers']")?.checked);
   const signupOpenAt = String(form.querySelector("[name='signupOpenAt']")?.value || "").trim();
@@ -6140,34 +6328,34 @@ async function handleAdminCalendarEventSubmit(event) {
   const signupLimit = Number(form.querySelector("[name='signupLimit']")?.value || 0);
   const weekday = getWeekdayKeyFromDateValue(date);
 
-  if (!date || !title || !location) {
-    window.alert("請先填寫標題、日期與地點。");
+  if (!date || !title) {
+    showToast("請先填寫標題與日期。", { tone: "error", title: "資料尚未完整" });
     return;
   }
 
   if ((startTime && !endTime) || (!startTime && endTime)) {
-    window.alert("開始時間與結束時間請一起填寫，或兩者都留空。");
+    showToast("開始時間與結束時間請一起填寫，或兩者都留空。", { tone: "error" });
     return;
   }
 
   if (eventType === "announcement" && endDate < date) {
-    window.alert("公告結束日期不能早於開始日期。");
+    showToast("公告結束日期不能早於開始日期。", { tone: "error" });
     form.querySelector("[name='endDate']")?.focus();
     return;
   }
 
   if (startTime && endTime && date === endDate && startTime >= endTime) {
-    window.alert("結束時間必須晚於開始時間。");
+    showToast("結束時間必須晚於開始時間。", { tone: "error" });
     return;
   }
 
   if (signupRequired && signupOpenAt && signupCloseAt && getDateTimeLocalMs(signupOpenAt) >= getDateTimeLocalMs(signupCloseAt)) {
-    window.alert("報名截止時間必須晚於報名開始時間。");
+    showToast("報名截止時間必須晚於報名開始時間。", { tone: "error" });
     form.querySelector("[name='signupCloseAt']")?.focus();
     return;
   }
 
-  submitButton.disabled = true;
+  setButtonLoading(submitButton, true, "儲存中…");
 
   try {
     if (eventType === "announcement") {
@@ -6232,9 +6420,9 @@ async function handleAdminCalendarEventSubmit(event) {
     });
   } catch (error) {
     console.error("Save calendar event failed:", error);
-    window.alert(`儲存失敗：${error?.message || "請稍後再試一次。"}`);
+    showToast(error?.message || "請稍後再試一次。", { tone: "error", title: "儲存失敗" });
   } finally {
-    submitButton.disabled = false;
+    setButtonLoading(submitButton, false);
   }
 }
 
@@ -7059,6 +7247,81 @@ const bindMembershipPaymentSetting = () => {
   });
 };
 
+const normalizeClassScheduleDefault = (value = {}) => {
+  const weekday = DATE_WEEKDAY_ORDER.includes(String(value.weekday || "")) ? String(value.weekday) : "";
+  const startTime = String(value.startTime || "").trim();
+  const endTime = String(value.endTime || "").trim();
+  if (!weekday || !/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime) || startTime >= endTime) return null;
+  return {
+    weekday,
+    startTime,
+    endTime,
+    title: String(value.title || "社課").trim().slice(0, 100),
+    location: String(value.location || "").trim().slice(0, 200),
+  };
+};
+
+const getClassDefaultRowMarkup = (item = {}) => `
+  <div class="class-default-row" data-class-default-row>
+    <div class="form-field"><label>星期</label><select name="weekday">${DATE_WEEKDAY_ORDER.map((key) => `<option value="${key}"${item.weekday === key ? " selected" : ""}>${escapeHtml(getWeekdayLabel(key))}</option>`).join("")}</select></div>
+    <div class="form-field"><label>開始</label><input name="startTime" type="time" step="300" value="${escapeHtml(item.startTime || "")}" required /></div>
+    <div class="form-field"><label>結束</label><input name="endTime" type="time" step="300" value="${escapeHtml(item.endTime || "")}" required /></div>
+    <div class="form-field"><label>標題</label><input name="title" type="text" value="${escapeHtml(item.title || "社課")}" /></div>
+    <div class="form-field"><label>地點（選填）</label><input name="location" type="text" value="${escapeHtml(item.location || "")}" /></div>
+    <button class="member-delete-button" data-class-default-remove type="button">移除</button>
+  </div>
+`;
+
+const renderClassDefaultSettings = () => {
+  const list = document.querySelector("[data-class-default-list]");
+  if (!list) return;
+  list.innerHTML = (classScheduleDefaults.length ? classScheduleDefaults : [{ weekday: "fri", startTime: "", endTime: "", title: "社課", location: "" }])
+    .map(getClassDefaultRowMarkup)
+    .join("");
+  list.querySelectorAll("[data-class-default-remove]").forEach((button) => button.addEventListener("click", () => button.closest("[data-class-default-row]")?.remove()));
+};
+
+const bindClassDefaultSettings = () => {
+  const form = document.querySelector("[data-class-default-form]");
+  const addButton = document.querySelector("[data-class-default-add]");
+  if (!(form instanceof HTMLFormElement) || form.dataset.bound === "true") return;
+  form.dataset.bound = "true";
+  renderClassDefaultSettings();
+  addButton?.addEventListener("click", () => {
+    const list = form.querySelector("[data-class-default-list]");
+    list?.insertAdjacentHTML("beforeend", getClassDefaultRowMarkup({ weekday: "fri", title: "社課" }));
+    list?.lastElementChild?.querySelector("[data-class-default-remove]")?.addEventListener("click", (event) => event.currentTarget.closest("[data-class-default-row]")?.remove());
+  });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const rows = [...form.querySelectorAll("[data-class-default-row]")];
+    const parsed = rows.map((row) => normalizeClassScheduleDefault({
+      weekday: row.querySelector("[name='weekday']")?.value,
+      startTime: row.querySelector("[name='startTime']")?.value,
+      endTime: row.querySelector("[name='endTime']")?.value,
+      title: row.querySelector("[name='title']")?.value,
+      location: row.querySelector("[name='location']")?.value,
+    }));
+    if (parsed.some((item) => !item)) {
+      setMessageTone(form.querySelector("[data-class-default-hint]"), "請確認每個時段都有星期、開始與結束時間，且結束晚於開始。", "error");
+      return;
+    }
+    const submitButton = form.querySelector("[data-class-default-save]");
+    setButtonLoading(submitButton, true, "儲存中…");
+    try {
+      await setDoc(getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC), { classScheduleDefaults: parsed, updatedAt: serverTimestamp(), updatedBy: currentUser?.uid || "" }, { merge: true });
+      classScheduleDefaults = parsed;
+      setMessageTone(form.querySelector("[data-class-default-hint]"), "預設社課時間已儲存。", "success");
+      showToast("行事曆新增快捷鍵已更新。", { tone: "success" });
+    } catch (error) {
+      setMessageTone(form.querySelector("[data-class-default-hint]"), `儲存失敗：${error?.message || "請稍後再試。"}`, "error");
+      showToast(error?.message || "請稍後再試。", { tone: "error", title: "儲存失敗" });
+    } finally {
+      setButtonLoading(submitButton, false);
+    }
+  });
+};
+
 const bindOpenButtons = () => {
   rememberLoginButtonLabels();
 
@@ -7333,6 +7596,7 @@ const activateCurrentPage = async () => {
   bindOpenButtons();
   bindAcademicYearSetting();
   bindMembershipPaymentSetting();
+  bindClassDefaultSettings();
   bindFaqQuestionForm();
   initFaqAccordion();
   initMembersAutoRefresh();
@@ -7480,6 +7744,7 @@ const init = async () => {
   bindOpenButtons();
   bindAcademicYearSetting();
   bindMembershipPaymentSetting();
+  bindClassDefaultSettings();
   syncGlobalNavigationLabels();
   initMenu();
   initLanguageSwitcher();
