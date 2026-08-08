@@ -2168,6 +2168,30 @@ body.spa-navigating .page-main {
   color: var(--brand);
 }
 
+.class-signup-member-toggle {
+  min-width: 2.5rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.class-signup-member-toggle::after {
+  content: "展開";
+}
+
+.class-signup-member-row[open] .class-signup-member-toggle {
+  color: var(--brand);
+}
+
+.class-signup-member-row[open] .class-signup-member-toggle::after {
+  content: "收合";
+}
+
+.class-signup-member-row .member-row-detail .member-row-email {
+  margin-top: 18px;
+}
+
 .member-row-detail {
   padding: 0 24px 24px;
   border-top: 1px solid rgba(15, 76, 129, 0.08);
@@ -3758,6 +3782,7 @@ button.admin-calendar-day:focus-visible {
 .notification-bell[hidden] { display: none; }
 .notification-bell svg { width: 22px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 .notification-dot { position: absolute; top: 7px; right: 7px; width: 8px; height: 8px; border: 2px solid #fff; border-radius: 50%; background: #e54343; }
+.notification-dot[hidden] { display: none; }
 .account-menu-root {
   --account-avatar-background: #d9edff;
   --account-avatar-border: rgba(15, 84, 160, 0.18);
@@ -3792,11 +3817,7 @@ button.admin-calendar-day:focus-visible {
 .account-popover-divider { height: 1px; margin: 2px 4px 8px; background: rgba(15, 76, 129, 0.12); }
 .account-popover button { display: flex; width: 100%; gap: 12px; align-items: center; padding: 12px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
 .account-popover button:hover, .account-popover button:focus-visible { background: rgba(15, 84, 160, 0.07); outline: none; }
-.verification-code-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
 .form-help { display: block; margin-top: 7px; color: #667085; }
-.registration-code-display { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding: 12px 14px; border: 1px dashed #0f54a0; border-radius: 10px; background: #f2f7fd; color: #0f54a0; }
-.registration-code-display[hidden] { display: none; }
-.registration-code-display strong { font-size: 1.35rem; letter-spacing: 0.3em; }
 .privacy-consent-option { display: flex; gap: 10px; align-items: flex-start; padding: 14px; border: 1px solid rgba(15, 84, 160, 0.18); border-radius: 12px; background: rgba(15, 84, 160, 0.04); line-height: 1.6; }
 .privacy-consent-option input { margin-top: 5px; flex: 0 0 auto; }
 .privacy-consent-option a { margin: 0 4px; color: var(--color-primary, #0f54a0); font-weight: 700; }
@@ -3821,7 +3842,6 @@ button.admin-calendar-day:focus-visible {
 .class-capacity-summary { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin: 14px 0; padding: 13px 16px; border-radius: 12px; background: rgba(15, 84, 160, 0.08); color: #0f54a0; }
 
 @media (max-width: 560px) {
-  .verification-code-row { grid-template-columns: 1fr; }
   .account-popover { position: fixed; top: 76px; right: 14px; }
   .notification-modal-dialog .modal-header { padding: 20px; }
   .notification-modal-dialog .modal-body { padding: 16px 20px; }

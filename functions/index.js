@@ -10,9 +10,6 @@ const REGION = "asia-east1";
 const BOOTSTRAP_ADMIN_EMAIL = "admin@gmail.com";
 const PASSWORD_RESET_WINDOW_MS = 60 * 60 * 1000;
 const PASSWORD_RESET_MAX_ATTEMPTS = 5;
-const REGISTRATION_CODE_TTL_MS = 10 * 60 * 1000;
-const REGISTRATION_CODE_COOLDOWN_MS = 60 * 1000;
-const REGISTRATION_CODE_MAX_ATTEMPTS = 5;
 
 function normalizedEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -22,98 +19,6 @@ function hasFormalMembership(member = {}, approvalExists = false) {
   const status = String(member.membershipStatus || member.status || "").trim().toLowerCase();
   return approvalExists || member.paymentStatus === "paid" || ["formal_member", "formal", "approved", "member"].includes(status);
 }
-
-function hashRegistrationCode(salt, code) {
-  return crypto.createHash("sha256").update(`${salt}:${code}`).digest("hex");
-}
-
-function validateRegistrationProfile(profile = {}) {
-  const result = {
-    name: String(profile.name || "").trim(),
-    studentId: String(profile.studentId || "").trim().toUpperCase(),
-    department: String(profile.department || "").trim(),
-    phone: String(profile.phone || "").trim(),
-    membershipIntent: profile.membershipIntent === "join" ? "join" : "not_join",
-    paymentMethod: String(profile.paymentMethod || "none"),
-    cashPaymentSlot: String(profile.cashPaymentSlot || ""),
-    transferAt: String(profile.transferAt || ""),
-    transferLastFive: String(profile.transferLastFive || ""),
-  };
-  if (!result.name || !result.studentId || !result.department || !result.phone) {
-    throw new HttpsError("invalid-argument", "請完整填寫姓名、學號、系別與聯絡電話。");
-  }
-  if (result.name.length > 100 || result.studentId.length > 30 || result.department.length > 100 || result.phone.length > 30) {
-    throw new HttpsError("invalid-argument", "個人資料欄位長度超過限制。");
-  }
-  return result;
-}
-
-exports.requestRegistrationCode = onCall({ region: REGION }, async (request) => {
-  const email = normalizedEmail(request.data?.email);
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
-    throw new HttpsError("invalid-argument", "請輸入有效的電子郵件信箱。");
-  }
-  try {
-    await admin.auth().getUserByEmail(email);
-    throw new HttpsError("already-exists", "這個 Email 已經註冊過了，請直接登入。");
-  } catch (error) {
-    if (error instanceof HttpsError) throw error;
-    if (error?.code !== "auth/user-not-found") throw new HttpsError("internal", "暫時無法驗證信箱。");
-  }
-
-  const key = crypto.createHash("sha256").update(email).digest("hex");
-  const ref = admin.firestore().collection("registrationVerifications").doc(key);
-  const existing = await ref.get();
-  const now = Date.now();
-  if (existing.exists && now - Number(existing.data().lastSentAtMs || 0) < REGISTRATION_CODE_COOLDOWN_MS) {
-    throw new HttpsError("resource-exhausted", "請稍候 1 分鐘再重新產生驗證碼。");
-  }
-  const code = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
-  const salt = crypto.randomBytes(16).toString("hex");
-  await ref.set({ email, salt, codeHash: hashRegistrationCode(salt, code), expiresAtMs: now + REGISTRATION_CODE_TTL_MS, lastSentAtMs: now, attempts: 0, createdAt: admin.firestore.FieldValue.serverTimestamp() });
-  return { ok: true, code, expiresInSeconds: REGISTRATION_CODE_TTL_MS / 1000 };
-});
-
-exports.completeVerifiedRegistration = onCall({ region: REGION }, async (request) => {
-  const email = normalizedEmail(request.data?.email);
-  const password = String(request.data?.password || "");
-  const code = String(request.data?.verificationCode || "").trim();
-  const privacyConsent = request.data?.privacyConsent === true;
-  const profile = validateRegistrationProfile(request.data?.profile);
-  if (!privacyConsent) throw new HttpsError("failed-precondition", "必須同意個人資料蒐集說明才能註冊。");
-  if (password.length < 8 || password.length > 128 || !/^\d{6}$/.test(code)) throw new HttpsError("invalid-argument", "密碼或驗證碼格式不正確。");
-
-  const key = crypto.createHash("sha256").update(email).digest("hex");
-  const ref = admin.firestore().collection("registrationVerifications").doc(key);
-  const verification = await ref.get();
-  const data = verification.exists ? verification.data() : {};
-  if (!verification.exists || Date.now() > Number(data.expiresAtMs || 0) || data.email !== email) throw new HttpsError("deadline-exceeded", "驗證碼已失效，請重新產生。");
-  if (Number(data.attempts || 0) >= REGISTRATION_CODE_MAX_ATTEMPTS) throw new HttpsError("resource-exhausted", "驗證次數過多，請重新產生驗證碼。");
-  if (hashRegistrationCode(data.salt, code) !== data.codeHash) {
-    await ref.update({ attempts: admin.firestore.FieldValue.increment(1) });
-    throw new HttpsError("permission-denied", "驗證碼不正確。");
-  }
-
-  let user;
-  try {
-    user = await admin.auth().createUser({ email, password, emailVerified: true, displayName: profile.name });
-    const membershipStatus = profile.membershipIntent === "join" ? "pending_payment" : "not_applied";
-    await admin.firestore().collection("members").doc(user.uid).set({
-      uid: user.uid, email, ...profile, school: profile.department,
-      membershipStatus, status: membershipStatus, paymentStatus: "unpaid",
-      notificationPreferences: { announcements: true, classReminders: true, registrationUpdates: true },
-      privacyConsent: { version: "2026-08-07", accepted: true, acceptedAt: admin.firestore.FieldValue.serverTimestamp() },
-      source: "verified_signup", createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(), lastLoginAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    await ref.delete();
-    return { ok: true };
-  } catch (error) {
-    if (user?.uid) await admin.auth().deleteUser(user.uid).catch(() => {});
-    if (error?.code === "auth/email-already-exists") throw new HttpsError("already-exists", "這個 Email 已經註冊過了。");
-    logger.error("Verified registration failed.", { error: error?.message || String(error) });
-    throw new HttpsError("internal", "建立帳號失敗，請稍後再試。");
-  }
-});
 
 function normalizeIdentityText(value) {
   return String(value || "").trim().replace(/\s+/g, "").toLowerCase();
