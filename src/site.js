@@ -2142,7 +2142,7 @@ const getAdminCalendarEventsForDate = (dateKey) => {
     .map((session) => ({
       type: "class",
       id: getClassSessionId(session),
-      title: session.title || "未命名社課",
+      title: session.title || "未命名內容",
       timeLabel: getClassSessionTimeLabel(session),
       location: session.location || "",
       note: session.reminder || session.description || "",
@@ -2154,7 +2154,7 @@ const getAdminCalendarEventsForDate = (dateKey) => {
     .map((announcement) => ({
       type: "announcement",
       id: getAdminCalendarAnnouncementId(announcement),
-      title: announcement.title || "未命名公告",
+      title: announcement.title || "未命名內容",
       timeLabel: getAnnouncementTimeLabel(announcement),
       location: announcement.location || "",
       note: getAnnouncementNote(announcement),
@@ -2372,7 +2372,6 @@ const closeClassSignupModal = () => {
 };
 
 const buildPublicCalendarEventMarkup = (event, { includeSignupAction = false } = {}) => {
-  const typeLabel = event.type === "class" ? "社課" : "公告";
   const note = String(event.note || "").trim();
   const hasNote = note && note !== "無";
   const sessionId = event.type === "class" ? getClassSessionId(event.source || {}) : "";
@@ -2386,8 +2385,7 @@ const buildPublicCalendarEventMarkup = (event, { includeSignupAction = false } =
     <article class="admin-calendar-modal-session">
       <div class="admin-calendar-modal-session-head">
         <div>
-          <p class="admin-calendar-modal-session-weekday">${escapeHtml(typeLabel)}</p>
-          <h3 class="admin-calendar-modal-session-title">${escapeHtml(event.title || `${typeLabel}內容`)}</h3>
+          <h3 class="admin-calendar-modal-session-title">${escapeHtml(event.title || "未命名內容")}</h3>
         </div>
         ${event.timeLabel ? `<span class="member-row-status">${escapeHtml(event.timeLabel)}</span>` : ""}
       </div>
@@ -2575,10 +2573,8 @@ const openAdminClassCalendarModal = (dateKey, trigger = null) => {
       ${events.length ? `
       ${events
         .map((event) => {
-          const typeLabel = event.type === "class" ? "社課" : "公告";
           return `
             <button class="admin-calendar-event-chip is-${escapeHtml(event.type)}" data-admin-calendar-event-edit type="button" data-event-type="${escapeHtml(event.type)}" data-event-id="${escapeHtml(event.id)}">
-              <span>${escapeHtml(typeLabel)}</span>
               <strong>${escapeHtml(event.title)}</strong>
               <small>${event.timeLabel ? escapeHtml(event.timeLabel) : "不指定時間"}${event.location ? ` · ${escapeHtml(event.location)}` : ""}</small>
             </button>
@@ -4964,10 +4960,7 @@ function renderAnnouncementsBoard(announcements = []) {
           ${dayAnnouncements
             .map(
               (announcement) => `
-                <span class="admin-calendar-day-badge${getNoticeEventType(announcement) === "announcement" ? " is-announcement" : ""}">
-                  ${escapeHtml(getAnnouncementTimeLabel(announcement) || (getNoticeEventType(announcement) === "class" ? "社課" : "公告"))}
-                </span>
-                <strong class="announcement-calendar-title">${escapeHtml(announcement.title || (getNoticeEventType(announcement) === "class" ? "社課" : "公告"))}</strong>
+                <strong class="announcement-calendar-title">${escapeHtml(announcement.title || "未命名內容")}</strong>
               `,
             )
             .join("")}
@@ -6005,9 +5998,12 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
     const dateKey = formatDateInputValue(date);
     const daySessions = (sessionsByDate[dateKey] || []).sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
     const dayAnnouncements = announcementsByDate[dateKey] || [];
-    const sessionCount = daySessions.length;
+    const dayEvents = [
+      ...daySessions.map((session) => ({ title: session.title || "未命名內容", sortMs: getClassSessionSortMs(session) })),
+      ...dayAnnouncements.map((announcement) => ({ title: announcement.title || "未命名內容", sortMs: getAnnouncementSortMs(announcement) })),
+    ].sort((a, b) => a.sortMs - b.sortMs || a.title.localeCompare(b.title, "zh-Hant"));
+    const eventCount = dayEvents.length;
     const announcementCount = dayAnnouncements.length;
-    const eventCount = sessionCount + announcementCount;
     const isToday = dateKey === todayKey;
 
     cells.push(`
@@ -6020,8 +6016,7 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
         <span class="admin-calendar-day-number">${escapeHtml(String(day))}</span>
         ${eventCount > 0 ? `<span class="admin-calendar-day-marker" aria-hidden="true"></span>` : ""}
         <span class="admin-calendar-day-events">
-          ${sessionCount > 0 ? `<span class="admin-calendar-day-badge">${escapeHtml(`${sessionCount} 社課`)}</span>` : ""}
-          ${announcementCount > 0 ? `<span class="admin-calendar-day-badge is-announcement">${escapeHtml(`${announcementCount} 公告`)}</span>` : ""}
+          ${dayEvents.map((event) => `<strong class="announcement-calendar-title">${escapeHtml(event.title)}</strong>`).join("")}
         </span>
       </button>
     `);
