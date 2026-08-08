@@ -99,6 +99,7 @@ const CLASS_SIGNUP_COLLECTION = "classSessionSignups";
 const CLASS_PUBLIC_ROSTER_COLLECTION = "classPublicRosters";
 const CLASS_SESSION_STATS_COLLECTION = "classSessionStats";
 const CLASS_ANNOUNCEMENT_COLLECTION = "classAnnouncements";
+const ADMIN_NOTIFICATION_COLLECTION = "adminNotifications";
 const FAQ_COLLECTION = "faqEntries";
 const FAQ_QUESTION_COLLECTION = "faqQuestions";
 const SITE_SETTINGS_COLLECTION = "siteSettings";
@@ -360,32 +361,43 @@ const loginModalMarkup = `
         </div>
 
         <form class="form-grid account-membership-form" data-personal-profile-form hidden>
-          <div class="section-kicker">個人化與帳號設定</div>
-          <div class="class-signup-profile">
-            <div class="form-field"><label for="profile-display-name">顯示名稱</label><input id="profile-display-name" name="displayName" maxlength="60" type="text" placeholder="顯示在帳號選單中的名稱" /></div>
-            <div class="form-field"><label for="profile-name">姓名</label><input id="profile-name" name="name" type="text" autocomplete="name" required /></div>
-            <div class="form-field"><label for="profile-student-id">學號</label><input id="profile-student-id" name="studentId" type="text" required /></div>
-            <div class="form-field"><label for="profile-department">系別</label><input id="profile-department" name="department" type="text" required /></div>
-            <div class="form-field"><label for="profile-phone">聯絡電話</label><input id="profile-phone" name="phone" type="tel" autocomplete="tel" required /></div>
+          <div class="account-settings-overview">
+            <span class="account-popover-icon"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 21a7.5 7.5 0 0 1 15 0"></path></svg></span>
+            <span><strong data-account-settings-name>帳號資料</strong><small data-account-settings-email></small></span>
           </div>
-          <fieldset class="membership-choice-fieldset">
-            <legend>通知設定</legend>
-            <p class="login-note">勾選想在網站鈴鐺中收到的通知類型。</p>
+          <section class="account-settings-section">
+            <div><p class="section-kicker">基本資料</p><p class="login-note">這些資料會用於社員資格及社課報名核對。</p></div>
+            <div class="class-signup-profile">
+              <div class="form-field"><label for="profile-display-name">顯示名稱</label><input id="profile-display-name" name="displayName" maxlength="60" type="text" placeholder="顯示在帳號選單中的名稱" /></div>
+              <div class="form-field"><label for="profile-name">姓名</label><input id="profile-name" name="name" type="text" autocomplete="name" required /></div>
+              <div class="form-field"><label for="profile-student-id">學號</label><input id="profile-student-id" name="studentId" type="text" required /></div>
+              <div class="form-field"><label for="profile-department">系別</label><input id="profile-department" name="department" type="text" required /></div>
+              <div class="form-field"><label for="profile-phone">聯絡電話</label><input id="profile-phone" name="phone" type="tel" autocomplete="tel" required /></div>
+            </div>
+          </section>
+          <section class="account-settings-section">
+            <div><p class="section-kicker">通知偏好</p><p class="login-note">選擇要在網站右上角收到的內容。</p></div>
             <div class="notification-preference-grid">
               <label><input name="notificationAnnouncements" type="checkbox" /> 社團公告</label>
               <label><input name="notificationClassReminders" type="checkbox" /> 社課提醒與異動</label>
               <label><input name="notificationRegistrationUpdates" type="checkbox" /> 報名與候補狀態</label>
             </div>
-          </fieldset>
+          </section>
           <p class="login-note" data-personal-profile-hint></p>
           <div class="account-membership-actions">
             <button class="button-primary" type="submit">儲存個人設定</button>
             <button class="button-secondary" data-open-membership-settings type="button">社員申請設定</button>
             <button class="button-secondary" data-personal-profile-cancel type="button">取消</button>
           </div>
+          <section class="account-danger-zone">
+            <div><strong>刪除帳號</strong><p>將永久刪除登入帳號、個人資料、入社申請及社課報名紀錄，且無法復原。</p></div>
+            <button class="member-delete-button" data-delete-own-account type="button">永久刪除帳號</button>
+          </section>
         </form>
 
         <form class="form-grid" data-login-form id="login-form" novalidate>
+          <section class="auth-signup-section auth-credential-section">
+            <div><p class="section-kicker">登入資訊</p><p class="login-note">使用常用電子郵件並設定至少 8 個字元的密碼。</p></div>
           <div class="form-field">
             <label for="login-email">電子郵件</label>
             <input id="login-email" name="email" placeholder="your@email.com" type="email" autocomplete="email" />
@@ -413,30 +425,26 @@ const loginModalMarkup = `
               autocomplete="new-password"
             />
           </div>
+          </section>
           <div class="auth-signup-profile" data-auth-signup-profile hidden>
-            <div class="form-field">
-              <label for="signup-name">姓名</label>
-              <input id="signup-name" name="name" placeholder="王小明" type="text" autocomplete="name" />
-            </div>
-            <div class="form-field">
-              <label for="signup-student-id">學號</label>
-              <input id="signup-student-id" name="studentId" placeholder="B11303044" type="text" />
-            </div>
-            <div class="form-field">
-              <label for="signup-department">系別</label>
-              <input id="signup-department" name="department" placeholder="機械系" type="text" />
-            </div>
-            <div class="form-field">
-              <label for="signup-phone">聯絡電話</label>
-              <input id="signup-phone" name="phone" placeholder="09xx-xxx-xxx" type="tel" autocomplete="tel" />
-            </div>
+            <section class="auth-signup-section">
+              <div><p class="section-kicker">基本資料</p><p class="login-note">請填寫可供社員資格與報名核對的資料。</p></div>
+              <div class="class-signup-profile">
+                <div class="form-field"><label for="signup-name">姓名</label><input id="signup-name" name="name" placeholder="王小明" type="text" autocomplete="name" /></div>
+                <div class="form-field"><label for="signup-student-id">學號</label><input id="signup-student-id" name="studentId" placeholder="B11303044" type="text" /></div>
+                <div class="form-field"><label for="signup-department">系別</label><input id="signup-department" name="department" placeholder="機械系" type="text" /></div>
+                <div class="form-field"><label for="signup-phone">聯絡電話</label><input id="signup-phone" name="phone" placeholder="09xx-xxx-xxx" type="tel" autocomplete="tel" /></div>
+              </div>
+            </section>
+            <section class="auth-signup-section">
+              <div><p class="section-kicker">社員資格</p><p class="login-note">選擇本學期是否申請社員，之後仍可在帳號設定中修改。</p></div>
             <fieldset class="membership-choice-fieldset">
               <legend>本學期是否申請成為社員？</legend>
               <p class="login-note">建立帳號不等於取得社員資格，只有選擇申請並經幹部確認收款後才會成為社員。</p>
               <div class="membership-choice-grid">
                 <label class="membership-choice-option">
                   <input name="membershipIntent" type="radio" value="join" />
-                  <span><strong>是，我要申請社員</strong><small>社費確認後，參加社課不必每次繳零打費，並可比非社員提早約兩天報名，較有機會保留名額。</small></span>
+                  <span><strong>是，我要申請社員</strong><small>社費確認後，參加社課不必每次繳零打費，並享有社員優先報名時段，較有機會保留名額。</small></span>
                 </label>
                 <label class="membership-choice-option">
                   <input name="membershipIntent" type="radio" value="not_join" checked />
@@ -491,6 +499,7 @@ const loginModalMarkup = `
               <input name="privacyConsent" type="checkbox" />
               <span>我已閱讀並同意<a href="./privacy.html" target="_blank" rel="noreferrer">隱私權政策與個人資料蒐集聲明</a>，並同意社團基於帳號、社員資格、活動報名及通知目的使用上述資料。</span>
             </label>
+            </section>
           </div>
           <p class="login-note" data-login-hint>${authCopy.signin.hint}</p>
         </form>
@@ -500,7 +509,7 @@ const loginModalMarkup = `
           <fieldset class="membership-choice-fieldset">
             <legend>本學期是否申請成為社員？</legend>
             <div class="membership-choice-grid">
-              <label class="membership-choice-option"><input name="membershipIntent" type="radio" value="join" /><span><strong>申請社員資格</strong><small>完成社費繳納後，參加社課不必每次繳零打費，並可提早約兩天報名。</small></span></label>
+              <label class="membership-choice-option"><input name="membershipIntent" type="radio" value="join" /><span><strong>申請社員資格</strong><small>完成社費繳納後，參加社課不必每次繳零打費，並享有社員優先報名時段。</small></span></label>
               <label class="membership-choice-option"><input name="membershipIntent" type="radio" value="not_join" /><span><strong>維持非社員</strong><small>社員優先報名後仍有名額才能參加，且每次到場需另繳單次零打費。</small></span></label>
             </div>
           </fieldset>
@@ -746,19 +755,22 @@ const adminClassCalendarModalMarkup = `
                 <input name="signupRequired" type="checkbox" checked />
                 <span><strong>社課需要報名</strong><small>開啟後，社員需先完成線上報名</small></span>
               </label>
-              <label class="admin-calendar-signup-toggle">
-                <input name="allowNonMembers" type="checkbox" />
-                <span><strong>開放非社員報名</strong><small>未具正式社員資格的帳號也能參加</small></span>
-              </label>
+              <div class="admin-calendar-signup-toggle">
+                <span><strong>分階段開放報名</strong><small>先開放社員，再於第二階段讓社員與非社員一起報名</small></span>
+              </div>
             </div>
             <div class="admin-calendar-signup-settings" data-admin-calendar-signup-settings>
               <div class="admin-calendar-signup-time-grid">
                 <div class="form-field">
-                  <label for="admin-calendar-signup-open">報名開始</label>
-                  <input id="admin-calendar-signup-open" name="signupOpenAt" type="datetime-local" />
+                  <label for="admin-calendar-member-signup-open">① 社員報名開始</label>
+                  <input id="admin-calendar-member-signup-open" name="memberSignupOpenAt" type="datetime-local" />
                 </div>
                 <div class="form-field">
-                  <label for="admin-calendar-signup-close">報名截止</label>
+                  <label for="admin-calendar-public-signup-open">② 社員與非社員皆可報名</label>
+                  <input id="admin-calendar-public-signup-open" name="publicSignupOpenAt" type="datetime-local" />
+                </div>
+                <div class="form-field">
+                  <label for="admin-calendar-signup-close">③ 報名截止</label>
                   <input id="admin-calendar-signup-close" name="signupCloseAt" type="datetime-local" />
                 </div>
               </div>
@@ -935,6 +947,12 @@ const formatDateKey = (value, options = {}) => {
     weekday: options.weekday,
   });
 };
+const formatNotificationDate = (value) => {
+  const directDate = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseDateKey(value) : null;
+  const timestampMs = directDate ? directDate.getTime() : getTimestampMs(value);
+  if (!Number.isFinite(timestampMs)) return "";
+  return new Date(timestampMs).toLocaleDateString("zh-TW", { month: "long", day: "numeric" });
+};
 const buildSelectOptionsMarkup = (options = [], selectedValue = "") =>
   options
     .map((option) => {
@@ -1105,15 +1123,33 @@ const closeAccountMenus = (except = null) => {
 };
 
 const openAccountSettings = async (trigger = null) => {
-  await openLoginModal(trigger);
-  const { loginModal, statusCard, accountMembershipForm, personalProfileForm, authSubmit } = getLoginModalElements();
+  const { loginModal, loginForm, statusCard, accountMembershipForm, personalProfileForm, authSubmit, authSwitch } = getLoginModalElements();
+  lastLoginTrigger = trigger || null;
+  closeMobileNav();
+  if (firebaseConfigured) {
+    await ensureAuthReady();
+    if (auth?.currentUser) {
+      currentUser = auth.currentUser;
+      await Promise.all([loadAdminStatus(currentUser), loadCurrentMemberStatus(currentUser)]);
+      writeAuthSnapshot(currentUser, currentUserIsAdmin);
+    }
+  }
+  if (!currentUser) {
+    await openLoginModal(trigger);
+    return;
+  }
+  loginForm.hidden = true;
   statusCard.hidden = true;
   accountMembershipForm.hidden = true;
+  authSwitch.hidden = true;
   populatePersonalProfileForm(personalProfileForm);
   personalProfileForm.hidden = false;
   authSubmit.hidden = true;
   loginModal.querySelector(".modal-title").textContent = "帳號設定";
-  loginModal.querySelector("[data-auth-subtitle]").textContent = "修改個人化資訊、基本資料與站內通知偏好。";
+  loginModal.querySelector("[data-auth-subtitle]").textContent = "管理個人資料、社員申請、通知偏好與帳號安全。";
+  loginModal.dataset.view = "account-settings";
+  loginModal.hidden = false;
+  body.classList.add("modal-open");
 };
 
 const loadNotificationItems = async () => {
@@ -1126,7 +1162,7 @@ const loadNotificationItems = async () => {
         id: `announcement:${entry.id}`,
         title: entry.title || "社團公告",
         copy: entry.body || entry.message || entry.reminder || entry.note || entry.description || "請查看最新公告內容。",
-        date: formatDateKey(entry.date || entry.startDate || ""),
+        date: entry.date || entry.startDate || entry.createdAt,
         sortMs: getAnnouncementSortMs(entry),
       });
     });
@@ -1141,13 +1177,14 @@ const loadNotificationItems = async () => {
           id: `class:${getClassSessionId(entry)}`,
           title: entry.title || "社課提醒",
           copy: entry.description || entry.reminder || [getClassSessionTimeLabel(entry), entry.location].filter(Boolean).join(" · ") || "請查看社課日期與內容。",
-          date: formatDateKey(entry.date || entry.sessionDate || ""),
+          date: entry.date || entry.sessionDate || entry.createdAt,
           sortMs: getClassSessionSortMs(entry),
         });
       });
   }
   if (preferences.registrationUpdates !== false && currentMemberProfile?.membershipStatus === "pending_payment") {
-    items.unshift({ id: "membership:pending-payment", title: "社員申請處理中", copy: "幹部確認款項後，系統會更新社員資格。", date: "", sortMs: Date.now() });
+    const pendingDate = currentMemberProfile.paymentSubmittedAt || currentMemberProfile.updatedAt || currentMemberProfile.createdAt || new Date();
+    items.unshift({ id: "membership:pending-payment", title: "社員申請處理中", copy: "幹部確認款項後，系統會更新社員資格。", date: pendingDate, sortMs: getTimestampMs(pendingDate) });
   }
   if (preferences.registrationUpdates !== false && currentMemberProfile?.membershipStatusChange) {
     const change = currentMemberProfile.membershipStatusChange;
@@ -1159,8 +1196,21 @@ const loadNotificationItems = async () => {
       id: `membership-status:${changeKey}:${nextStatus}`,
       title: `社員狀態已變更：${getMembershipStatusCopy(nextStatus).label}`,
       copy: `你的社團身分已從「${getMembershipStatusCopy(previousStatus).label}」調整為「${getMembershipStatusCopy(nextStatus).label}」。如有疑問請聯絡社團幹部。`,
-      date: Number.isFinite(changedAtMs) ? new Date(changedAtMs).toLocaleString("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "",
+      date: Number.isFinite(changedAtMs) ? changedAtMs : new Date(),
       sortMs: Number.isFinite(changedAtMs) ? changedAtMs : Date.now(),
+    });
+  }
+  if (currentUserIsAdmin) {
+    const adminNotifications = await getCollectionEntries(ADMIN_NOTIFICATION_COLLECTION);
+    adminNotifications.slice(0, 50).forEach((entry) => {
+      const createdAtMs = getTimestampMs(entry.createdAt);
+      items.push({
+        id: `admin:${entry.id}`,
+        title: entry.title || "管理通知",
+        copy: entry.message || entry.copy || "請查看最新管理事件。",
+        date: entry.createdAt || new Date(),
+        sortMs: Number.isFinite(createdAtMs) ? createdAtMs : Date.now(),
+      });
     });
   }
   items.sort((a, b) => Number(b.sortMs || 0) - Number(a.sortMs || 0));
@@ -1208,18 +1258,19 @@ const openNotificationCenter = async () => {
     list.innerHTML = visibleItems.length ? visibleItems.slice(0, 20).map((item) => {
       const copy = String(item.copy || "").trim();
       const hasCopy = copy && copy !== "無";
+      const dateLabel = formatNotificationDate(item.date || item.sortMs);
       if (!hasCopy) {
         return `
           <article class="notification-item" data-notification-item data-notification-id="${escapeHtml(item.id)}">
             <button class="notification-delete-button" data-dismiss-notification type="button" aria-label="刪除「${escapeHtml(item.title)}」通知">×</button>
             <h3>${escapeHtml(item.title)}</h3>
-            ${item.date ? `<small>${escapeHtml(item.date)}</small>` : ""}
+            ${dateLabel ? `<small>${escapeHtml(dateLabel)}</small>` : ""}
           </article>`;
       }
       return `
       <details class="notification-item" data-notification-item data-notification-id="${escapeHtml(item.id)}">
         <summary class="notification-summary">
-          <span><h3>${escapeHtml(item.title)}</h3>${item.date ? `<small>${escapeHtml(item.date)}</small>` : ""}</span>
+          <span><h3>${escapeHtml(item.title)}</h3>${dateLabel ? `<small>${escapeHtml(dateLabel)}</small>` : ""}</span>
           <span class="notification-expand-label">查看</span>
         </summary>
         <button class="notification-delete-button" data-dismiss-notification type="button" aria-label="刪除「${escapeHtml(item.title)}」通知">×</button>
@@ -1954,6 +2005,7 @@ const ensureAuthReady = async () => {
 const openLoginModal = async (trigger) => {
   const { loginModal, emailInput } = getLoginModalElements();
   lastLoginTrigger = trigger || null;
+  loginModal.dataset.view = "auth";
   loginModal.hidden = false;
   body.classList.add("modal-open");
   closeMobileNav();
@@ -2464,7 +2516,14 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   form.querySelector("[name='endTime']").value = event?.source?.endTime || legacyTimeParts.endTime;
   form.querySelector("[name='location']").value = event?.location || event?.source?.location || "";
   form.querySelector("[name='note']").value = event?.note || "";
-  form.querySelector("[name='signupOpenAt']").value = event?.type === "class" ? formatDateTimeLocalValue(event.source?.signupOpenAt) : "";
+  const legacyMemberOpenAt = event?.source?.memberSignupOpenAt || event?.source?.signupOpenAt;
+  const legacyPublicOpenAt = event?.source?.publicSignupOpenAt || (
+    event?.source?.allowNonMembers && legacyMemberOpenAt
+      ? new Date(getDateTimeLocalMs(legacyMemberOpenAt) + NON_MEMBER_SIGNUP_DELAY_MS)
+      : ""
+  );
+  form.querySelector("[name='memberSignupOpenAt']").value = event?.type === "class" ? formatDateTimeLocalValue(legacyMemberOpenAt) : "";
+  form.querySelector("[name='publicSignupOpenAt']").value = event?.type === "class" ? formatDateTimeLocalValue(legacyPublicOpenAt) : "";
   form.querySelector("[name='signupCloseAt']").value = event?.type === "class" ? formatDateTimeLocalValue(event.source?.signupCloseAt) : "";
   form.querySelector("[name='signupLimit']").value = event?.type === "class" ? event.source?.signupLimit || "" : "";
 
@@ -4197,13 +4256,28 @@ function groupClassSignupsBySession(signups = []) {
   }, {});
 }
 
+function getMemberSignupOpenMs(session = {}) {
+  return getDateTimeLocalMs(session.memberSignupOpenAt || session.signupOpenAt);
+}
+
+function getPublicSignupOpenMs(session = {}) {
+  const configuredPublicMs = getDateTimeLocalMs(session.publicSignupOpenAt);
+  if (configuredPublicMs) return configuredPublicMs;
+  const legacyMemberMs = getMemberSignupOpenMs(session);
+  return session.allowNonMembers === true && legacyMemberMs ? legacyMemberMs + NON_MEMBER_SIGNUP_DELAY_MS : null;
+}
+
 function isClassSignupWindowOpen(session) {
   const now = Date.now();
-  const configuredOpenMs = getDateTimeLocalMs(session.signupOpenAt);
-  const openMs = configuredOpenMs && !hasFormalMemberAccess(classSignupPageState.approval)
-    ? configuredOpenMs + NON_MEMBER_SIGNUP_DELAY_MS
-    : configuredOpenMs;
+  const isFormalMember = hasFormalMemberAccess(classSignupPageState.approval);
+  const openMs = isFormalMember
+    ? getMemberSignupOpenMs(session)
+    : getPublicSignupOpenMs(session);
   const closeMs = getDateTimeLocalMs(session.signupCloseAt);
+
+  if (!isFormalMember && !openMs) {
+    return false;
+  }
 
   if (openMs && now < openMs) {
     return false;
@@ -4229,8 +4303,9 @@ function isClassSignupWindowOpen(session) {
 function isNonMemberPriorityWindow(session) {
   if (hasFormalMemberAccess(classSignupPageState.approval)) return false;
   const now = Date.now();
-  const openMs = getDateTimeLocalMs(session.signupOpenAt);
-  return Boolean(openMs && now >= openMs && now < openMs + NON_MEMBER_SIGNUP_DELAY_MS);
+  const memberOpenMs = getMemberSignupOpenMs(session);
+  const publicOpenMs = getPublicSignupOpenMs(session);
+  return Boolean(memberOpenMs && publicOpenMs && now >= memberOpenMs && now < publicOpenMs);
 }
 
 function getSessionSignupLimit(session = {}) {
@@ -4356,6 +4431,10 @@ function renderClassCalendarBoard(sessions = []) {
       const signupCount = getSessionSignupCount(sessionId);
       const signupLimit = getSessionSignupLimit(session);
       const signupCountLabel = signupLimit ? `${signupCount} / ${signupLimit} 人` : `${signupCount} 人已報名`;
+      const publicSignupOpenMs = getPublicSignupOpenMs(session);
+      const signupAudienceLabel = publicSignupOpenMs && Date.now() >= publicSignupOpenMs
+        ? "社員與非社員皆可報名"
+        : "社員優先報名中";
 
       return `
         <button class="content-card is-tight class-signup-date-card" data-open-class-signup-session data-session-id="${escapeHtml(sessionId)}" type="button">
@@ -4368,7 +4447,7 @@ function renderClassCalendarBoard(sessions = []) {
             </div>
             <span class="member-row-status">開放報名</span>
           </div>
-          <p class="content-copy">${escapeHtml(signupCountLabel)}，${session.allowNonMembers ? "社員與非社員皆可報名" : "僅限正式社員報名"}。</p>
+          <p class="content-copy">${escapeHtml(signupCountLabel)}，${escapeHtml(signupAudienceLabel)}。</p>
         </button>
       `;
     })
@@ -4423,7 +4502,7 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
   if (!signupOpen) {
     return `
       <div class="class-session-locked">
-        <p class="content-copy">${isNonMemberPriorityWindow(session) ? "目前為社員優先報名期間。非社員將在社員開放報名約兩天後，於仍有剩餘名額時開放報名。" : "這場社課尚未開放報名，請稍後再回來查看。"}</p>
+        <p class="content-copy">${isNonMemberPriorityWindow(session) ? "目前為社員優先報名期間。非社員請於管理員設定的全面開放時間後再報名。" : "這場社課尚未開放報名，請稍後再回來查看。"}</p>
       </div>
     `;
   }
@@ -4718,21 +4797,12 @@ async function upsertClassSessionSignupDirect(session, { note = "", name = "", s
 }
 
 async function upsertClassSessionSignup(session, values) {
-  if (functionsClient && httpsCallable) {
-    try {
-      const result = await httpsCallable(functionsClient, "upsertClassSessionSignup")({
-        sessionId: getClassSessionId(session),
-        note: values.note || "",
-      });
-      return result.data || { ok: true, signupStatus: "accepted" };
-    } catch (error) {
-      const code = String(error?.code || "");
-      if (!code.includes("not-found") && !code.includes("unavailable")) throw error;
-      console.warn("Callable signup unavailable; using Firestore transaction fallback.", error);
-    }
-  }
-  await upsertClassSessionSignupDirect(session, values);
-  return { ok: true, signupStatus: "accepted" };
+  if (!functionsClient || !httpsCallable) throw new Error("報名服務目前無法使用，請稍後再試。");
+  const result = await httpsCallable(functionsClient, "upsertClassSessionSignup")({
+    sessionId: getClassSessionId(session),
+    note: values.note || "",
+  });
+  return result.data || { ok: true, signupStatus: "accepted" };
 }
 
 async function deleteClassSessionSignupDirect(sessionId) {
@@ -4755,17 +4825,8 @@ async function deleteClassSessionSignupDirect(sessionId) {
 }
 
 async function deleteClassSessionSignup(sessionId) {
-  if (functionsClient && httpsCallable) {
-    try {
-      await httpsCallable(functionsClient, "deleteClassSessionSignup")({ sessionId });
-      return;
-    } catch (error) {
-      const code = String(error?.code || "");
-      if (!code.includes("not-found") && !code.includes("unavailable")) throw error;
-      console.warn("Callable cancellation unavailable; using Firestore transaction fallback.", error);
-    }
-  }
-  await deleteClassSessionSignupDirect(sessionId);
+  if (!functionsClient || !httpsCallable) throw new Error("取消報名服務目前無法使用，請稍後再試。");
+  await httpsCallable(functionsClient, "deleteClassSessionSignup")({ sessionId });
 }
 
 async function handleClassSignupSubmit(event) {
@@ -6331,10 +6392,10 @@ async function handleAdminCalendarEventSubmit(event) {
   const endTime = String(form.querySelector("[name='endTime']")?.value || "").trim();
   const timeLabel = buildEventTimeLabel(startTime, endTime);
   const location = String(form.querySelector("[name='location']")?.value || "").trim();
-    const note = String(form.querySelector("[name='note']")?.value || "").trim();
+  const note = String(form.querySelector("[name='note']")?.value || "").trim();
   const signupRequired = Boolean(form.querySelector("[name='signupRequired']")?.checked);
-  const allowNonMembers = Boolean(form.querySelector("[name='allowNonMembers']")?.checked);
-  const signupOpenAt = String(form.querySelector("[name='signupOpenAt']")?.value || "").trim();
+  const memberSignupOpenAt = String(form.querySelector("[name='memberSignupOpenAt']")?.value || "").trim();
+  const publicSignupOpenAt = String(form.querySelector("[name='publicSignupOpenAt']")?.value || "").trim();
   const signupCloseAt = String(form.querySelector("[name='signupCloseAt']")?.value || "").trim();
   const signupLimit = Number(form.querySelector("[name='signupLimit']")?.value || 0);
   const weekday = getWeekdayKeyFromDateValue(date);
@@ -6360,9 +6421,17 @@ async function handleAdminCalendarEventSubmit(event) {
     return;
   }
 
-  if (signupRequired && signupOpenAt && signupCloseAt && getDateTimeLocalMs(signupOpenAt) >= getDateTimeLocalMs(signupCloseAt)) {
-    showToast("報名截止時間必須晚於報名開始時間。", { tone: "error" });
-    form.querySelector("[name='signupCloseAt']")?.focus();
+  if (eventType === "class" && signupRequired && (!memberSignupOpenAt || !publicSignupOpenAt || !signupCloseAt)) {
+    showToast("請完整設定社員開始、全面開放與報名截止三個時間。", { tone: "error" });
+    return;
+  }
+
+  if (eventType === "class" && signupRequired && !(
+    getDateTimeLocalMs(memberSignupOpenAt) < getDateTimeLocalMs(publicSignupOpenAt)
+    && getDateTimeLocalMs(publicSignupOpenAt) < getDateTimeLocalMs(signupCloseAt)
+  )) {
+    showToast("三個報名時間必須依序為：社員開始、全面開放、報名截止。", { tone: "error" });
+    form.querySelector("[name='publicSignupOpenAt']")?.focus();
     return;
   }
 
@@ -6407,8 +6476,10 @@ async function handleAdminCalendarEventSubmit(event) {
           description: note,
           reminder: note,
           signupRequired,
-          allowNonMembers: signupRequired && allowNonMembers,
-          signupOpenAt,
+          allowNonMembers: signupRequired && Boolean(publicSignupOpenAt),
+          memberSignupOpenAt,
+          publicSignupOpenAt,
+          signupOpenAt: memberSignupOpenAt,
           signupCloseAt,
           signupLimit: Number.isFinite(signupLimit) && signupLimit > 0 ? Math.floor(signupLimit) : null,
           rosterPublished: existing?.exists() ? Boolean(existing.data()?.rosterPublished) : false,
@@ -6581,6 +6652,10 @@ function bindAdminClassCreationForms() {
 const populatePersonalProfileForm = (form) => {
   if (!(form instanceof HTMLFormElement)) return;
   const profile = currentMemberProfile || {};
+  const settingsName = form.querySelector("[data-account-settings-name]");
+  const settingsEmail = form.querySelector("[data-account-settings-email]");
+  if (settingsName) settingsName.textContent = profile.displayName || profile.name || getMembershipStatusCopy(getCurrentMembershipStatus()).label;
+  if (settingsEmail) settingsEmail.textContent = `${currentUser?.email || ""} · ${getMembershipStatusCopy(getCurrentMembershipStatus()).label}`;
   ["displayName", "name", "studentId", "department", "phone"].forEach((key) => {
     const input = form.elements.namedItem(key);
     if (input instanceof HTMLInputElement) input.value = profile[key] || (key === "department" ? profile.school || "" : key === "displayName" ? profile.name || "" : "");
@@ -6627,6 +6702,38 @@ const handlePersonalProfileSubmit = async (event) => {
     setMessageTone(hint, "個人資料與通知設定已儲存。", "success");
   } catch (error) {
     setMessageTone(hint, error?.message || "儲存失敗，請稍後再試。", "error");
+  }
+};
+
+const handleDeleteOwnAccount = async (event) => {
+  const button = event.currentTarget;
+  if (!currentUser?.uid) return;
+  const confirmed = window.confirm("確定要永久刪除帳號嗎？\n\n個人資料、入社申請與社課報名紀錄都會刪除，而且無法復原。");
+  if (!confirmed) return;
+
+  setButtonLoading(button, true, "刪除中…");
+  try {
+    await ensureAuthReady();
+    if (!functionsClient || !httpsCallable) throw new Error("帳號服務目前無法使用，請稍後再試。");
+    await httpsCallable(functionsClient, "deleteOwnAccount")({});
+    try {
+      await signOut(auth);
+    } catch (error) {
+      // The server has already removed the Authentication account.
+    }
+    currentUser = null;
+    currentUserIsAdmin = false;
+    currentMemberProfile = null;
+    currentMemberStatus = "non_member";
+    writeAuthSnapshot(null);
+    updateLoginButtons();
+    closeLoginModal();
+    showToast("帳號與相關資料已永久刪除。", { tone: "success", title: "帳號已刪除" });
+  } catch (error) {
+    console.error("Delete own account failed:", error);
+    showToast(error?.message || "請稍後再試一次。", { tone: "error", title: "刪除帳號失敗" });
+  } finally {
+    setButtonLoading(button, false);
   }
 };
 
@@ -6927,8 +7034,16 @@ const handleAccountMembershipSubmit = async (event) => {
     );
     await loadCurrentMemberStatus(currentUser);
     updateLoginButtons();
-    updateAuthView();
-    setMessageTone(hint, "社員申請資料已更新。", "success");
+    const personalProfileForm = getLoginModalElements().personalProfileForm;
+    if (getLoginModalElements().loginModal.dataset.view === "account-settings") {
+      form.hidden = true;
+      populatePersonalProfileForm(personalProfileForm);
+      personalProfileForm.hidden = false;
+      showToast("社員申請資料已更新。", { tone: "success" });
+    } else {
+      updateAuthView();
+      setMessageTone(hint, "社員申請資料已更新。", "success");
+    }
   } catch (error) {
     console.error("Update membership application failed:", error);
     setMessageTone(hint, `儲存失敗：${error?.message || "請稍後再試一次。"}`, "error");
@@ -6955,6 +7070,7 @@ const bindLoginModalEvents = () => {
     accountMembershipForm.scrollIntoView({ behavior: "smooth", block: "start" });
   });
   personalProfileForm.addEventListener("submit", handlePersonalProfileSubmit);
+  personalProfileForm.querySelector("[data-delete-own-account]")?.addEventListener("click", handleDeleteOwnAccount);
   editPersonalProfileButton.addEventListener("click", () => {
     accountMembershipForm.hidden = true;
     populatePersonalProfileForm(personalProfileForm);
@@ -6969,6 +7085,10 @@ const bindLoginModalEvents = () => {
   });
   accountMembershipForm.querySelector("[data-account-membership-cancel]")?.addEventListener("click", () => {
     accountMembershipForm.hidden = true;
+    if (loginModal.dataset.view === "account-settings") {
+      populatePersonalProfileForm(personalProfileForm);
+      personalProfileForm.hidden = false;
+    }
   });
   authSubmit.addEventListener("click", async () => {
     if (authSubmit.dataset.authAction === "signout") {

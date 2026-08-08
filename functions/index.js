@@ -11,7 +11,7 @@ const CALLABLE_OPTIONS = { region: REGION, enforceAppCheck: true };
 const CLASS_SIGNUP_CALLABLE_OPTIONS = { region: REGION, enforceAppCheck: false };
 const PASSWORD_RESET_WINDOW_MS = 60 * 60 * 1000;
 const PASSWORD_RESET_MAX_ATTEMPTS = 5;
-const NON_MEMBER_SIGNUP_DELAY_MS = 2 * 24 * 60 * 60 * 1000;
+const LEGACY_NON_MEMBER_SIGNUP_DELAY_MS = 2 * 24 * 60 * 60 * 1000;
 
 function normalizedEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -130,7 +130,10 @@ exports.deleteMemberAccount = onCall(CALLABLE_OPTIONS, async (request) => {
     firestore.collection("passwordResetRateLimits").doc(crypto.createHash("sha256").update(targetEmail).digest("hex")),
   );
   applicationsSnapshot.docs.forEach((snapshot) => writer.delete(snapshot.ref));
-  signupsSnapshot.docs.forEach((snapshot) => writer.delete(snapshot.ref));
+  signupsSnapshot.docs.forEach((snapshot) => {
+    writer.delete(snapshot.ref);
+    writer.delete(firestore.collection("classPublicRosters").doc(snapshot.id));
+  });
   await writer.close();
 
   logger.info("Member Authentication account deleted by administrator.", {
@@ -139,6 +142,57 @@ exports.deleteMemberAccount = onCall(CALLABLE_OPTIONS, async (request) => {
     deletedEmail: targetEmail,
   });
   return { ok: true, uid, email: targetEmail };
+});
+
+exports.deleteOwnAccount = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (request) => {
+  const uid = request.auth?.uid;
+  const email = normalizedEmail(request.auth?.token?.email);
+  if (!uid || !email) {
+    throw new HttpsError("unauthenticated", "請先登入後再刪除帳號。");
+  }
+
+  const firestore = admin.firestore();
+  const [adminSnapshot, memberSnapshot, applicationsSnapshot, signupsSnapshot] = await Promise.all([
+    firestore.collection("admins").doc(uid).get(),
+    firestore.collection("members").doc(uid).get(),
+    firestore.collection("applications").where("email", "==", email).get(),
+    firestore.collection("classSessionSignups").where("userId", "==", uid).get(),
+  ]);
+  if (adminSnapshot.exists) {
+    throw new HttpsError("failed-precondition", "管理員帳號不可從前台自行刪除，請先移交管理權限。");
+  }
+
+  const member = memberSnapshot.exists ? memberSnapshot.data() : {};
+  const name = String(member.displayName || member.name || "未提供姓名").trim().slice(0, 100);
+
+  try {
+    await admin.auth().deleteUser(uid);
+  } catch (error) {
+    if (error?.code !== "auth/user-not-found") {
+      logger.error("Failed to delete own Authentication account.", { uid, error: error?.message || String(error) });
+      throw new HttpsError("internal", "Authentication 帳號刪除失敗，請稍後再試。");
+    }
+  }
+
+  const writer = firestore.bulkWriter();
+  writer.delete(firestore.collection("members").doc(uid));
+  writer.delete(firestore.collection("signupApprovals").doc(email));
+  writer.delete(firestore.collection("passwordResetRateLimits").doc(crypto.createHash("sha256").update(email).digest("hex")));
+  applicationsSnapshot.docs.forEach((snapshot) => writer.delete(snapshot.ref));
+  signupsSnapshot.docs.forEach((snapshot) => writer.delete(snapshot.ref));
+  writer.set(firestore.collection("adminNotifications").doc(), {
+    type: "account_deleted",
+    title: "使用者已刪除帳號",
+    message: `${name}（${email}）已自行刪除網站帳號。`,
+    userId: uid,
+    email,
+    name,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  await writer.close();
+
+  logger.info("Member deleted own account.", { uid, email });
+  return { ok: true };
 });
 
 async function getSessionSignupSeedCount(sessionId) {
@@ -188,14 +242,21 @@ exports.upsertClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (
     if (!isAdmin && !isFormalMember && session.allowNonMembers !== true) throw new HttpsError("permission-denied", "本場社課僅限正式社員報名。");
     if (session.signupRequired !== true) throw new HttpsError("failed-precondition", "這場社課不需要報名。");
     const now = Date.now();
-    const openAt = parseClubDateTime(session.signupOpenAt);
+    const memberOpenAt = parseClubDateTime(session.memberSignupOpenAt || session.signupOpenAt);
+    const configuredPublicOpenAt = parseClubDateTime(session.publicSignupOpenAt);
+    const publicOpenAt = Number.isFinite(configuredPublicOpenAt)
+      ? configuredPublicOpenAt
+      : Number.isFinite(memberOpenAt) && session.allowNonMembers === true
+        ? memberOpenAt + LEGACY_NON_MEMBER_SIGNUP_DELAY_MS
+        : Number.NaN;
     const closeAt = parseClubDateTime(session.signupCloseAt);
-    const effectiveOpenAt = Number.isFinite(openAt) && !isAdmin && !isFormalMember
-      ? openAt + NON_MEMBER_SIGNUP_DELAY_MS
-      : openAt;
+    const effectiveOpenAt = !isAdmin && !isFormalMember ? publicOpenAt : memberOpenAt;
+    if (!isAdmin && !isFormalMember && !Number.isFinite(publicOpenAt)) {
+      throw new HttpsError("failed-precondition", "這場社課尚未設定非社員報名時間。");
+    }
     if ((Number.isFinite(effectiveOpenAt) && now < effectiveOpenAt) || (Number.isFinite(closeAt) && now > closeAt)) {
-      throw new HttpsError("failed-precondition", !isAdmin && !isFormalMember && Number.isFinite(openAt) && now >= openAt
-        ? "目前為社員優先報名期間，非社員將於兩天後開放報名。"
+      throw new HttpsError("failed-precondition", !isAdmin && !isFormalMember && Number.isFinite(memberOpenAt) && now >= memberOpenAt
+        ? "目前為社員優先報名期間，請於社員與非社員皆可報名的時間再試。"
         : "目前不在報名期間內。");
     }
 

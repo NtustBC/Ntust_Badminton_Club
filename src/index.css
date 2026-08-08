@@ -1654,6 +1654,68 @@ body.spa-navigating .page-main {
   border-top: 1px solid rgba(15, 76, 129, 0.12);
 }
 
+.auth-signup-profile,
+.auth-signup-section,
+.account-settings-section {
+  display: grid;
+  gap: 16px;
+}
+
+.auth-signup-profile[hidden] {
+  display: none;
+}
+
+.auth-signup-section,
+.account-settings-section {
+  padding: 20px;
+  border: 1px solid rgba(15, 76, 129, 0.1);
+  border-radius: var(--radius-md);
+  background: rgba(248, 251, 255, 0.76);
+}
+
+.auth-signup-section .section-kicker,
+.auth-signup-section .login-note,
+.account-settings-section .section-kicker,
+.account-settings-section .login-note {
+  margin: 0;
+}
+
+.account-settings-overview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: var(--radius-md);
+  background: rgba(15, 76, 129, 0.06);
+}
+
+.account-settings-overview > span:last-child {
+  display: grid;
+  gap: 3px;
+}
+
+.account-settings-overview small {
+  color: var(--muted);
+}
+
+.account-danger-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 12px;
+  padding: 18px;
+  border: 1px solid rgba(180, 35, 24, 0.2);
+  border-radius: var(--radius-md);
+  background: rgba(180, 35, 24, 0.05);
+}
+
+.account-danger-zone p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 .account-membership-actions,
 .member-payment-cell {
   display: flex;
@@ -3165,7 +3227,7 @@ button.admin-calendar-day:focus-visible {
 
 .admin-calendar-signup-time-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -3958,6 +4020,8 @@ button.admin-calendar-day:focus-visible {
   .member-table-wrap, .table-wrap, .responsive-table { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; -webkit-overflow-scrolling: touch; }
   .class-default-row { grid-template-columns: 1fr 1fr; }
   .class-default-row .member-delete-button { grid-column: 1 / -1; }
+  .account-danger-zone { align-items: stretch; flex-direction: column; }
+  .account-danger-zone .member-delete-button { width: 100%; }
   .admin-section-nav { top: 4.5rem; overflow-x: auto; flex-wrap: nowrap; }
   .admin-section-nav a { flex: 0 0 auto; }
 }
