@@ -93,6 +93,7 @@ const MIN_ACADEMIC_YEAR = 115;
 const APPLICATION_SUBMIT_COOLDOWN_MS = 10 * 60 * 1000;
 const MEMBERS_DASHBOARD_REFRESH_MS = 60 * 1000;
 const PUBLIC_PAGE_REFRESH_MS = 60 * 1000;
+const NON_MEMBER_SIGNUP_DELAY_MS = 2 * 24 * 60 * 60 * 1000;
 const CLASS_SESSION_COLLECTION = "classSessions";
 const CLASS_SIGNUP_COLLECTION = "classSessionSignups";
 const CLASS_PUBLIC_ROSTER_COLLECTION = "classPublicRosters";
@@ -435,11 +436,11 @@ const loginModalMarkup = `
               <div class="membership-choice-grid">
                 <label class="membership-choice-option">
                   <input name="membershipIntent" type="radio" value="join" />
-                  <span><strong>是，我要申請社員</strong><small>接著選擇繳費方式</small></span>
+                  <span><strong>是，我要申請社員</strong><small>社費確認後，參加社課不必每次繳零打費，並可比非社員提早約兩天報名，較有機會保留名額。</small></span>
                 </label>
                 <label class="membership-choice-option">
                   <input name="membershipIntent" type="radio" value="not_join" checked />
-                  <span><strong>否，只建立帳號</strong><small>帳號狀態會是非社員</small></span>
+                  <span><strong>否，只建立帳號（非社員）</strong><small>需等社員優先報名期結束，仍有名額才能報名；每次到場需另外繳交單次零打費。</small></span>
                 </label>
               </div>
             </fieldset>
@@ -499,8 +500,8 @@ const loginModalMarkup = `
           <fieldset class="membership-choice-fieldset">
             <legend>本學期是否申請成為社員？</legend>
             <div class="membership-choice-grid">
-              <label class="membership-choice-option"><input name="membershipIntent" type="radio" value="join" /><span><strong>是</strong><small>申請社員資格</small></span></label>
-              <label class="membership-choice-option"><input name="membershipIntent" type="radio" value="not_join" /><span><strong>否</strong><small>維持非社員</small></span></label>
+              <label class="membership-choice-option"><input name="membershipIntent" type="radio" value="join" /><span><strong>申請社員資格</strong><small>完成社費繳納後，參加社課不必每次繳零打費，並可提早約兩天報名。</small></span></label>
+              <label class="membership-choice-option"><input name="membershipIntent" type="radio" value="not_join" /><span><strong>維持非社員</strong><small>社員優先報名後仍有名額才能參加，且每次到場需另繳單次零打費。</small></span></label>
             </div>
           </fieldset>
           <div class="membership-payment-fields" data-membership-payment-fields hidden>
@@ -2237,7 +2238,9 @@ const getPublicClassSignupModalState = (session) => {
   const canSignup = Boolean(currentUser) && (isFormalMember || Boolean(session.allowNonMembers));
   const isSignupSession = Boolean(session.signupRequired);
   const signupOpen = isSignupSession && isClassSignupWindowOpen(session);
-  const statusLabel = isSignupSession ? (signupOpen ? "開放報名" : "尚未開放") : "固定社課";
+  const statusLabel = isSignupSession
+    ? signupOpen ? "開放報名" : isNonMemberPriorityWindow(session) ? "社員優先報名中" : "尚未開放"
+    : "固定社課";
 
   return {
     ownSignup,
@@ -4199,7 +4202,10 @@ function groupClassSignupsBySession(signups = []) {
 
 function isClassSignupWindowOpen(session) {
   const now = Date.now();
-  const openMs = getDateTimeLocalMs(session.signupOpenAt);
+  const configuredOpenMs = getDateTimeLocalMs(session.signupOpenAt);
+  const openMs = configuredOpenMs && !hasFormalMemberAccess(classSignupPageState.approval)
+    ? configuredOpenMs + NON_MEMBER_SIGNUP_DELAY_MS
+    : configuredOpenMs;
   const closeMs = getDateTimeLocalMs(session.signupCloseAt);
 
   if (openMs && now < openMs) {
@@ -4221,6 +4227,13 @@ function isClassSignupWindowOpen(session) {
 
   const endOfSessionDayMs = sessionDateMs + 24 * 60 * 60 * 1000;
   return endOfSessionDayMs > now;
+}
+
+function isNonMemberPriorityWindow(session) {
+  if (hasFormalMemberAccess(classSignupPageState.approval)) return false;
+  const now = Date.now();
+  const openMs = getDateTimeLocalMs(session.signupOpenAt);
+  return Boolean(openMs && now >= openMs && now < openMs + NON_MEMBER_SIGNUP_DELAY_MS);
 }
 
 function getSessionSignupLimit(session = {}) {
@@ -4413,7 +4426,7 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
   if (!signupOpen) {
     return `
       <div class="class-session-locked">
-        <p class="content-copy">這場社課尚未開放報名，請等到公布前一週再來填寫志願。</p>
+        <p class="content-copy">${isNonMemberPriorityWindow(session) ? "目前為社員優先報名期間。非社員將在社員開放報名約兩天後，於仍有剩餘名額時開放報名。" : "這場社課尚未開放報名，請稍後再回來查看。"}</p>
       </div>
     `;
   }
@@ -4471,7 +4484,9 @@ function renderClassSessionBoard(sessions = []) {
       const ownSignup = ownedBySession[sessionId] || null;
       const isSignupSession = Boolean(session.signupRequired);
       const openForSignup = isSignupSession && isClassSignupWindowOpen(session);
-      const statusLabel = isSignupSession ? (openForSignup ? "報名中" : "尚未開放") : "固定社課";
+      const statusLabel = isSignupSession
+        ? openForSignup ? "報名中" : isNonMemberPriorityWindow(session) ? "社員優先報名中" : "尚未開放"
+        : "固定社課";
       const liveSignupMarkup = isSignupSession ? `<div class="class-capacity-summary"><strong>${escapeHtml(getRemainingCapacityMarkup(session))}</strong></div>` : "";
 
       return `

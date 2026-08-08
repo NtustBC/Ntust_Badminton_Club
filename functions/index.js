@@ -11,6 +11,7 @@ const CALLABLE_OPTIONS = { region: REGION, enforceAppCheck: true };
 const CLASS_SIGNUP_CALLABLE_OPTIONS = { region: REGION, enforceAppCheck: false };
 const PASSWORD_RESET_WINDOW_MS = 60 * 60 * 1000;
 const PASSWORD_RESET_MAX_ATTEMPTS = 5;
+const NON_MEMBER_SIGNUP_DELAY_MS = 2 * 24 * 60 * 60 * 1000;
 
 function normalizedEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -189,7 +190,14 @@ exports.upsertClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (
     const now = Date.now();
     const openAt = parseClubDateTime(session.signupOpenAt);
     const closeAt = parseClubDateTime(session.signupCloseAt);
-    if ((Number.isFinite(openAt) && now < openAt) || (Number.isFinite(closeAt) && now > closeAt)) throw new HttpsError("failed-precondition", "目前不在報名期間內。");
+    const effectiveOpenAt = Number.isFinite(openAt) && !isAdmin && !isFormalMember
+      ? openAt + NON_MEMBER_SIGNUP_DELAY_MS
+      : openAt;
+    if ((Number.isFinite(effectiveOpenAt) && now < effectiveOpenAt) || (Number.isFinite(closeAt) && now > closeAt)) {
+      throw new HttpsError("failed-precondition", !isAdmin && !isFormalMember && Number.isFinite(openAt) && now >= openAt
+        ? "目前為社員優先報名期間，非社員將於兩天後開放報名。"
+        : "目前不在報名期間內。");
+    }
 
     stage = "計算目前名額";
     const seedCount = statsSnapshot.exists ? Number(statsSnapshot.data().signupCount || 0) : await getSessionSignupSeedCount(sessionId);
