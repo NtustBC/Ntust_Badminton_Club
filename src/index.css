@@ -806,7 +806,8 @@ body.spa-navigating .page-main {
 
 .faq-question-card {
   max-width: 860px;
-  margin: 0 auto;
+  margin: 0;
+  text-align: left;
 }
 
 .faq-question-form textarea {
@@ -3757,10 +3758,29 @@ button.admin-calendar-day:focus-visible {
 .notification-bell[hidden] { display: none; }
 .notification-bell svg { width: 22px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 .notification-dot { position: absolute; top: 7px; right: 7px; width: 8px; height: 8px; border: 2px solid #fff; border-radius: 50%; background: #e54343; }
-.account-menu-root { position: relative; }
+.account-menu-root {
+  --account-avatar-background: #d9edff;
+  --account-avatar-border: rgba(15, 84, 160, 0.18);
+  --account-avatar-color: #0f54a0;
+  --account-avatar-focus: rgba(15, 84, 160, 0.12);
+  position: relative;
+}
+.account-menu-root[data-account-role="admin"] {
+  --account-avatar-background: #dff7e7;
+  --account-avatar-border: rgba(25, 135, 84, 0.24);
+  --account-avatar-color: #198754;
+  --account-avatar-focus: rgba(25, 135, 84, 0.14);
+}
+.account-menu-root[data-account-role="non_member"],
+.account-menu-root[data-account-role="former_member"] {
+  --account-avatar-background: #ffe3e3;
+  --account-avatar-border: rgba(201, 42, 42, 0.24);
+  --account-avatar-color: #c92a2a;
+  --account-avatar-focus: rgba(201, 42, 42, 0.14);
+}
 .account-menu-root[hidden] { display: none; }
-.account-user-button { display: grid; width: 42px; height: 42px; padding: 0; place-items: center; border: 1px solid rgba(15, 84, 160, 0.18); border-radius: 50%; background: #d9edff; color: #0f54a0; cursor: pointer; }
-.account-user-button:hover, .account-user-button:focus-visible { border-color: #0f54a0; outline: 3px solid rgba(15, 84, 160, 0.12); }
+.account-user-button { display: grid; width: 42px; height: 42px; padding: 0; place-items: center; border: 1px solid var(--account-avatar-border); border-radius: 50%; background: var(--account-avatar-background); color: var(--account-avatar-color); cursor: pointer; }
+.account-user-button:hover, .account-user-button:focus-visible { border-color: var(--account-avatar-color); outline: 3px solid var(--account-avatar-focus); }
 .account-user-button svg, .account-popover-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 .account-popover { position: absolute; z-index: 80; top: calc(100% + 12px); right: 0; width: min(290px, calc(100vw - 28px)); padding: 14px; border: 1px solid rgba(15, 76, 129, 0.12); border-radius: 18px; background: rgba(255, 255, 255, 0.98); box-shadow: 0 22px 55px rgba(10, 28, 45, 0.2); }
 .account-popover[hidden] { display: none; }
@@ -3768,7 +3788,7 @@ button.admin-calendar-day:focus-visible {
 .account-popover-profile > span:last-child { display: grid; min-width: 0; gap: 2px; }
 .account-popover-profile strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-popover-profile small { color: var(--muted); }
-.account-popover-icon { display: grid; flex: 0 0 auto; width: 42px; height: 42px; place-items: center; border-radius: 50%; background: #d9edff; color: #0f54a0; }
+.account-popover-icon { display: grid; flex: 0 0 auto; width: 42px; height: 42px; place-items: center; border-radius: 50%; background: var(--account-avatar-background); color: var(--account-avatar-color); }
 .account-popover-divider { height: 1px; margin: 2px 4px 8px; background: rgba(15, 76, 129, 0.12); }
 .account-popover button { display: flex; width: 100%; gap: 12px; align-items: center; padding: 12px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
 .account-popover button:hover, .account-popover button:focus-visible { background: rgba(15, 84, 160, 0.07); outline: none; }

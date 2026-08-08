@@ -151,7 +151,16 @@ service cloud.firestore {
     }
 
     match /classSessionSignups/{signupId} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      // New signups are read inside a transaction before the document exists.
+      // Authorize that lookup from the deterministic <sessionId>-<uid> path.
+      allow get: if isAdmin() || (
+        isSignedIn()
+        && (
+          signupId.matches('^.+-' + request.auth.uid + '$')
+          || resource.data.userId == request.auth.uid
+        )
+      );
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow create: if isAdmin() || (
         isSignedIn()
         && signupId == request.resource.data.sessionId + "-" + request.auth.uid

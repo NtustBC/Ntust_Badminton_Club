@@ -1049,6 +1049,7 @@ const updateLoginButtons = () => {
   document.querySelectorAll("[data-notification-bell]").forEach((button) => { button.hidden = !currentUser; });
   document.querySelectorAll("[data-account-menu-root]").forEach((root) => {
     root.hidden = !currentUser;
+    root.dataset.accountRole = getCurrentMembershipStatus();
     const name = currentMemberProfile?.displayName || currentMemberProfile?.name || getMembershipStatusCopy(getCurrentMembershipStatus()).label;
     root.querySelector("[data-account-menu-name]").textContent = name;
     root.querySelector("[data-account-menu-status]").textContent = getMembershipStatusCopy(getCurrentMembershipStatus()).label;
