@@ -139,6 +139,7 @@ let membersAutoRefreshTimer = null;
 let publicPageAutoRefreshTimer = null;
 let membersDashboardCache = {
   members: [],
+  admins: [],
   classSessions: [],
   classSessionSignups: [],
   announcements: [],
@@ -3281,14 +3282,33 @@ const createMemberFromApprovedApplication = (application) => ({
   origin: "applications",
 });
 
-const mergeMembersWithApprovedApplications = (members = []) =>
-  members
+const getDashboardAdminIds = () =>
+  new Set(
+    [
+      ...(membersDashboardCache.admins || []).flatMap((admin) => [admin.id, admin.uid]),
+      currentUserIsAdmin ? currentUser?.uid : "",
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean),
+  );
+
+const mergeMembersWithApprovedApplications = (members = []) => {
+  const adminIds = getDashboardAdminIds();
+  return members
+    .filter(
+      (member) =>
+        ![member.id, member.uid]
+          .map((value) => String(value || "").trim())
+          .filter(Boolean)
+          .some((value) => adminIds.has(value)),
+    )
     .map((member) => ({ ...member, origin: "members" }))
     .sort(
       (a, b) =>
         getTimestampMs(a.submittedAt || a.createdAt || a.approvedAt) -
         getTimestampMs(b.submittedAt || b.createdAt || b.approvedAt),
     );
+};
 
 const getFilteredMembersForExport = (members = []) => members.filter(matchesMemberFilter);
 
@@ -3450,6 +3470,12 @@ const bindMemberStatusSelects = (container) => {
           }
         }
         await batch.commit();
+        const cachedAdmins = (membersDashboardCache.admins || []).filter(
+          (admin) => admin.id !== memberId && admin.uid !== memberId,
+        );
+        membersDashboardCache.admins = isAdmin
+          ? [...cachedAdmins, { id: memberId, uid: memberId, email, role: "admin" }]
+          : cachedAdmins;
 
         const cachedMember = membersDashboardCache.members.find((member) => member.id === memberId);
         if (cachedMember) {
@@ -3517,6 +3543,9 @@ const bindMemberDeleteButtons = (container) => {
         await batch.commit();
 
         membersDashboardCache.members = membersDashboardCache.members.filter((member) => member.id !== memberId);
+        membersDashboardCache.admins = (membersDashboardCache.admins || []).filter(
+          (admin) => admin.id !== memberId && admin.uid !== memberId,
+        );
         await refreshMembersDashboardSafe({ force: true });
         openActionSuccessModal({
           title: "社員資料已刪除",
@@ -3903,11 +3932,15 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
             loadWithFallback("FAQ", dashboardWarnings, () => getCollectionEntries(FAQ_COLLECTION), []),
             loadWithFallback("待回答問題", dashboardWarnings, () => getCollectionEntries(FAQ_QUESTION_COLLECTION), []),
           ]);
-          const members = await loadWithFallback("社員名單", dashboardWarnings, () => getCollectionEntries("members"), []);
+          const [members, admins] = await Promise.all([
+            loadWithFallback("社員名單", dashboardWarnings, () => getCollectionEntries("members"), []),
+            loadWithFallback("管理員名單", dashboardWarnings, () => getCollectionEntries("admins"), []),
+          ]);
 
           membersDashboardCache = {
             ...membersDashboardCache,
             members,
+            admins,
             loadWarnings: dashboardWarnings,
             loaded: false,
           };
@@ -3920,6 +3953,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
           const [classSessions, classSessionSignups, announcements, faqs, faqQuestions] = await supportingDataPromise;
           membersDashboardCache = {
             members,
+            admins,
             classSessions,
             classSessionSignups,
             announcements,
