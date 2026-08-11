@@ -99,6 +99,7 @@ const CLASS_SIGNUP_COLLECTION = "classSessionSignups";
 const CLASS_PUBLIC_ROSTER_COLLECTION = "classPublicRosters";
 const CLASS_SESSION_STATS_COLLECTION = "classSessionStats";
 const CLASS_ANNOUNCEMENT_COLLECTION = "classAnnouncements";
+const CLASS_ALBUM_COLLECTION = "classAlbums";
 const ADMIN_NOTIFICATION_COLLECTION = "adminNotifications";
 const FAQ_COLLECTION = "faqEntries";
 const FAQ_QUESTION_COLLECTION = "faqQuestions";
@@ -153,6 +154,7 @@ let membersDashboardCache = {
   admins: [],
   classSessions: [],
   classSessionSignups: [],
+  classAlbums: [],
   announcements: [],
   faqs: [],
   faqQuestions: [],
@@ -165,6 +167,7 @@ let classSignupPageState = {
   sessions: [],
   ownSignups: [],
   sessionSignups: [],
+  classAlbums: [],
   approval: null,
   monthOffset: 0,
   loadWarnings: [],
@@ -263,10 +266,10 @@ const authCopy = {
     hint: "輸入已建立的帳號密碼即可登入。",
   },
   signup: {
-    title: "建立帳號",
-    subtitle: "先建立帳號，再決定本學期是否申請社員資格。",
-    submitLabel: "建立帳號",
-    hint: "選擇申請社員時，請一併填寫付款方式；幹部確認款項後才會成為正式社員。",
+    title: "註冊帳號",
+    subtitle: "先註冊帳號，再決定本學期是否申請社員資格。",
+    submitLabel: "註冊帳號",
+    hint: "選擇申請社員時，請一併填寫社費方式；幹部確認社費後才會成為正式社員。",
   },
 };
 
@@ -314,7 +317,7 @@ const authErrorMessages = {
   "auth/network-request-failed": "目前無法連上 Firebase，請稍後再試。",
   "auth/too-many-requests": "嘗試次數過多，請稍後再試。",
   "auth/user-disabled": "這個帳號已停用，請聯絡管理員。",
-  "auth/user-not-found": "查不到這個帳號，請先建立帳號。",
+  "auth/user-not-found": "查不到這個帳號，請先註冊帳號。",
   "permission-denied": "Firebase 權限不足，請確認 Firestore Rules 是否已更新。",
   unavailable: "Firebase 目前無法連線，請稍後再試。",
   "deadline-exceeded": "Firebase 回應逾時，請稍後再試。",
@@ -347,7 +350,7 @@ const loginModalMarkup = `
             登入
           </button>
           <button class="auth-tab" data-auth-tab="signup" type="button" role="tab" aria-selected="false">
-            建立帳號
+            註冊帳號
           </button>
         </div>
 
@@ -371,7 +374,8 @@ const loginModalMarkup = `
               <div class="form-field"><label for="profile-display-name">顯示名稱</label><input id="profile-display-name" name="displayName" maxlength="60" type="text" placeholder="顯示在帳號選單中的名稱" /></div>
               <div class="form-field"><label for="profile-name">姓名</label><input id="profile-name" name="name" type="text" autocomplete="name" required /></div>
               <div class="form-field"><label for="profile-student-id">學號</label><input id="profile-student-id" name="studentId" type="text" required /></div>
-              <div class="form-field"><label for="profile-department">系別</label><input id="profile-department" name="department" type="text" required /></div>
+              <div class="form-field"><label for="profile-school">學校</label><select id="profile-school" name="school" required><option value="">請先選擇學校</option><option value="臺科大">臺科大</option><option value="外校">外校</option></select></div>
+              <div class="form-field"><label for="profile-department">系別</label><input id="profile-department" name="department" list="department-options" type="text" placeholder="請選擇或輸入系別" required /></div>
               <div class="form-field"><label for="profile-phone">聯絡電話</label><input id="profile-phone" name="phone" type="tel" autocomplete="tel" required /></div>
             </div>
           </section>
@@ -432,15 +436,23 @@ const loginModalMarkup = `
               <div class="class-signup-profile">
                 <div class="form-field"><label for="signup-name">姓名</label><input id="signup-name" name="name" placeholder="王小明" type="text" autocomplete="name" /></div>
                 <div class="form-field"><label for="signup-student-id">學號</label><input id="signup-student-id" name="studentId" placeholder="B11303044" type="text" /></div>
-                <div class="form-field"><label for="signup-department">系別</label><input id="signup-department" name="department" placeholder="機械系" type="text" /></div>
+                <div class="form-field"><label for="signup-school">學校</label><select id="signup-school" name="school"><option value="">請先選擇學校</option><option value="臺科大">臺科大</option><option value="外校">外校</option></select></div>
+                <div class="form-field"><label for="signup-department">系別</label><input id="signup-department" name="department" list="department-options" placeholder="選擇學校後選擇或輸入系別" type="text" /></div>
                 <div class="form-field"><label for="signup-phone">聯絡電話</label><input id="signup-phone" name="phone" placeholder="09xx-xxx-xxx" type="tel" autocomplete="tel" /></div>
               </div>
+              <datalist id="department-options">
+                <option value="資訊工程系"></option><option value="電機工程系"></option><option value="電子工程系"></option>
+                <option value="機械工程系"></option><option value="化學工程系"></option><option value="材料科學與工程系"></option>
+                <option value="營建工程系"></option><option value="工業管理系"></option><option value="企業管理系"></option>
+                <option value="資訊管理系"></option><option value="設計系"></option><option value="應用外語系"></option>
+                <option value="其他系別"></option>
+              </datalist>
             </section>
             <section class="auth-signup-section">
               <div><p class="section-kicker">社員資格</p><p class="login-note">選擇本學期是否申請社員，之後仍可在帳號設定中修改。</p></div>
             <fieldset class="membership-choice-fieldset">
               <legend>本學期是否申請成為社員？</legend>
-              <p class="login-note">建立帳號不等於取得社員資格，只有選擇申請並經幹部確認收款後才會成為社員。</p>
+              <p class="login-note">註冊帳號不等於取得社員資格，只有選擇申請並經幹部確認社費後才會成為社員。</p>
               <div class="membership-choice-grid">
                 <label class="membership-choice-option">
                   <input name="membershipIntent" type="radio" value="join" />
@@ -448,14 +460,14 @@ const loginModalMarkup = `
                 </label>
                 <label class="membership-choice-option">
                   <input name="membershipIntent" type="radio" value="not_join" checked />
-                  <span><strong>否，只建立帳號（非社員）</strong><small>需等社員優先報名期結束，仍有名額才能報名；每次到場需另外繳交單次零打費。</small></span>
+                  <span><strong>否，只註冊帳號（非社員）</strong><small>需等社員優先報名期結束，仍有名額才能報名；每次到場需另外繳交單次零打費。</small></span>
                 </label>
               </div>
             </fieldset>
             <div class="membership-payment-fields" data-membership-payment-fields hidden>
               <fieldset class="membership-choice-fieldset">
-                <legend>選擇付款方式</legend>
-                <div class="membership-choice-grid is-three-column">
+                <legend>選擇社費方式</legend>
+                <div class="membership-choice-grid">
                   <label class="membership-choice-option">
                     <input name="paymentMethod" type="radio" value="cash" />
                     <span><strong>現金</strong><small>社辦或社課繳費</small></span>
@@ -463,10 +475,6 @@ const loginModalMarkup = `
                   <label class="membership-choice-option">
                     <input name="paymentMethod" type="radio" value="transfer" />
                     <span><strong>轉帳</strong><small>轉帳後提供核對資料</small></span>
-                  </label>
-                  <label class="membership-choice-option">
-                    <input name="paymentMethod" type="radio" value="later" />
-                    <span><strong>稍後付款</strong><small>可在帳號資訊中補填</small></span>
                   </label>
                 </div>
               </fieldset>
@@ -515,11 +523,10 @@ const loginModalMarkup = `
           </fieldset>
           <div class="membership-payment-fields" data-membership-payment-fields hidden>
             <fieldset class="membership-choice-fieldset">
-              <legend>付款方式</legend>
-              <div class="membership-choice-grid is-three-column">
+              <legend>社費方式</legend>
+              <div class="membership-choice-grid">
                 <label class="membership-choice-option"><input name="paymentMethod" type="radio" value="cash" /><span><strong>現金</strong></span></label>
                 <label class="membership-choice-option"><input name="paymentMethod" type="radio" value="transfer" /><span><strong>轉帳</strong></span></label>
-                <label class="membership-choice-option"><input name="paymentMethod" type="radio" value="later" /><span><strong>稍後付款</strong></span></label>
               </div>
             </fieldset>
             <div class="membership-payment-panel" data-cash-payment-panel hidden>
@@ -598,8 +605,12 @@ const applicationModalMarkup = `
             <input id="application-student-id" name="studentId" placeholder="B11303044" type="text" />
           </div>
           <div class="form-field">
+            <label for="application-school">學校</label>
+            <select id="application-school" name="school"><option value="">請先選擇學校</option><option value="臺科大">臺科大</option><option value="外校">外校</option></select>
+          </div>
+          <div class="form-field">
             <label for="application-department">系別</label>
-            <input id="application-department" name="department" placeholder="機械系" type="text" />
+            <input id="application-department" name="department" list="department-options" placeholder="選擇或輸入系別" type="text" />
           </div>
           <div class="form-field">
             <label for="application-phone">連絡電話</label>
@@ -743,6 +754,11 @@ const adminClassCalendarModalMarkup = `
             <div class="form-field">
               <label for="admin-calendar-event-note">備註</label>
               <textarea id="admin-calendar-event-note" name="note" rows="4" placeholder="例如：請自備球拍與飲用水；沒有補充可留空"></textarea>
+            </div>
+            <div class="form-field" data-class-album-field>
+              <label for="admin-calendar-album-url">課後照片雲端相簿（選填）</label>
+              <input id="admin-calendar-album-url" name="albumUrl" type="url" placeholder="https://drive.google.com/..." />
+              <small>連結只會顯示給已登入的註冊帳號；Google Drive 端仍請只共用給社員 Gmail。</small>
             </div>
           </section>
           <section class="admin-calendar-form-section admin-calendar-signup-panel" data-admin-calendar-signup-panel>
@@ -973,6 +989,7 @@ const getClassSessionId = (session = {}) => {
   return [date, weekday].filter(Boolean).join("-");
 };
 const getClassSessionDocRef = (sessionId) => doc(db, CLASS_SESSION_COLLECTION, sessionId);
+const getClassAlbumDocRef = (sessionId) => doc(db, CLASS_ALBUM_COLLECTION, sessionId);
 const getClassSignupDocRef = (sessionId, userId) => doc(db, CLASS_SIGNUP_COLLECTION, `${sessionId}-${userId}`);
 const getApprovedMemberDocId = (applicationId) => `application-${applicationId}`;
 const getApprovedMemberDocRef = (applicationId) => doc(db, "members", getApprovedMemberDocId(applicationId));
@@ -1152,39 +1169,44 @@ const openAccountSettings = async (trigger = null) => {
   body.classList.add("modal-open");
 };
 
+const getNotificationChangeMs = (entry = {}) => {
+  const value = getTimestampMs(entry.updatedAt || entry.createdAt);
+  return Number.isFinite(value) ? value : 0;
+};
+
 const loadNotificationItems = async () => {
   const preferences = currentMemberProfile?.notificationPreferences || { announcements: true, classReminders: true, registrationUpdates: true };
   const items = [];
   if (preferences.announcements !== false) {
     const announcements = await getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION);
-    announcements.sort((a, b) => getAnnouncementSortMs(b) - getAnnouncementSortMs(a)).slice(0, 12).forEach((entry) => {
+    announcements.sort((a, b) => getNotificationChangeMs(b) - getNotificationChangeMs(a)).slice(0, 12).forEach((entry) => {
       items.push({
-        id: `announcement:${entry.id}`,
+        id: `announcement:${entry.id}:${getNotificationChangeMs(entry) || "legacy"}`,
         title: entry.title || "社團公告",
         copy: entry.body || entry.message || entry.reminder || entry.note || entry.description || "請查看最新公告內容。",
         date: entry.date || entry.startDate || entry.createdAt,
-        sortMs: getAnnouncementSortMs(entry),
+        sortMs: getNotificationChangeMs(entry) || getAnnouncementSortMs(entry),
       });
     });
   }
   if (preferences.classReminders !== false) {
     const sessions = await getCollectionEntries(CLASS_SESSION_COLLECTION);
     sessions
-      .sort((a, b) => getClassSessionSortMs(b) - getClassSessionSortMs(a))
+      .sort((a, b) => getNotificationChangeMs(b) - getNotificationChangeMs(a))
       .slice(0, 12)
       .forEach((entry) => {
         items.push({
-          id: `class:${getClassSessionId(entry)}`,
+          id: `class:${getClassSessionId(entry)}:${getNotificationChangeMs(entry) || "legacy"}`,
           title: entry.title || "社課提醒",
           copy: entry.description || entry.reminder || [getClassSessionTimeLabel(entry), entry.location].filter(Boolean).join(" · ") || "請查看社課日期與內容。",
           date: entry.date || entry.sessionDate || entry.createdAt,
-          sortMs: getClassSessionSortMs(entry),
+          sortMs: getNotificationChangeMs(entry) || getClassSessionSortMs(entry),
         });
       });
   }
   if (preferences.registrationUpdates !== false && currentMemberProfile?.membershipStatus === "pending_payment") {
     const pendingDate = currentMemberProfile.paymentSubmittedAt || currentMemberProfile.updatedAt || currentMemberProfile.createdAt || new Date();
-    items.unshift({ id: "membership:pending-payment", title: "社員申請處理中", copy: "幹部確認款項後，系統會更新社員資格。", date: pendingDate, sortMs: getTimestampMs(pendingDate) });
+    items.unshift({ id: `membership:pending-payment:${getTimestampMs(pendingDate) || "current"}`, title: "社員申請處理中", copy: "幹部確認社費後，系統會更新社員資格。", date: pendingDate, sortMs: getTimestampMs(pendingDate) });
   }
   if (preferences.registrationUpdates !== false && currentMemberProfile?.membershipStatusChange) {
     const change = currentMemberProfile.membershipStatusChange;
@@ -1422,7 +1444,7 @@ const hasFormalMemberAccess = (approvalData = null) =>
   Boolean(approvalData);
 
 const getPaymentMethodLabel = (value) =>
-  ({ cash: "現金", transfer: "轉帳", later: "稍後付款", none: "未申請" })[String(value || "")] || "尚未選擇";
+  ({ cash: "現金", transfer: "轉帳", later: "尚未選擇", none: "未申請" })[String(value || "")] || "尚未選擇";
 
 const getCashPaymentSlotLabel = (value) =>
   value === "office_lunch"
@@ -1439,7 +1461,7 @@ const getMembershipIntentFromProfile = (profile = {}) =>
 const buildTransferAccountMarkup = () => {
   const hasAccount = membershipPaymentSettings.accountName && membershipPaymentSettings.accountNumber;
   if (!hasAccount) {
-    return `<p class="content-copy">管理員尚未設定轉帳帳戶，請先選擇「稍後付款」或向幹部確認。</p>`;
+    return `<p class="content-copy">管理員尚未設定轉帳帳戶，請選擇現金或向幹部確認。</p>`;
   }
 
   return `
@@ -1496,13 +1518,13 @@ const validateMembershipPaymentData = (data) => {
     return "";
   }
   if (!data.paymentMethod) {
-    return "請選擇付款方式。";
+    return "請選擇社費方式。";
   }
   if (data.paymentMethod === "cash" && !data.cashPaymentSlot) {
     return "請選擇預計現金繳費場合。";
   }
   if (data.paymentMethod === "transfer" && (!membershipPaymentSettings.accountName || !membershipPaymentSettings.accountNumber)) {
-    return "管理員尚未設定轉帳帳戶，請先選擇其他付款方式。";
+    return "管理員尚未設定轉帳帳戶，請選擇現金或向幹部確認。";
   }
   if (data.paymentMethod === "transfer" && (!data.transferAt || !/^\d{5}$/.test(data.transferLastFive))) {
     return "請填寫轉帳日期、時間與轉出帳號末五碼。";
@@ -1511,6 +1533,9 @@ const validateMembershipPaymentData = (data) => {
 };
 
 const normalizeMembershipStatus = (memberData = null) => {
+  if (memberData?.paymentStatus === "paid") {
+    return "formal_member";
+  }
   const explicitStatus = String(memberData?.membershipStatus || memberData?.status || "").trim().toLowerCase();
 
   if (explicitStatus) {
@@ -1659,6 +1684,7 @@ const getLoginModalElements = () => {
     signupProfile: loginModal.querySelector("[data-auth-signup-profile]"),
     signupNameInput: loginModal.querySelector("#signup-name"),
     signupStudentIdInput: loginModal.querySelector("#signup-student-id"),
+    signupSchoolInput: loginModal.querySelector("#signup-school"),
     signupDepartmentInput: loginModal.querySelector("#signup-department"),
     signupPhoneInput: loginModal.querySelector("#signup-phone"),
     privacyConsentInput: loginModal.querySelector("[name='privacyConsent']"),
@@ -1800,10 +1826,10 @@ const renderAccountMembershipSummary = (container) => {
   const method = profile.paymentMethod || (intent === "join" ? "later" : "none");
   const details = [
     `<span>申請：${intent === "join" ? "本學期申請社員" : "本學期不申請社員"}</span>`,
-    intent === "join" ? `<span>付款方式：${escapeHtml(getPaymentMethodLabel(method))}</span>` : "",
+    intent === "join" ? `<span>社費方式：${escapeHtml(getPaymentMethodLabel(method))}</span>` : "",
     method === "cash" ? `<span>預計場合：${escapeHtml(getCashPaymentSlotLabel(profile.cashPaymentSlot))}</span>` : "",
     method === "transfer" && profile.transferLastFive ? `<span>轉出帳號末五碼：${escapeHtml(profile.transferLastFive)}</span>` : "",
-    intent === "join" ? `<span>款項狀態：${profile.paymentStatus === "paid" ? "已確認" : "待幹部確認"}</span>` : "",
+    intent === "join" ? `<span>社費狀態：${profile.paymentStatus === "paid" ? "已確認" : "待幹部確認"}</span>` : "",
   ].filter(Boolean);
   container.innerHTML = details.join("");
 };
@@ -2092,7 +2118,7 @@ const openApplicationModal = (trigger) => {
     type === "class"
       ? "填完社課參與資料後送出，管理員會再和你確認後續安排。"
       : "填完社員申請後送出，請依通知完成社費繳納；幹部確認後才會取得正式社員資格。";
-  setApplicationHint("送出後請留意社費繳費通知，正式社員資格以幹部確認款項為準。");
+  setApplicationHint("送出後請留意社費繳費通知，正式社員資格以幹部確認社費為準。");
   applicationModal.hidden = false;
   body.classList.add("modal-open");
   closeMobileNav();
@@ -2198,6 +2224,7 @@ const getAdminCalendarEventsForDate = (dateKey) => {
       timeLabel: getClassSessionTimeLabel(session),
       location: session.location || "",
       note: session.reminder || session.description || "",
+      albumUrl: membersDashboardCache.classAlbums.find((album) => album.id === getClassSessionId(session))?.url || "",
       source: session,
     }));
 
@@ -2329,6 +2356,7 @@ const renderClassSignupModalContent = (sessionId) => {
   }
 
   const { ownSignup, approvalData, canSignup, isSignupSession, signupOpen, statusLabel } = getPublicClassSignupModalState(session);
+  const albumUrl = classSignupPageState.classAlbums.find((album) => album.id === sessionId)?.url || "";
   const signupCount = getSessionSignupCount(sessionId);
   const formMarkup = isSignupSession
     ? buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup, signupOpen)
@@ -2358,6 +2386,7 @@ const renderClassSignupModalContent = (sessionId) => {
         ${session.location ? `<p class="admin-calendar-modal-session-copy"><strong>地點：</strong>${escapeHtml(session.location)}</p>` : ""}
         <p class="admin-calendar-modal-session-copy">${escapeHtml(session.description || session.reminder || "這一天有社課安排，請依照時間參與。")}</p>
         ${session.reminder ? `<p class="class-session-reminder">提醒：${escapeHtml(session.reminder)}</p>` : ""}
+        ${currentUser && albumUrl ? `<p class="class-session-album"><a class="button-secondary" href="${escapeHtml(albumUrl)}" target="_blank" rel="noopener noreferrer">查看本次社課照片</a></p>` : ""}
       </article>
       <div class="class-capacity-summary"><strong>${escapeHtml(getRemainingCapacityMarkup(session))}</strong><span>${escapeHtml(`${signupCount} 人正取${getSessionWaitlistCount(sessionId) ? `，${getSessionWaitlistCount(sessionId)} 人候補` : ""}`)}</span></div>
       <section class="class-signup-modal-form-shell">
@@ -2516,6 +2545,7 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   form.querySelector("[name='endTime']").value = event?.source?.endTime || legacyTimeParts.endTime;
   form.querySelector("[name='location']").value = event?.location || event?.source?.location || "";
   form.querySelector("[name='note']").value = event?.note || "";
+  form.querySelector("[name='albumUrl']").value = event?.type === "class" ? event?.albumUrl || "" : "";
   const legacyMemberOpenAt = event?.source?.memberSignupOpenAt || event?.source?.signupOpenAt;
   const legacyPublicOpenAt = event?.source?.publicSignupOpenAt || (
     event?.source?.allowNonMembers && legacyMemberOpenAt
@@ -2544,6 +2574,7 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   const signupPanel = form.querySelector("[data-admin-calendar-signup-panel]");
   const signupFieldsHidden = (event?.type || "class") !== "class";
   const announcementEndDateField = form.querySelector("[data-announcement-end-date-field]");
+  const classAlbumField = form.querySelector("[data-class-album-field]");
   if (signupToggle) {
     signupToggle.hidden = signupFieldsHidden;
   }
@@ -2555,6 +2586,9 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   }
   if (announcementEndDateField) {
     announcementEndDateField.hidden = !signupFieldsHidden;
+  }
+  if (classAlbumField) {
+    classAlbumField.hidden = signupFieldsHidden;
   }
 
   if (deleteButton) {
@@ -3424,6 +3458,38 @@ const bindMemberActionButtons = (memberList) => {
     });
   });
 };
+
+const bindMemberEditForms = (memberList) => {
+  memberList.querySelectorAll("[data-member-edit-form]").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const memberId = String(form.dataset.memberId || "").trim();
+      const submitButton = form.querySelector("[data-member-edit-save]");
+      const values = Object.fromEntries(new FormData(form));
+      const payload = {
+        name: String(values.name || "").trim(),
+        studentId: String(values.studentId || "").trim().toUpperCase(),
+        school: String(values.school || "").trim(),
+        department: String(values.department || "").trim(),
+        phone: String(values.phone || "").trim(),
+      };
+      if (!memberId || !payload.name || !payload.studentId || !["臺科大", "外校"].includes(payload.school) || !payload.department || !payload.phone) {
+        showToast("請完整填寫社員姓名、學號、學校、系別與電話。", { tone: "error" });
+        return;
+      }
+      setButtonLoading(submitButton, true, "儲存中…");
+      try {
+        await setDoc(getMemberDocRef(memberId), { ...payload, updatedAt: serverTimestamp() }, { merge: true });
+        await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+        showToast("社員資料已更新。", { tone: "success" });
+      } catch (error) {
+        showToast(error?.message || "社員資料更新失敗。", { tone: "error" });
+      } finally {
+        setButtonLoading(submitButton, false);
+      }
+    });
+  });
+};
 const getMemberIdFromApplication = (applicationId) => `application-${applicationId}`;
 
 const createMemberFromApprovedApplication = (application) => ({
@@ -3794,7 +3860,7 @@ const renderMembersExportToolbar = (members = []) => {
       const paymentStateClass = paymentConfirmed ? "is-confirmed" : membershipIntent === "join" ? "is-pending" : "is-neutral";
       const paymentMetaCopy = paymentConfirmed
         ? `${getPaymentMethodLabel(paymentMethod)}${paymentMeta.length ? `・${paymentMeta.join("・")}` : ""}`
-        : paymentMeta.join("・") || (membershipIntent === "join" ? "等待社員完成付款" : "本學期未提出申請");
+        : paymentMeta.join("・") || (membershipIntent === "join" ? "等待社員完成社費繳納" : "本學期未提出申請");
       const confirmPaymentButton =
         membershipIntent === "join" && managedStatus !== "formal_member" && managedStatus !== "admin"
           ? `<button class="member-payment-confirm" data-member-action="toggle-membership-payment" data-member-id="${escapeHtml(member.id)}" data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}" data-payment-status="paid" type="button"><span aria-hidden="true">✓</span>確認已收款</button>`
@@ -3865,7 +3931,7 @@ const renderMembersExportToolbar = (members = []) => {
             <th scope="col">系級</th>
             <th scope="col">Gmail</th>
             <th scope="col">聯絡電話</th>
-            <th scope="col">付款資訊</th>
+            <th scope="col">社費資訊</th>
             <th scope="col">社員狀態</th>
             <th scope="col">操作</th>
           </tr>
@@ -3893,7 +3959,7 @@ const renderMembersExportToolbar = (members = []) => {
     const period = `${memberFilters.year === "all" ? "全部學年度" : memberFilters.year}-${memberFilters.term === "all" ? "全部學期" : memberFilters.term}`;
     downloadCsv({
       filename: `臺科大羽球社-社員名單-${period}-${formatDateInputValue(new Date())}.csv`,
-      headers: ["姓名", "學號", "系級", "Email", "電話", "學年度", "學期", "付款方式", "社員狀態"],
+      headers: ["姓名", "學號", "系級", "Email", "電話", "學年度", "學期", "社費方式", "社員狀態"],
       rows,
     });
     showToast(`已匯出 ${rows.length} 位正式社員。`, { tone: "success" });
@@ -3920,6 +3986,7 @@ const renderMembersList = (members = []) => {
   list.innerHTML = filteredMembers
     .map((member, index) => {
       const memberStatusLabel = "社員";
+      const school = member.school === "外校" ? "外校" : "臺科大";
       return `
         <article
           class="member-row member-row-expandable"
@@ -3956,6 +4023,16 @@ const renderMembersList = (members = []) => {
               <span>建立時間：${escapeHtml(formatTimestamp(member.createdAt))}</span>
               <span>最近登入：${escapeHtml(formatTimestamp(member.lastLoginAt))}</span>
             </div>
+            <form class="form-grid member-edit-form" data-member-edit-form data-member-id="${escapeHtml(member.id)}">
+              <div class="class-signup-profile">
+                <div class="form-field"><label>姓名</label><input name="name" value="${escapeHtml(member.name || "")}" required /></div>
+                <div class="form-field"><label>學號</label><input name="studentId" value="${escapeHtml(member.studentId || "")}" required /></div>
+                <div class="form-field"><label>學校</label><select name="school" required><option value="臺科大"${school === "臺科大" ? " selected" : ""}>臺科大</option><option value="外校"${school === "外校" ? " selected" : ""}>外校</option></select></div>
+                <div class="form-field"><label>系別</label><input name="department" value="${escapeHtml(member.department || "")}" required /></div>
+                <div class="form-field"><label>電話</label><input name="phone" type="tel" value="${escapeHtml(member.phone || "")}" required /></div>
+              </div>
+              <button class="button-primary" data-member-edit-save type="submit">儲存社員資料</button>
+            </form>
             <div class="application-actions member-actions">
               <button class="button-secondary application-save" data-member-action="delete" data-member-origin="${escapeHtml(member.origin || "members")}" data-member-id="${escapeHtml(member.origin === "applications" ? member.applicationId : member.id)}" data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}" data-member-application-id="${escapeHtml(member.applicationId || "")}" type="button">
                 刪除社員資料
@@ -3968,6 +4045,7 @@ const renderMembersList = (members = []) => {
     .join("");
 
   bindMemberToggleButtons(list);
+  bindMemberEditForms(list);
   bindMemberActionButtons(list);
 };
 
@@ -4129,6 +4207,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
             loadWithFallback("公告", dashboardWarnings, () => getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION), []),
             loadWithFallback("FAQ", dashboardWarnings, () => getCollectionEntries(FAQ_COLLECTION), []),
             loadWithFallback("待回答問題", dashboardWarnings, () => getCollectionEntries(FAQ_QUESTION_COLLECTION), []),
+            loadWithFallback("社課相簿", dashboardWarnings, () => getCollectionEntries(CLASS_ALBUM_COLLECTION), []),
           ]);
           const [members, admins] = await Promise.all([
             loadWithFallback("社員名單", dashboardWarnings, () => getCollectionEntries("members"), []),
@@ -4150,12 +4229,13 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
           renderMembersList(earlyDisplayMembers);
           clearLoadingState(list);
 
-          const [classSessions, classSessionSignups, announcements, faqs, faqQuestions] = await supportingDataPromise;
+          const [classSessions, classSessionSignups, announcements, faqs, faqQuestions, classAlbums] = await supportingDataPromise;
           membersDashboardCache = {
             members,
             admins,
             classSessions,
             classSessionSignups,
+            classAlbums,
             announcements,
             faqs,
             faqQuestions,
@@ -4898,8 +4978,11 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
 
   try {
     const loadWarnings = [];
+    if (currentUser?.uid) {
+      await loadWithFallback("社員狀態", loadWarnings, () => loadCurrentMemberStatus(currentUser), currentMemberStatus);
+    }
     if (force || !classSignupPageState.loaded) {
-      const [sessions, allSignups, ownSignups, approvalDoc] = await Promise.all([
+      const [sessions, allSignups, ownSignups, approvalDoc, classAlbums] = await Promise.all([
         loadWithFallback("社課日期", loadWarnings, () => getCollectionEntries(CLASS_SESSION_COLLECTION), []),
         loadWithFallback("剩餘名額", loadWarnings, () => getCollectionEntries(CLASS_SESSION_STATS_COLLECTION), []),
         currentUser?.uid
@@ -4913,10 +4996,14 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
         currentUser?.email
           ? loadWithFallback("審核資料", loadWarnings, () => getDoc(getApprovalDocRef(currentUser.email)), null)
           : Promise.resolve(null),
+        currentUser?.uid
+          ? loadWithFallback("社課相簿", loadWarnings, () => getCollectionEntries(CLASS_ALBUM_COLLECTION), [])
+          : Promise.resolve([]),
       ]);
 
       classSignupPageState.sessions = sessions;
       classSignupPageState.sessionSignups = allSignups;
+      classSignupPageState.classAlbums = classAlbums;
       classSignupPageState.ownSignups = ownSignups.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
       classSignupPageState.approval =
         approvalDoc && typeof approvalDoc.exists === "function" && approvalDoc.exists() ? approvalDoc.data() : null;
@@ -6189,6 +6276,7 @@ function bindAdminClassCalendarActions() {
       const signupSettings = form.querySelector("[data-admin-calendar-signup-settings]");
       const signupPanel = form.querySelector("[data-admin-calendar-signup-panel]");
       const announcementEndDateField = form.querySelector("[data-announcement-end-date-field]");
+      const classAlbumField = form.querySelector("[data-class-album-field]");
       const signupFieldsHidden = event.target.value !== "class";
       if (signupToggle) {
         signupToggle.hidden = signupFieldsHidden;
@@ -6201,6 +6289,9 @@ function bindAdminClassCalendarActions() {
       }
       if (announcementEndDateField) {
         announcementEndDateField.hidden = !signupFieldsHidden;
+      }
+      if (classAlbumField) {
+        classAlbumField.hidden = signupFieldsHidden;
       }
       if (signupFieldsHidden) {
         const startDate = form.querySelector("[name='date']")?.value || "";
@@ -6364,6 +6455,7 @@ function bindAdminClassCalendarActions() {
           ]),
         );
         await deleteDoc(doc(db, CLASS_SESSION_STATS_COLLECTION, sessionId));
+        await deleteDoc(getClassAlbumDocRef(sessionId));
         await deleteDoc(getClassSessionDocRef(sessionId));
 
         if (adminClassSessionEditingId === sessionId) {
@@ -6393,6 +6485,7 @@ async function handleAdminCalendarEventSubmit(event) {
   const timeLabel = buildEventTimeLabel(startTime, endTime);
   const location = String(form.querySelector("[name='location']")?.value || "").trim();
   const note = String(form.querySelector("[name='note']")?.value || "").trim();
+  const albumUrl = String(form.querySelector("[name='albumUrl']")?.value || "").trim();
   const signupRequired = Boolean(form.querySelector("[name='signupRequired']")?.checked);
   const memberSignupOpenAt = String(form.querySelector("[name='memberSignupOpenAt']")?.value || "").trim();
   const publicSignupOpenAt = String(form.querySelector("[name='publicSignupOpenAt']")?.value || "").trim();
@@ -6402,6 +6495,12 @@ async function handleAdminCalendarEventSubmit(event) {
 
   if (!date || !title) {
     showToast("請先填寫標題與日期。", { tone: "error", title: "資料尚未完整" });
+    return;
+  }
+
+  if (eventType === "class" && albumUrl && !/^https:\/\//i.test(albumUrl)) {
+    showToast("相簿連結必須使用 https:// 開頭。", { tone: "error", title: "相簿連結格式錯誤" });
+    form.querySelector("[name='albumUrl']")?.focus();
     return;
   }
 
@@ -6487,6 +6586,16 @@ async function handleAdminCalendarEventSubmit(event) {
           publishedAt: existing?.exists() ? existing.data()?.publishedAt || null : null,
           createdAt: existing?.exists() ? existing.data()?.createdAt || serverTimestamp() : serverTimestamp(),
           updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      await setDoc(
+        getClassAlbumDocRef(sessionRef.id),
+        {
+          sessionId: sessionRef.id,
+          url: albumUrl,
+          updatedAt: serverTimestamp(),
+          updatedBy: currentUser?.uid || "",
         },
         { merge: true },
       );
@@ -6658,8 +6767,12 @@ const populatePersonalProfileForm = (form) => {
   if (settingsEmail) settingsEmail.textContent = `${currentUser?.email || ""} · ${getMembershipStatusCopy(getCurrentMembershipStatus()).label}`;
   ["displayName", "name", "studentId", "department", "phone"].forEach((key) => {
     const input = form.elements.namedItem(key);
-    if (input instanceof HTMLInputElement) input.value = profile[key] || (key === "department" ? profile.school || "" : key === "displayName" ? profile.name || "" : "");
+    if (input instanceof HTMLInputElement) input.value = profile[key] || (key === "displayName" ? profile.name || "" : "");
   });
+  const schoolInput = form.elements.namedItem("school");
+  if (schoolInput instanceof HTMLSelectElement) {
+    schoolInput.value = profile.school === "外校" ? "外校" : "臺科大";
+  }
   const preferences = profile.notificationPreferences || {};
   const defaults = { notificationAnnouncements: true, notificationClassReminders: true, notificationRegistrationUpdates: true };
   Object.entries(defaults).forEach(([name, fallback]) => {
@@ -6685,15 +6798,16 @@ const handlePersonalProfileSubmit = async (event) => {
   const displayName = String(values.displayName || "").trim();
   const name = String(values.name || "").trim();
   const studentId = String(values.studentId || "").trim();
+  const school = String(values.school || "").trim();
   const department = String(values.department || "").trim();
   const phone = String(values.phone || "").trim();
-  if (!name || !studentId || !department || !phone) {
-    setMessageTone(hint, "請完整填寫姓名、學號、系別與聯絡電話。", "error");
+  if (!name || !studentId || !["臺科大", "外校"].includes(school) || !department || !phone) {
+    setMessageTone(hint, "請依序選擇學校，並完整填寫姓名、學號、系別與聯絡電話。", "error");
     return;
   }
   try {
     await setDoc(getMemberDocRef(currentUser.uid), {
-      displayName: displayName || name, name, studentId, department, school: department, phone,
+      displayName: displayName || name, name, studentId, department, school, phone,
       notificationPreferences: {
         announcements: Boolean(form.elements.namedItem("notificationAnnouncements")?.checked),
         classReminders: Boolean(form.elements.namedItem("notificationClassReminders")?.checked),
@@ -6744,13 +6858,14 @@ const handleDeleteOwnAccount = async (event) => {
 const handleAuthSubmit = async (event) => {
   event.preventDefault();
 
-  const { emailInput, passwordInput, confirmInput, authSubmit, signupNameInput, signupStudentIdInput, signupDepartmentInput, signupPhoneInput, privacyConsentInput } = getLoginModalElements();
+  const { emailInput, passwordInput, confirmInput, authSubmit, signupNameInput, signupStudentIdInput, signupSchoolInput, signupDepartmentInput, signupPhoneInput, privacyConsentInput } = getLoginModalElements();
   const email = emailInput.value.trim().toLowerCase();
   const password = passwordInput.value;
   const passwordConfirm = confirmInput.value;
   const signupProfile = {
     name: String(signupNameInput?.value || "").trim(),
     studentId: String(signupStudentIdInput?.value || "").trim(),
+    school: String(signupSchoolInput?.value || "").trim(),
     department: String(signupDepartmentInput?.value || "").trim(),
     phone: String(signupPhoneInput?.value || "").trim(),
     ...readMembershipPaymentForm(event.currentTarget),
@@ -6776,13 +6891,13 @@ const handleAuthSubmit = async (event) => {
     return;
   }
 
-  if (authMode === "signup" && (!signupProfile.name || !signupProfile.studentId || !signupProfile.department || !signupProfile.phone)) {
-    setHint("請完整填寫姓名、學號、系別與聯絡電話。", "error");
+  if (authMode === "signup" && (!signupProfile.name || !signupProfile.studentId || !["臺科大", "外校"].includes(signupProfile.school) || !signupProfile.department || !signupProfile.phone)) {
+    setHint("請先選擇學校，再完整填寫姓名、學號、系別與聯絡電話。", "error");
     return;
   }
 
   if (authMode === "signup" && !privacyConsentInput?.checked) {
-    setHint("必須閱讀並同意個人資料蒐集說明後才能建立帳號。", "error");
+    setHint("必須閱讀並同意個人資料蒐集說明後才能註冊帳號。", "error");
     return;
   }
 
@@ -6815,7 +6930,7 @@ const handleAuthSubmit = async (event) => {
         displayName: signupProfile.name,
         studentId: signupProfile.studentId.toUpperCase(),
         department: signupProfile.department,
-        school: signupProfile.department,
+        school: signupProfile.school,
         phone: signupProfile.phone,
         membershipIntent: signupProfile.membershipIntent,
         paymentMethod: signupProfile.paymentMethod,
@@ -6867,8 +6982,8 @@ const handleAuthSubmit = async (event) => {
         ? "登入成功，但社員資料暫時無法同步；你仍可保持登入並稍後再試。"
         : authMode === "signup"
           ? signupProfile.membershipIntent === "join"
-            ? "帳號建立完成，社員申請已送出；幹部確認款項後才會取得社員資格。"
-            : "帳號建立完成，已自動登入；目前狀態為非社員。"
+            ? "帳號註冊完成，社員申請已送出；幹部確認社費後才會取得社員資格。"
+            : "帳號註冊完成，已自動登入；目前狀態為非社員。"
           : "登入成功，已更新社員狀態。",
       profileSyncFailed ? "error" : "success",
     );
@@ -6887,6 +7002,7 @@ const handleApplicationSubmit = async (event) => {
   const formData = new FormData(applicationForm);
   const name = String(formData.get("name") || "").trim();
   const studentId = String(formData.get("studentId") || "").trim();
+  const school = String(formData.get("school") || "").trim();
   const department = String(formData.get("department") || "").trim();
   const phone = String(formData.get("phone") || "").trim();
   const email = String(formData.get("email") || "").trim().toLowerCase();
@@ -6898,8 +7014,8 @@ const handleApplicationSubmit = async (event) => {
     return;
   }
 
-  if (!name || !studentId || !department || !phone || !email) {
-    setApplicationHint("請完整填寫姓名、學號、系別、連絡電話與聯絡信箱。", "error");
+  if (!name || !studentId || !["臺科大", "外校"].includes(school) || !department || !phone || !email) {
+    setApplicationHint("請先選擇學校，再完整填寫姓名、學號、系別、連絡電話與聯絡信箱。", "error");
     return;
   }
 
@@ -6925,7 +7041,7 @@ const handleApplicationSubmit = async (event) => {
       name,
       studentId,
       department,
-      school: department,
+      school,
       phone,
       email,
       note,
@@ -6946,6 +7062,7 @@ const handleApplicationSubmit = async (event) => {
           email,
           name,
           studentId,
+          school,
           department,
           phone,
           applicationType,
@@ -7011,7 +7128,7 @@ const handleAccountMembershipSubmit = async (event) => {
     return;
   }
   if (!currentUser?.uid || currentMemberProfile?.paymentStatus === "paid") {
-    setMessageTone(hint, "款項已確認，若需變更請聯絡幹部。", "error");
+    setMessageTone(hint, "社費已確認，若需變更請聯絡幹部。", "error");
     return;
   }
 

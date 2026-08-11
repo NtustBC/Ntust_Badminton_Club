@@ -218,6 +218,15 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    // Album URLs are kept outside the public class-session documents so only
+    // registered, signed-in accounts can retrieve them.
+    match /classAlbums/{sessionId} {
+      allow read: if isAdmin() || (
+        isSignedIn() && exists(/databases/$(database)/documents/members/$(request.auth.uid))
+      );
+      allow create, update, delete: if isAdmin();
+    }
+
     match /classSessionSignups/{signupId} {
       // New signups are read inside a transaction before the document exists.
       // Authorize that lookup from the deterministic <sessionId>-<uid> path.

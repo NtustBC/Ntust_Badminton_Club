@@ -3883,9 +3883,18 @@ button.admin-calendar-day:focus-visible {
   }
 
   .back-to-top {
-    right: 14px;
-    bottom: 14px;
+    display: none;
   }
+}
+
+.member-edit-form {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(20, 32, 44, 0.1);
+}
+
+.class-session-album {
+  margin: 16px 0 0;
 }
 
 .notification-bell {
