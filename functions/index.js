@@ -12,6 +12,7 @@ const CLASS_SIGNUP_CALLABLE_OPTIONS = { region: REGION, enforceAppCheck: false }
 const PASSWORD_RESET_WINDOW_MS = 60 * 60 * 1000;
 const PASSWORD_RESET_MAX_ATTEMPTS = 5;
 const LEGACY_NON_MEMBER_SIGNUP_DELAY_MS = 2 * 24 * 60 * 60 * 1000;
+const CURRENT_TERM_SETTINGS_DOC = "currentTerm";
 
 function normalizedEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -38,6 +39,55 @@ function parseClubDateTime(value) {
   const text = String(value || "").trim();
   if (!text) return Number.NaN;
   return Date.parse(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(text) ? `${text}+08:00` : text);
+}
+
+function membershipPeriodId(academicYear, term) {
+  return `${String(academicYear || "").trim()}-${String(term || "").trim()}`;
+}
+
+function occupiesMembershipSlot(member = {}, academicYear = "", term = "") {
+  const status = String(member.membershipStatus || member.status || "").trim().toLowerCase();
+  const intent = String(member.membershipIntent || "").trim().toLowerCase();
+  return String(member.academicYear || "").trim() === academicYear
+    && String(member.term || "").trim() === term
+    && (intent === "join" || ["pending_payment", "formal_member", "formal", "approved", "member"].includes(status));
+}
+
+function normalizeMembershipPayment(data = {}, membershipIntent = "not_join") {
+  if (membershipIntent !== "join") {
+    return { paymentMethod: "none", cashPaymentSlot: "", transferAt: "", transferLastFive: "" };
+  }
+  const paymentMethod = String(data.paymentMethod || "later").trim();
+  if (!["cash", "transfer", "later"].includes(paymentMethod)) {
+    throw new HttpsError("invalid-argument", "請選擇有效的社費繳費方式。");
+  }
+  const cashPaymentSlot = paymentMethod === "cash" ? String(data.cashPaymentSlot || "").trim().slice(0, 50) : "";
+  const transferAt = paymentMethod === "transfer" ? String(data.transferAt || "").trim().slice(0, 40) : "";
+  const transferLastFive = paymentMethod === "transfer" ? String(data.transferLastFive || "").trim() : "";
+  if (paymentMethod === "cash" && !cashPaymentSlot) {
+    throw new HttpsError("invalid-argument", "請選擇預計現金繳費場合。");
+  }
+  if (paymentMethod === "transfer" && (!transferAt || !/^\d{5}$/.test(transferLastFive))) {
+    throw new HttpsError("invalid-argument", "請填寫轉帳時間與轉出帳號末五碼。");
+  }
+  return { paymentMethod, cashPaymentSlot, transferAt, transferLastFive };
+}
+
+async function releaseMembershipRegistrationSlot(firestore, member = {}) {
+  const settingsSnapshot = await firestore.collection("siteSettings").doc(CURRENT_TERM_SETTINGS_DOC).get();
+  const settings = settingsSnapshot.exists ? settingsSnapshot.data() : {};
+  const academicYear = String(settings.academicYear || "").trim();
+  const term = String(settings.term || "").trim();
+  if (!occupiesMembershipSlot(member, academicYear, term)) return;
+  const statsRef = firestore.collection("membershipRegistrationStats").doc(membershipPeriodId(academicYear, term));
+  await firestore.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(statsRef);
+    if (!snapshot.exists) return;
+    transaction.set(statsRef, {
+      count: Math.max(0, Number(snapshot.data().count || 0) - 1),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  });
 }
 
 async function consumePasswordResetAttempt(email) {
@@ -118,10 +168,12 @@ exports.deleteMemberAccount = onCall(CALLABLE_OPTIONS, async (request) => {
   }
 
   const firestore = admin.firestore();
-  const [applicationsSnapshot, signupsSnapshot] = await Promise.all([
+  const [memberSnapshot, applicationsSnapshot, signupsSnapshot] = await Promise.all([
+    firestore.collection("members").doc(uid).get(),
     firestore.collection("applications").where("email", "==", targetEmail).get(),
     firestore.collection("classSessionSignups").where("userId", "==", uid).get(),
   ]);
+  await releaseMembershipRegistrationSlot(firestore, memberSnapshot.exists ? memberSnapshot.data() : {});
   const writer = firestore.bulkWriter();
   writer.delete(firestore.collection("members").doc(uid));
   writer.delete(firestore.collection("admins").doc(uid));
@@ -174,6 +226,7 @@ exports.deleteOwnAccount = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (request)
     }
   }
 
+  await releaseMembershipRegistrationSlot(firestore, member);
   const writer = firestore.bulkWriter();
   writer.delete(firestore.collection("members").doc(uid));
   writer.delete(firestore.collection("signupApprovals").doc(email));
@@ -193,6 +246,119 @@ exports.deleteOwnAccount = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (request)
 
   logger.info("Member deleted own account.", { uid, email });
   return { ok: true };
+});
+
+exports.updateMembershipApplication = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "請先登入後再申請社員資格。");
+
+  const membershipIntent = String(request.data?.membershipIntent || "not_join").trim();
+  if (!["join", "not_join"].includes(membershipIntent)) {
+    throw new HttpsError("invalid-argument", "社員申請選項不正確。");
+  }
+  const payment = normalizeMembershipPayment(request.data, membershipIntent);
+  const firestore = admin.firestore();
+  const settingsRef = firestore.collection("siteSettings").doc(CURRENT_TERM_SETTINGS_DOC);
+  const memberRef = firestore.collection("members").doc(uid);
+  const applicationRef = firestore.collection("applications").doc(`club-${uid}`);
+
+  return firestore.runTransaction(async (transaction) => {
+    const settingsSnapshot = await transaction.get(settingsRef);
+    const memberSnapshot = await transaction.get(memberRef);
+    const applicationSnapshot = await transaction.get(applicationRef);
+    if (!memberSnapshot.exists) {
+      throw new HttpsError("failed-precondition", "社員基本資料尚未建立，請重新登入後再試。");
+    }
+
+    const settings = settingsSnapshot.exists ? settingsSnapshot.data() : {};
+    const academicYear = String(settings.academicYear || "").trim();
+    const term = String(settings.term || "").trim();
+    if (!/^\d{2,3}$/.test(academicYear) || !["上學期", "下學期"].includes(term)) {
+      throw new HttpsError("failed-precondition", "管理員尚未設定目前學期。");
+    }
+
+    const registration = settings.membershipRegistration || {};
+    const openAt = parseClubDateTime(registration.openAt);
+    const closeAt = parseClubDateTime(registration.closeAt);
+    const limit = Math.max(0, Math.floor(Number(registration.limit || 0)));
+    const periodId = membershipPeriodId(academicYear, term);
+    const statsRef = firestore.collection("membershipRegistrationStats").doc(periodId);
+    const statsSnapshot = await transaction.get(statsRef);
+    let memberSnapshots = null;
+    if (!statsSnapshot.exists) {
+      memberSnapshots = await transaction.get(firestore.collection("members"));
+    }
+
+    const member = memberSnapshot.data();
+    const alreadyOccupiesSlot = occupiesMembershipSlot(member, academicYear, term);
+    let count = statsSnapshot.exists
+      ? Math.max(0, Number(statsSnapshot.data().count || 0))
+      : memberSnapshots.docs.filter((snapshot) => occupiesMembershipSlot(snapshot.data(), academicYear, term)).length;
+
+    if (membershipIntent === "join" && !alreadyOccupiesSlot) {
+      const now = Date.now();
+      if (!Number.isFinite(openAt) || !Number.isFinite(closeAt) || openAt >= closeAt) {
+        throw new HttpsError("failed-precondition", "管理員尚未設定社員申請期間。");
+      }
+      if (now < openAt) {
+        throw new HttpsError("failed-precondition", "社員申請尚未開放。");
+      }
+      if (now > closeAt) {
+        throw new HttpsError("deadline-exceeded", "本學期社員申請已截止。");
+      }
+      if (limit <= 0) {
+        throw new HttpsError("failed-precondition", "管理員尚未設定社員名額。");
+      }
+      if (count >= limit) {
+        throw new HttpsError("resource-exhausted", "本學期社員名額已滿。");
+      }
+      count += 1;
+    } else if (membershipIntent === "not_join" && alreadyOccupiesSlot) {
+      count = Math.max(0, count - 1);
+    }
+
+    const nextStatus = membershipIntent === "join" ? "pending_payment" : "not_applied";
+    transaction.set(memberRef, {
+      membershipIntent,
+      membershipStatus: nextStatus,
+      status: nextStatus,
+      paymentStatus: "unpaid",
+      ...payment,
+      academicYear,
+      term,
+      paymentSubmittedAt: membershipIntent === "join" ? admin.firestore.FieldValue.serverTimestamp() : null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    if (membershipIntent === "join") {
+      transaction.set(applicationRef, {
+        name: String(member.name || member.displayName || "").slice(0, 100),
+        studentId: String(member.studentId || "").slice(0, 30),
+        department: String(member.department || "").slice(0, 100),
+        school: String(member.school || "").slice(0, 100),
+        phone: String(member.phone || "").slice(0, 30),
+        email: request.auth.token?.email || member.email || "",
+        note: String(applicationSnapshot.data()?.note || "").slice(0, 1000),
+        applicationType: "club",
+        academicYear,
+        term,
+        approved: false,
+        reviewStatus: "pending",
+        submittedAt: applicationSnapshot.data()?.submittedAt || admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    } else if (applicationSnapshot.exists) {
+      transaction.delete(applicationRef);
+    }
+    transaction.set(statsRef, {
+      academicYear,
+      term,
+      count,
+      limit,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    return { ok: true, membershipIntent, membershipStatus: nextStatus, count, limit };
+  });
 });
 
 async function getSessionSignupSeedCount(sessionId) {

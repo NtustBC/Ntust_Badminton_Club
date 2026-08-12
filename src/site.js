@@ -105,6 +105,7 @@ const FAQ_COLLECTION = "faqEntries";
 const FAQ_QUESTION_COLLECTION = "faqQuestions";
 const SITE_SETTINGS_COLLECTION = "siteSettings";
 const CURRENT_TERM_SETTINGS_DOC = "currentTerm";
+const MEMBERSHIP_REGISTRATION_STATS_COLLECTION = "membershipRegistrationStats";
 const CLASS_WEEKDAY_LABELS = {
   mon: "星期一",
   tue: "星期二",
@@ -140,6 +141,12 @@ let membershipPaymentSettings = {
   accountNumber: "",
   cashOfficeLabel: "中午至社辦繳費",
   cashClassLabel: "社課現場繳費",
+};
+let membershipRegistrationSettings = {
+  openAt: "",
+  closeAt: "",
+  limit: 0,
+  count: 0,
 };
 let classScheduleDefaults = [];
 let authMode = "signin";
@@ -329,6 +336,8 @@ const applicationErrorMessages = {
   "unavailable": "Firebase 目前暫時無法連線，請稍後再試一次。",
   "deadline-exceeded": "送出逾時，請檢查網路後再試一次。",
   "failed-precondition": "目前資料尚未準備好，請重新整理頁面後再試一次。",
+  "functions/resource-exhausted": "本學期社員名額已滿。",
+  "functions/deadline-exceeded": "本學期社員申請已截止。",
 };
 
 const loginModalMarkup = `
@@ -450,6 +459,7 @@ const loginModalMarkup = `
             </section>
             <section class="auth-signup-section">
               <div><p class="section-kicker">社員資格</p><p class="login-note">選擇本學期是否申請社員，之後仍可在帳號設定中修改。</p></div>
+              <p class="login-note" data-membership-registration-status></p>
             <fieldset class="membership-choice-fieldset">
               <legend>本學期是否申請成為社員？</legend>
               <p class="login-note">註冊帳號不等於取得社員資格，只有選擇申請並經幹部確認社費後才會成為社員。</p>
@@ -514,6 +524,7 @@ const loginModalMarkup = `
 
         <form class="form-grid account-membership-form" data-account-membership-form hidden>
           <div class="section-kicker">本學期社員申請</div>
+          <p class="login-note" data-membership-registration-status></p>
           <fieldset class="membership-choice-fieldset">
             <legend>本學期是否申請成為社員？</legend>
             <div class="membership-choice-grid">
@@ -1458,6 +1469,39 @@ const getMembershipIntentFromProfile = (profile = {}) =>
     ? "join"
     : "not_join";
 
+const getMembershipRegistrationPeriodId = () => `${getConfiguredAcademicYear()}-${getConfiguredAcademicTerm()}`;
+
+const currentProfileOccupiesMembershipSlot = () => {
+  const profile = currentMemberProfile || {};
+  return String(profile.academicYear || "") === getConfiguredAcademicYear()
+    && String(profile.term || "") === getConfiguredAcademicTerm()
+    && getMembershipIntentFromProfile(profile) === "join";
+};
+
+const getMembershipRegistrationAvailability = () => {
+  if (currentProfileOccupiesMembershipSlot()) {
+    return { available: true, message: "你已保留本學期社員名額，可繼續修改繳費資料。" };
+  }
+  const openAt = getDateTimeLocalMs(membershipRegistrationSettings.openAt);
+  const closeAt = getDateTimeLocalMs(membershipRegistrationSettings.closeAt);
+  const limit = Math.max(0, Number(membershipRegistrationSettings.limit || 0));
+  const count = Math.max(0, Number(membershipRegistrationSettings.count || 0));
+  const now = Date.now();
+  if (!openAt || !closeAt || openAt >= closeAt || limit <= 0) {
+    return { available: false, message: "社員申請尚未開放，請留意社團公告。" };
+  }
+  if (now < openAt) {
+    return { available: false, message: `社員申請將於 ${new Date(openAt).toLocaleString("zh-TW")} 開放。` };
+  }
+  if (now > closeAt) {
+    return { available: false, message: "本學期社員申請已截止。" };
+  }
+  if (count >= limit) {
+    return { available: false, message: `本學期社員名額已滿（${count}/${limit}）。` };
+  }
+  return { available: true, message: `社員申請開放中，剩餘 ${Math.max(0, limit - count)} 名；截止時間為 ${new Date(closeAt).toLocaleString("zh-TW")}。` };
+};
+
 const buildTransferAccountMarkup = () => {
   const hasAccount = membershipPaymentSettings.accountName && membershipPaymentSettings.accountNumber;
   if (!hasAccount) {
@@ -1477,6 +1521,14 @@ const syncMembershipPaymentForm = (form) => {
   }
 
   const intent = form.querySelector("[name='membershipIntent']:checked")?.value || "not_join";
+  const availability = getMembershipRegistrationAvailability();
+  const joinInput = form.querySelector("[name='membershipIntent'][value='join']");
+  if (joinInput instanceof HTMLInputElement) {
+    joinInput.disabled = !availability.available;
+  }
+  form.querySelectorAll("[data-membership-registration-status]").forEach((element) => {
+    setMessageTone(element, availability.message, availability.available ? "success" : "error");
+  });
   const method = form.querySelector("[name='paymentMethod']:checked")?.value || "";
   const paymentFields = form.querySelector("[data-membership-payment-fields]");
   const cashPanel = form.querySelector("[data-cash-payment-panel]");
@@ -1570,7 +1622,7 @@ const getFriendlyAuthError = (error) => {
   return authErrorMessages[code] || "登入發生問題，請稍後再試一次。" + (code ? "（" + code + "）" : "");
 };
 const getFriendlyApplicationError = (error) =>
-  applicationErrorMessages[error?.code] || "送出申請時發生問題，請稍後再試一次。";
+  applicationErrorMessages[error?.code] || error?.message || "送出申請時發生問題，請稍後再試一次。";
 
 const closeMobileNav = () => {
   if (!menuButton || !mobileNav) {
@@ -2957,11 +3009,25 @@ const loadCurrentTermSettings = async () => {
       cashClassLabel:
         String(settingsData?.membershipPayment?.cashClassLabel || "").trim() || membershipPaymentSettings.cashClassLabel,
     };
+    const membershipRegistration = settingsData?.membershipRegistration || {};
+    membershipRegistrationSettings = {
+      openAt: formatDateTimeLocalValue(membershipRegistration.openAt),
+      closeAt: formatDateTimeLocalValue(membershipRegistration.closeAt),
+      limit: Math.max(0, Math.floor(Number(membershipRegistration.limit || 0))),
+      count: 0,
+    };
+    if (isValidAcademicYearValue(configuredAcademicYear) && DEFAULT_TERMS.slice(0, 2).includes(configuredAcademicTerm)) {
+      const statsSnapshot = await getDoc(doc(db, MEMBERSHIP_REGISTRATION_STATS_COLLECTION, getMembershipRegistrationPeriodId()));
+      membershipRegistrationSettings.count = statsSnapshot.exists()
+        ? Math.max(0, Number(statsSnapshot.data()?.count || 0))
+        : 0;
+    }
     classScheduleDefaults = Array.isArray(settingsData?.classScheduleDefaults)
       ? settingsData.classScheduleDefaults.map(normalizeClassScheduleDefault).filter(Boolean)
       : [];
     document.querySelectorAll("[data-login-form], [data-account-membership-form]").forEach(syncMembershipPaymentForm);
     syncMembershipPaymentSettingForm();
+    syncMembershipRegistrationSettingForm();
     renderClassDefaultSettings();
   } catch (error) {
     console.warn("Load current term settings failed:", error);
@@ -6902,6 +6968,13 @@ const handleAuthSubmit = async (event) => {
   }
 
   if (authMode === "signup") {
+    if (signupProfile.membershipIntent === "join") {
+      const availability = getMembershipRegistrationAvailability();
+      if (!availability.available) {
+        setHint(availability.message, "error");
+        return;
+      }
+    }
     const paymentValidationMessage = validateMembershipPaymentData(signupProfile);
     if (paymentValidationMessage) {
       setHint(paymentValidationMessage, "error");
@@ -6921,8 +6994,8 @@ const handleAuthSubmit = async (event) => {
       ? await createUserWithEmailAndPassword(readyAuth, email, password)
       : await signInWithEmailAndPassword(readyAuth, email, password);
 
+    let membershipApplicationError = null;
     if (authMode === "signup") {
-      const membershipStatus = signupProfile.membershipIntent === "join" ? "pending_payment" : "not_applied";
       await setDoc(getMemberDocRef(credential.user.uid), {
         uid: credential.user.uid,
         email,
@@ -6932,13 +7005,13 @@ const handleAuthSubmit = async (event) => {
         department: signupProfile.department,
         school: signupProfile.school,
         phone: signupProfile.phone,
-        membershipIntent: signupProfile.membershipIntent,
-        paymentMethod: signupProfile.paymentMethod,
-        cashPaymentSlot: signupProfile.cashPaymentSlot,
-        transferAt: signupProfile.transferAt,
-        transferLastFive: signupProfile.transferLastFive,
-        membershipStatus,
-        status: membershipStatus,
+        membershipIntent: "not_join",
+        paymentMethod: "none",
+        cashPaymentSlot: "",
+        transferAt: "",
+        transferLastFive: "",
+        membershipStatus: "not_applied",
+        status: "not_applied",
         paymentStatus: "unpaid",
         notificationPreferences: { announcements: true, classReminders: true, registrationUpdates: true },
         privacyConsent: { version: "2026-08-07", accepted: true, acceptedAt: serverTimestamp() },
@@ -6947,6 +7020,14 @@ const handleAuthSubmit = async (event) => {
         updatedAt: serverTimestamp(),
         lastLoginAt: serverTimestamp(),
       });
+      if (signupProfile.membershipIntent === "join") {
+        try {
+          await saveMembershipApplication(signupProfile);
+        } catch (error) {
+          membershipApplicationError = error;
+          console.error("Membership application after signup failed:", error);
+        }
+      }
     }
 
     currentUser = credential.user;
@@ -6978,14 +7059,16 @@ const handleAuthSubmit = async (event) => {
     }
 
     setHint(
-      profileSyncFailed
+      membershipApplicationError
+        ? `帳號已建立並自動登入，但社員申請未送出：${membershipApplicationError.message || "目前無法申請社員資格。"}`
+        : profileSyncFailed
         ? "登入成功，但社員資料暫時無法同步；你仍可保持登入並稍後再試。"
         : authMode === "signup"
           ? signupProfile.membershipIntent === "join"
             ? "帳號註冊完成，社員申請已送出；幹部確認社費後才會取得社員資格。"
             : "帳號註冊完成，已自動登入；目前狀態為非社員。"
           : "登入成功，已更新社員狀態。",
-      profileSyncFailed ? "error" : "success",
+      membershipApplicationError || profileSyncFailed ? "error" : "success",
     );
     event.target.reset();
   } catch (error) {
@@ -7036,23 +7119,42 @@ const handleApplicationSubmit = async (event) => {
       return;
     }
 
-    const applicationRef = doc(db, "applications", getApplicationDocId(currentUser.uid, applicationType));
-    await setDoc(applicationRef, {
-      name,
-      studentId,
-      department,
-      school,
-      phone,
-      email,
-      note,
-      applicationType,
-      academicYear: getConfiguredAcademicYear(),
-      term: getConfiguredAcademicTerm(),
-      approved: false,
-      reviewStatus: "pending",
-      submittedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    if (applicationType === "club") {
+      await setDoc(getMemberDocRef(currentUser.uid), {
+        name,
+        displayName: name,
+        studentId,
+        school,
+        department,
+        phone,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      await saveMembershipApplication({
+        membershipIntent: "join",
+        paymentMethod: "later",
+        cashPaymentSlot: "",
+        transferAt: "",
+        transferLastFive: "",
+      });
+    } else {
+      const applicationRef = doc(db, "applications", getApplicationDocId(currentUser.uid, applicationType));
+      await setDoc(applicationRef, {
+        name,
+        studentId,
+        department,
+        school,
+        phone,
+        email,
+        note,
+        applicationType,
+        academicYear: getConfiguredAcademicYear(),
+        term: getConfiguredAcademicTerm(),
+        approved: false,
+        reviewStatus: "pending",
+        submittedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
 
     if (currentUser?.uid && currentUser.email?.trim().toLowerCase() === email) {
       await setDoc(
@@ -7065,9 +7167,6 @@ const handleApplicationSubmit = async (event) => {
           school,
           department,
           phone,
-          applicationType,
-          status: "pending_payment",
-          membershipStatus: "pending_payment",
           updatedAt: serverTimestamp(),
         },
         { merge: true },
@@ -7116,6 +7215,24 @@ const bindMembershipPaymentFormControls = (form) => {
   syncMembershipPaymentForm(form);
 };
 
+const saveMembershipApplication = async (paymentData) => {
+  if (!functionsClient || !httpsCallable) {
+    throw new Error("社員申請服務目前無法使用，請稍後再試。");
+  }
+  const result = await httpsCallable(functionsClient, "updateMembershipApplication")({
+    membershipIntent: paymentData.membershipIntent,
+    paymentMethod: paymentData.paymentMethod,
+    cashPaymentSlot: paymentData.cashPaymentSlot,
+    transferAt: paymentData.transferAt,
+    transferLastFive: paymentData.transferLastFive,
+  });
+  if (result.data) {
+    membershipRegistrationSettings.count = Math.max(0, Number(result.data.count || 0));
+    if (Number(result.data.limit || 0) > 0) membershipRegistrationSettings.limit = Number(result.data.limit);
+  }
+  return result.data || { ok: true };
+};
+
 const handleAccountMembershipSubmit = async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -7134,25 +7251,7 @@ const handleAccountMembershipSubmit = async (event) => {
 
   submitButton.disabled = true;
   try {
-    const nextMembershipStatus = paymentData.membershipIntent === "join" ? "pending_payment" : "not_applied";
-    await setDoc(
-      getMemberDocRef(currentUser.uid),
-      {
-        membershipIntent: paymentData.membershipIntent,
-        membershipStatus: nextMembershipStatus,
-        status: nextMembershipStatus,
-        paymentStatus: "unpaid",
-        paymentMethod: paymentData.paymentMethod,
-        cashPaymentSlot: paymentData.cashPaymentSlot,
-        transferAt: paymentData.transferAt,
-        transferLastFive: paymentData.transferLastFive,
-        academicYear: getConfiguredAcademicYear(),
-        term: getConfiguredAcademicTerm(),
-        paymentSubmittedAt: paymentData.membershipIntent === "join" ? serverTimestamp() : null,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
+    await saveMembershipApplication(paymentData);
     await loadCurrentMemberStatus(currentUser);
     updateLoginButtons();
     const personalProfileForm = getLoginModalElements().personalProfileForm;
@@ -7446,6 +7545,65 @@ const syncMembershipPaymentSettingForm = () => {
     const field = form.elements.namedItem(key);
     if (field instanceof HTMLInputElement) {
       field.value = value;
+    }
+  });
+};
+
+const syncMembershipRegistrationSettingForm = () => {
+  const form = document.querySelector("[data-membership-registration-setting-form]");
+  if (!(form instanceof HTMLFormElement)) return;
+  const openAt = form.elements.namedItem("openAt");
+  const closeAt = form.elements.namedItem("closeAt");
+  const limit = form.elements.namedItem("limit");
+  if (openAt instanceof HTMLInputElement) openAt.value = membershipRegistrationSettings.openAt;
+  if (closeAt instanceof HTMLInputElement) closeAt.value = membershipRegistrationSettings.closeAt;
+  if (limit instanceof HTMLInputElement) limit.value = membershipRegistrationSettings.limit || "";
+  const count = form.querySelector("[data-membership-registration-setting-count]");
+  if (count) {
+    count.textContent = `目前已占用 ${membershipRegistrationSettings.count} / ${membershipRegistrationSettings.limit || "未設定"} 個名額。`;
+  }
+};
+
+const bindMembershipRegistrationSetting = () => {
+  const form = document.querySelector("[data-membership-registration-setting-form]");
+  if (!(form instanceof HTMLFormElement) || form.dataset.bound === "true") return;
+  form.dataset.bound = "true";
+  syncMembershipRegistrationSettingForm();
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(form);
+    const nextSettings = {
+      openAt: String(formData.get("openAt") || "").trim(),
+      closeAt: String(formData.get("closeAt") || "").trim(),
+      limit: Math.floor(Number(formData.get("limit") || 0)),
+    };
+    const hint = form.querySelector("[data-membership-registration-setting-hint]");
+    const submitButton = form.querySelector("[data-membership-registration-setting-save]");
+    if (!nextSettings.openAt || !nextSettings.closeAt || nextSettings.limit <= 0) {
+      setMessageTone(hint, "請完整設定開放時間、截止時間與社員名額。", "error");
+      return;
+    }
+    if (getDateTimeLocalMs(nextSettings.openAt) >= getDateTimeLocalMs(nextSettings.closeAt)) {
+      setMessageTone(hint, "結束申請時間必須晚於開放申請時間。", "error");
+      return;
+    }
+    submitButton.disabled = true;
+    try {
+      await setDoc(getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC), {
+        membershipRegistration: nextSettings,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser?.uid || "",
+        updatedByEmail: currentUser?.email || "",
+      }, { merge: true });
+      membershipRegistrationSettings = { ...membershipRegistrationSettings, ...nextSettings };
+      document.querySelectorAll("[data-login-form], [data-account-membership-form]").forEach(syncMembershipPaymentForm);
+      syncMembershipRegistrationSettingForm();
+      setMessageTone(hint, "社員申請名額與期間已儲存。", "success");
+      openActionSuccessModal({ title: "儲存成功", copy: "社員申請已套用新的名額與開放期間。" });
+    } catch (error) {
+      setMessageTone(hint, `儲存失敗：${error?.message || "請稍後再試一次。"}`, "error");
+    } finally {
+      submitButton.disabled = false;
     }
   });
 };
@@ -7851,6 +8009,7 @@ const syncSpaNavigationState = (targetUrl) => {
 const activateCurrentPage = async () => {
   bindOpenButtons();
   bindAcademicYearSetting();
+  bindMembershipRegistrationSetting();
   bindMembershipPaymentSetting();
   bindClassDefaultSettings();
   bindFaqQuestionForm();
@@ -7999,6 +8158,7 @@ const init = async () => {
   bindNotificationCenter();
   bindOpenButtons();
   bindAcademicYearSetting();
+  bindMembershipRegistrationSetting();
   bindMembershipPaymentSetting();
   bindClassDefaultSettings();
   syncGlobalNavigationLabels();

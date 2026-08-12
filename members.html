@@ -143,6 +143,35 @@
                   </form>
                 </article>
 
+                <article class="content-card is-tight membership-registration-setting-card">
+                  <div class="member-filter-header">
+                    <div>
+                      <p class="section-kicker">Membership Registration</p>
+                      <h3 class="content-title">社員申請名額與期間</h3>
+                      <p class="content-copy">限制本學期可申請社員的人數，並設定開放及截止時間；非社員帳號仍可正常註冊。</p>
+                    </div>
+                  </div>
+                  <form class="form-grid" data-membership-registration-setting-form>
+                    <div class="class-signup-profile">
+                      <div class="form-field">
+                        <label for="membership-registration-open">開放申請時間</label>
+                        <input id="membership-registration-open" name="openAt" type="datetime-local" />
+                      </div>
+                      <div class="form-field">
+                        <label for="membership-registration-close">結束申請時間</label>
+                        <input id="membership-registration-close" name="closeAt" type="datetime-local" />
+                      </div>
+                      <div class="form-field">
+                        <label for="membership-registration-limit">社員名額</label>
+                        <input id="membership-registration-limit" name="limit" min="1" step="1" type="number" />
+                      </div>
+                    </div>
+                    <p class="login-note" data-membership-registration-setting-count></p>
+                    <p class="login-note" data-membership-registration-setting-hint></p>
+                    <button class="button-primary" data-membership-registration-setting-save type="submit">儲存社員申請設定</button>
+                  </form>
+                </article>
+
               <article class="content-card is-tight membership-payment-setting-card">
                 <div class="member-filter-header">
                   <div>

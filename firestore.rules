@@ -98,14 +98,14 @@ service cloud.firestore {
         ]) &&
         request.resource.data.uid == request.auth.uid &&
         request.resource.data.email == request.auth.token.email &&
-        request.resource.data.membershipStatus in ["not_applied", "pending_payment"] &&
-        request.resource.data.status == request.resource.data.membershipStatus &&
+        request.resource.data.membershipStatus == "not_applied" &&
+        request.resource.data.status == "not_applied" &&
         request.resource.data.paymentStatus == "unpaid" &&
         (!request.resource.data.keys().hasAny(["academicYear"]) || (request.resource.data.academicYear is string && request.resource.data.academicYear.matches('^[0-9]{2,3}$'))) &&
         (!request.resource.data.keys().hasAny(["term"]) || request.resource.data.term in ["上學期", "下學期", "未設定"]) &&
         (!request.resource.data.keys().hasAny(["applicationType"]) || request.resource.data.applicationType in ["club", "class"]) &&
-        (!request.resource.data.keys().hasAny(["membershipIntent"]) || request.resource.data.membershipIntent in ["join", "not_join"]) &&
-        (!request.resource.data.keys().hasAny(["paymentMethod"]) || request.resource.data.paymentMethod in ["cash", "transfer", "later", "none"]) &&
+        (!request.resource.data.keys().hasAny(["membershipIntent"]) || request.resource.data.membershipIntent == "not_join") &&
+        (!request.resource.data.keys().hasAny(["paymentMethod"]) || request.resource.data.paymentMethod == "none") &&
         (!request.resource.data.keys().hasAny(["cashPaymentSlot"]) || (request.resource.data.cashPaymentSlot is string && request.resource.data.cashPaymentSlot.size() <= 50)) &&
         (!request.resource.data.keys().hasAny(["transferAt"]) || (request.resource.data.transferAt is string && request.resource.data.transferAt.size() <= 40)) &&
         (!request.resource.data.keys().hasAny(["transferLastFive"]) || (request.resource.data.transferLastFive is string && request.resource.data.transferLastFive.size() <= 5)) &&
@@ -133,9 +133,7 @@ service cloud.firestore {
         isSignedIn() &&
         request.auth.uid == userId &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          "name", "displayName", "studentId", "department", "school", "phone", "academicYear", "term",
-          "applicationType", "membershipIntent", "membershipStatus", "status", "paymentStatus", "paymentMethod",
-          "cashPaymentSlot", "transferAt", "transferLastFive", "paymentSubmittedAt", "notificationPreferences",
+          "name", "displayName", "studentId", "department", "school", "phone", "applicationType", "notificationPreferences",
           "dismissedNotificationIds", "readNotificationIds", "source", "updatedAt", "lastLoginAt"
         ]) &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(["uid", "email", "privacyConsent", "createdAt", "approvedAt", "paidAt", "paymentConfirmedAt", "paymentConfirmedBy"]) &&
@@ -181,24 +179,7 @@ service cloud.firestore {
     }
 
     match /applications/{applicationId} {
-      allow create: if isSignedIn()
-        && request.resource.data.applicationType in ["club", "class"]
-        && applicationId == request.resource.data.applicationType + "-" + request.auth.uid
-        && request.resource.data.email == request.auth.token.email
-        && request.resource.data.keys().hasOnly(["name", "studentId", "department", "school", "phone", "email", "note", "applicationType", "academicYear", "term", "approved", "reviewStatus", "submittedAt", "updatedAt"])
-        && request.resource.data.name is string && request.resource.data.name.size() <= 100
-        && request.resource.data.studentId is string && request.resource.data.studentId.size() <= 30
-        && request.resource.data.department is string && request.resource.data.department.size() <= 100
-        && request.resource.data.school is string && request.resource.data.school.size() <= 100
-        && request.resource.data.phone is string && request.resource.data.phone.size() <= 30
-        && request.resource.data.email is string && request.resource.data.email.size() <= 254
-        && request.resource.data.note is string && request.resource.data.note.size() <= 1000
-        && request.resource.data.academicYear is string && request.resource.data.academicYear.matches('^[0-9]{2,3}$')
-        && request.resource.data.term in ["上學期", "下學期", "未設定"]
-        && request.resource.data.approved == false
-        && request.resource.data.reviewStatus == "pending"
-        && request.resource.data.submittedAt == request.time
-        && request.resource.data.updatedAt == request.time;
+      allow create: if false;
       allow get, list: if isAdmin();
       allow update, delete: if isAdmin();
     }
@@ -209,6 +190,11 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
     match /siteSettings/{settingId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /membershipRegistrationStats/{periodId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
     }
