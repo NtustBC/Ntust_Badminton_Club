@@ -93,6 +93,109 @@ img {
   min-height: 100vh;
 }
 
+body.maintenance-active {
+  overflow: auto;
+}
+
+body.maintenance-active > .page-shell {
+  display: none;
+}
+
+.maintenance-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: clamp(24px, 6vw, 72px);
+  background:
+    radial-gradient(circle at 15% 15%, rgba(236, 188, 90, 0.2), transparent 34%),
+    radial-gradient(circle at 85% 80%, rgba(61, 110, 92, 0.18), transparent 38%),
+    var(--color-paper, #f5f0e6);
+}
+
+.maintenance-screen[hidden] {
+  display: none;
+}
+
+.maintenance-card {
+  width: min(100%, 660px);
+  padding: clamp(32px, 7vw, 72px);
+  border: 1px solid rgba(32, 47, 42, 0.18);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 24px 70px rgba(32, 47, 42, 0.14);
+  text-align: center;
+  backdrop-filter: blur(14px);
+}
+
+.maintenance-mark {
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(32, 47, 42, 0.12);
+}
+
+.maintenance-mark img {
+  width: 74px;
+  height: 74px;
+  object-fit: contain;
+}
+
+.maintenance-card h1 {
+  margin: 10px 0 18px;
+  font-family: "Noto Serif TC", serif;
+  font-size: clamp(2rem, 7vw, 4rem);
+  line-height: 1.15;
+  color: var(--color-ink, #20302a);
+}
+
+.maintenance-message,
+.maintenance-resume {
+  margin: 0 auto;
+  max-width: 520px;
+  color: var(--color-muted, #5d6862);
+  line-height: 1.9;
+  white-space: pre-line;
+}
+
+.maintenance-resume {
+  margin-top: 12px;
+  font-weight: 700;
+  color: var(--color-ink, #20302a);
+}
+
+.maintenance-card .button-secondary {
+  margin-top: 30px;
+}
+
+.maintenance-toggle {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid rgba(32, 47, 42, 0.16);
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+.maintenance-toggle input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--color-accent, #b77b24);
+}
+
+.maintenance-toggle span {
+  display: grid;
+  gap: 3px;
+}
+
+.maintenance-toggle small {
+  color: var(--color-muted, #5d6862);
+}
+
 @supports not (zoom: 1) {
   body {
     zoom: 1;

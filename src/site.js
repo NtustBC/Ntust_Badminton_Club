@@ -105,6 +105,12 @@ const FAQ_COLLECTION = "faqEntries";
 const FAQ_QUESTION_COLLECTION = "faqQuestions";
 const SITE_SETTINGS_COLLECTION = "siteSettings";
 const CURRENT_TERM_SETTINGS_DOC = "currentTerm";
+const DEFAULT_MAINTENANCE_SETTINGS = {
+  enabled: false,
+  title: "網站維護中",
+  message: "我們正在進行系統維護，請稍後再回來。",
+  estimatedResumeAt: "",
+};
 const MEMBERSHIP_REGISTRATION_STATS_COLLECTION = "membershipRegistrationStats";
 const CLASS_WEEKDAY_LABELS = {
   mon: "星期一",
@@ -148,6 +154,8 @@ let membershipRegistrationSettings = {
   limit: 0,
   count: 0,
 };
+let maintenanceSettings = { ...DEFAULT_MAINTENANCE_SETTINGS };
+let maintenanceRefreshTimer = null;
 let classScheduleDefaults = [];
 let authMode = "signin";
 let authReadyPromise = null;
@@ -1008,6 +1016,66 @@ const getClassAnnouncementDocRef = (announcementId) => doc(db, CLASS_ANNOUNCEMEN
 const getFaqDocRef = (faqId) => doc(db, FAQ_COLLECTION, faqId);
 const getFaqQuestionDocRef = (questionId) => doc(db, FAQ_QUESTION_COLLECTION, questionId);
 const getSiteSettingsDocRef = (settingId) => doc(db, SITE_SETTINGS_COLLECTION, settingId);
+
+const isMaintenanceBlocking = () => maintenanceSettings.enabled && !currentUserIsAdmin;
+
+const formatMaintenanceResumeTime = (value) => {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("zh-TW", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+};
+
+const ensureMaintenanceScreen = () => {
+  let screen = document.querySelector("[data-maintenance-screen]");
+  if (screen) {
+    return screen;
+  }
+
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<main class="maintenance-screen" data-maintenance-screen hidden>
+      <section class="maintenance-card" role="status" aria-live="polite">
+        <div class="maintenance-mark" aria-hidden="true">
+          <img src="./assets/club-logo-cropped.png" alt="" />
+        </div>
+        <p class="section-kicker">NTUST BADMINTON CLUB</p>
+        <h1 data-maintenance-title>網站維護中</h1>
+        <p class="maintenance-message" data-maintenance-message></p>
+        <p class="maintenance-resume" data-maintenance-resume hidden></p>
+        <button class="button-secondary" data-maintenance-login type="button">管理員登入</button>
+      </section>
+    </main>`,
+  );
+  screen = document.querySelector("[data-maintenance-screen]");
+  screen.querySelector("[data-maintenance-login]")?.addEventListener("click", (event) => openLoginModal(event.currentTarget));
+  return screen;
+};
+
+const applyMaintenanceView = () => {
+  const screen = ensureMaintenanceScreen();
+  const blocking = isMaintenanceBlocking();
+  body.classList.toggle("maintenance-active", blocking);
+  screen.hidden = !blocking;
+
+  if (!blocking) {
+    return;
+  }
+
+  screen.querySelector("[data-maintenance-title]").textContent = maintenanceSettings.title || DEFAULT_MAINTENANCE_SETTINGS.title;
+  screen.querySelector("[data-maintenance-message]").textContent = maintenanceSettings.message || DEFAULT_MAINTENANCE_SETTINGS.message;
+  const resume = screen.querySelector("[data-maintenance-resume]");
+  const resumeLabel = formatMaintenanceResumeTime(maintenanceSettings.estimatedResumeAt);
+  resume.hidden = !resumeLabel;
+  resume.textContent = resumeLabel ? `預計恢復時間：${resumeLabel}` : "";
+};
 const getClassSessionSortMs = (session = {}) => getDateKeyMs(session.date || session.sessionDate);
 const getAnnouncementSortMs = (announcement) => getTimestampMs(announcement.createdAt || announcement.updatedAt || announcement.date);
 const getFaqSortMs = (faq) => getTimestampMs(faq.createdAt || faq.updatedAt || faq.date);
@@ -2058,10 +2126,15 @@ const ensureAuthReady = async () => {
 
       updateLoginButtons();
       updateAuthView();
+      applyMaintenanceView();
 
       if (!initialAuthStateResolved) {
         initialAuthStateResolved = true;
         resolveInitialAuthState(auth);
+      }
+
+      if (isMaintenanceBlocking()) {
+        return;
       }
 
       if (pageName === "members") {
@@ -2988,6 +3061,13 @@ const loadCurrentTermSettings = async () => {
   try {
     const settingsDoc = await getDoc(getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC));
     const settingsData = settingsDoc.exists() ? settingsDoc.data() : {};
+    const storedMaintenance = settingsData?.maintenance || {};
+    maintenanceSettings = {
+      enabled: storedMaintenance.enabled === true,
+      title: String(storedMaintenance.title || DEFAULT_MAINTENANCE_SETTINGS.title).trim(),
+      message: String(storedMaintenance.message || DEFAULT_MAINTENANCE_SETTINGS.message).trim(),
+      estimatedResumeAt: String(storedMaintenance.estimatedResumeAt || "").trim(),
+    };
     const academicYear = String(settingsData?.academicYear || "").trim();
     const term = String(settingsData?.term || "").trim();
     configuredAcademicPeriodKey = String(settingsData?.academicPeriodKey || "").trim();
@@ -3028,7 +3108,9 @@ const loadCurrentTermSettings = async () => {
     document.querySelectorAll("[data-login-form], [data-account-membership-form]").forEach(syncMembershipPaymentForm);
     syncMembershipPaymentSettingForm();
     syncMembershipRegistrationSettingForm();
+    syncMaintenanceSettingForm();
     renderClassDefaultSettings();
+    applyMaintenanceView();
   } catch (error) {
     console.warn("Load current term settings failed:", error);
   }
@@ -7608,6 +7690,74 @@ const bindMembershipRegistrationSetting = () => {
   });
 };
 
+const syncMaintenanceSettingForm = () => {
+  const form = document.querySelector("[data-maintenance-setting-form]");
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+
+  const enabled = form.elements.namedItem("enabled");
+  const title = form.elements.namedItem("title");
+  const message = form.elements.namedItem("message");
+  const estimatedResumeAt = form.elements.namedItem("estimatedResumeAt");
+  if (enabled instanceof HTMLInputElement) enabled.checked = maintenanceSettings.enabled;
+  if (title instanceof HTMLInputElement) title.value = maintenanceSettings.title;
+  if (message instanceof HTMLTextAreaElement) message.value = maintenanceSettings.message;
+  if (estimatedResumeAt instanceof HTMLInputElement) estimatedResumeAt.value = maintenanceSettings.estimatedResumeAt;
+};
+
+const bindMaintenanceSetting = () => {
+  const form = document.querySelector("[data-maintenance-setting-form]");
+  if (!(form instanceof HTMLFormElement) || form.dataset.bound === "true") {
+    return;
+  }
+
+  form.dataset.bound = "true";
+  syncMaintenanceSettingForm();
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!currentUserIsAdmin) {
+      return;
+    }
+
+    const formData = new FormData(form);
+    const nextSettings = {
+      enabled: formData.get("enabled") === "on",
+      title: String(formData.get("title") || "").trim() || DEFAULT_MAINTENANCE_SETTINGS.title,
+      message: String(formData.get("message") || "").trim() || DEFAULT_MAINTENANCE_SETTINGS.message,
+      estimatedResumeAt: String(formData.get("estimatedResumeAt") || "").trim(),
+    };
+    const hint = form.querySelector("[data-maintenance-setting-hint]");
+    const submitButton = form.querySelector("button[type='submit']");
+    submitButton.disabled = true;
+
+    try {
+      await setDoc(
+        getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC),
+        {
+          maintenance: nextSettings,
+          updatedAt: serverTimestamp(),
+          updatedBy: currentUser?.uid || "",
+          updatedByEmail: currentUser?.email || "",
+        },
+        { merge: true },
+      );
+      maintenanceSettings = nextSettings;
+      applyMaintenanceView();
+      setMessageTone(hint, nextSettings.enabled ? "維護模式已開啟；管理員仍可正常瀏覽網站。" : "維護模式已關閉，網站已恢復公開。", "success");
+      openActionSuccessModal({
+        title: nextSettings.enabled ? "維護模式已開啟" : "網站已恢復公開",
+        copy: nextSettings.enabled ? "一般使用者現在會看到維護提示，管理員不受影響。" : "所有使用者現在都能正常瀏覽網站。",
+      });
+    } catch (error) {
+      console.error("Save maintenance setting failed:", error);
+      setMessageTone(hint, `儲存失敗：${error?.message || "請稍後再試。"}`, "error");
+    } finally {
+      submitButton.disabled = false;
+    }
+  });
+};
+
 const bindMembershipPaymentSetting = () => {
   const form = document.querySelector("[data-membership-payment-setting-form]");
   if (!(form instanceof HTMLFormElement) || form.dataset.bound === "true") {
@@ -8009,6 +8159,7 @@ const syncSpaNavigationState = (targetUrl) => {
 const activateCurrentPage = async () => {
   bindOpenButtons();
   bindAcademicYearSetting();
+  bindMaintenanceSetting();
   bindMembershipRegistrationSetting();
   bindMembershipPaymentSetting();
   bindClassDefaultSettings();
@@ -8018,6 +8169,11 @@ const activateCurrentPage = async () => {
   initPublicBoardAutoRefresh();
   syncGlobalNavigationLabels();
   updateLoginButtons();
+
+  if (isMaintenanceBlocking()) {
+    applyMaintenanceView();
+    return;
+  }
 
   if (pageName === "members") {
     await refreshMembersDashboardSafe({ force: true });
@@ -8158,6 +8314,7 @@ const init = async () => {
   bindNotificationCenter();
   bindOpenButtons();
   bindAcademicYearSetting();
+  bindMaintenanceSetting();
   bindMembershipRegistrationSetting();
   bindMembershipPaymentSetting();
   bindClassDefaultSettings();
@@ -8178,6 +8335,15 @@ const init = async () => {
     await ensureAuthReady();
     await loadCurrentTermSettings();
     await applyAcademicPeriodRolloverIfNeeded();
+  }
+
+  applyMaintenanceView();
+  if (!maintenanceRefreshTimer && firebaseConfigured) {
+    maintenanceRefreshTimer = window.setInterval(() => {
+      if (!document.hidden) {
+        void loadCurrentTermSettings();
+      }
+    }, PUBLIC_PAGE_REFRESH_MS);
   }
 
   await activateCurrentPage();

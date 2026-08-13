@@ -143,6 +143,36 @@
                   </form>
                 </article>
 
+                <article class="content-card is-tight maintenance-setting-card">
+                  <div class="member-filter-header">
+                    <div>
+                      <p class="section-kicker">Maintenance Mode</p>
+                      <h3 class="content-title">網站維護模式</h3>
+                      <p class="content-copy">開啟後，一般使用者只會看到維護提示；已登入的管理員仍可正常瀏覽與操作網站。</p>
+                    </div>
+                  </div>
+                  <form class="form-grid" data-maintenance-setting-form>
+                    <label class="maintenance-toggle">
+                      <input name="enabled" type="checkbox" />
+                      <span><strong>啟用維護模式</strong><small>儲存後立即套用至所有頁面</small></span>
+                    </label>
+                    <div class="form-field">
+                      <label for="maintenance-title">提示標題</label>
+                      <input id="maintenance-title" maxlength="80" name="title" placeholder="網站維護中" type="text" />
+                    </div>
+                    <div class="form-field">
+                      <label for="maintenance-message">提示說明</label>
+                      <textarea id="maintenance-message" maxlength="500" name="message" placeholder="我們正在進行系統維護，請稍後再回來。" rows="3"></textarea>
+                    </div>
+                    <div class="form-field">
+                      <label for="maintenance-resume-at">預計恢復時間（選填）</label>
+                      <input id="maintenance-resume-at" name="estimatedResumeAt" type="datetime-local" />
+                    </div>
+                    <p class="login-note" data-maintenance-setting-hint></p>
+                    <button class="button-primary" type="submit">儲存維護設定</button>
+                  </form>
+                </article>
+
                 <article class="content-card is-tight membership-registration-setting-card">
                   <div class="member-filter-header">
                     <div>
