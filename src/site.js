@@ -2732,7 +2732,7 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
     signupToggle.hidden = signupFieldsHidden;
   }
   if (signupSettings) {
-    signupSettings.hidden = signupFieldsHidden;
+    signupSettings.hidden = signupFieldsHidden || !signupRequired?.checked;
   }
   if (signupPanel) {
     signupPanel.hidden = signupFieldsHidden;
@@ -2777,7 +2777,7 @@ function renderAdminCalendarDefaultShortcuts(form, dateKey = "") {
   container.hidden = false;
   container.innerHTML = `
     <span>套用預設社課：</span>
-    ${sorted.map((item, index) => `<button class="class-default-shortcut${item.weekday === weekday ? " is-matching-day" : ""}" data-class-default-shortcut="${index}" type="button">${escapeHtml(`${getWeekdayLabel(item.weekday)} ${item.startTime}–${item.endTime} · ${item.signupLimit ? `${item.signupLimit} 人` : "不限人數"}`)}</button>`).join("")}
+    ${sorted.map((item, index) => `<button class="class-default-shortcut${item.weekday === weekday ? " is-matching-day" : ""}" data-class-default-shortcut="${index}" type="button">${escapeHtml(`${getWeekdayLabel(item.weekday)} ${item.startTime}–${item.endTime} · ${item.signupRequired ? "需報名" : "免報名"}`)}</button>`).join("")}
   `;
   container.querySelectorAll("[data-class-default-shortcut]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2786,9 +2786,16 @@ function renderAdminCalendarDefaultShortcuts(form, dateKey = "") {
       form.querySelector("[name='startTime']").value = item.startTime;
       form.querySelector("[name='endTime']").value = item.endTime;
       if (item.location) form.querySelector("[name='location']").value = item.location;
-      form.querySelector("[name='signupLimit']").value = item.signupLimit || "";
       if (item.title && !form.querySelector("[name='title']").value) form.querySelector("[name='title']").value = item.title;
-      showToast("已套用預設社課時間與人數上限。", { tone: "success" });
+      const signupRequired = form.querySelector("[name='signupRequired']");
+      if (signupRequired instanceof HTMLInputElement) signupRequired.checked = item.signupRequired;
+      const signupSettings = form.querySelector("[data-admin-calendar-signup-settings]");
+      if (signupSettings) signupSettings.hidden = !item.signupRequired;
+      form.querySelector("[name='memberSignupOpenAt']").value = item.signupRequired ? getClassDefaultSignupDateTime(item, dateKey, "memberSignupOpen") : "";
+      form.querySelector("[name='publicSignupOpenAt']").value = item.signupRequired ? getClassDefaultSignupDateTime(item, dateKey, "publicSignupOpen") : "";
+      form.querySelector("[name='signupCloseAt']").value = item.signupRequired ? getClassDefaultSignupDateTime(item, dateKey, "signupClose") : "";
+      form.querySelector("[name='signupLimit']").value = item.signupRequired ? item.signupLimit || "" : "";
+      showToast("已套用預設社課與報名設定。", { tone: "success" });
     });
   });
 }
@@ -6544,7 +6551,7 @@ function bindAdminClassCalendarActions() {
         signupToggle.hidden = signupFieldsHidden;
       }
       if (signupSettings) {
-        signupSettings.hidden = signupFieldsHidden;
+        signupSettings.hidden = signupFieldsHidden || !form.querySelector("[name='signupRequired']")?.checked;
       }
       if (signupPanel) {
         signupPanel.hidden = signupFieldsHidden;
@@ -6562,6 +6569,10 @@ function bindAdminClassCalendarActions() {
           endDateInput.value = startDate;
         }
       }
+    });
+    form.querySelector("[name='signupRequired']")?.addEventListener("change", (event) => {
+      const signupSettings = form.querySelector("[data-admin-calendar-signup-settings]");
+      if (signupSettings) signupSettings.hidden = !event.target.checked;
     });
     form.querySelector("[name='date']")?.addEventListener("change", (event) => {
       const endDateInput = form.querySelector("[name='endDate']");
@@ -7972,33 +7983,107 @@ const bindMembershipPaymentSetting = () => {
   });
 };
 
+const getClassDefaultSignupRelativeMinutes = (daysBefore, time) => {
+  const [hours, minutes] = String(time || "").split(":").map(Number);
+  return -(Number(daysBefore) * 24 * 60) + hours * 60 + minutes;
+};
+
+const getClassDefaultSignupDateTime = (item, dateKey, prefix) => {
+  const date = parseDateKey(dateKey);
+  const daysBefore = Number(item[`${prefix}DaysBefore`]);
+  const [hours, minutes] = String(item[`${prefix}Time`] || "").split(":").map(Number);
+  if (!date || !Number.isFinite(daysBefore) || !Number.isFinite(hours) || !Number.isFinite(minutes)) return "";
+  date.setDate(date.getDate() - daysBefore);
+  date.setHours(hours, minutes, 0, 0);
+  return formatDateTimeLocalValue(date);
+};
+
 const normalizeClassScheduleDefault = (value = {}) => {
   const weekday = DATE_WEEKDAY_ORDER.includes(String(value.weekday || "")) ? String(value.weekday) : "";
   const startTime = String(value.startTime || "").trim();
   const endTime = String(value.endTime || "").trim();
+  const signupRequired = Object.prototype.hasOwnProperty.call(value, "signupRequired") ? value.signupRequired === true : true;
   const signupLimit = Number(value.signupLimit || 0);
   if (!weekday || !/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime) || startTime >= endTime) return null;
+  const signupDefaults = signupRequired
+    ? {
+        memberSignupOpenDaysBefore: Math.floor(Number(value.memberSignupOpenDaysBefore ?? 7)),
+        memberSignupOpenTime: String(value.memberSignupOpenTime || "12:00").trim(),
+        publicSignupOpenDaysBefore: Math.floor(Number(value.publicSignupOpenDaysBefore ?? 2)),
+        publicSignupOpenTime: String(value.publicSignupOpenTime || "12:00").trim(),
+        signupCloseDaysBefore: Math.floor(Number(value.signupCloseDaysBefore ?? 0)),
+        signupCloseTime: String(value.signupCloseTime || "12:00").trim(),
+      }
+    : {};
+  if (signupRequired) {
+    const dayValues = [signupDefaults.memberSignupOpenDaysBefore, signupDefaults.publicSignupOpenDaysBefore, signupDefaults.signupCloseDaysBefore];
+    const timeValues = [signupDefaults.memberSignupOpenTime, signupDefaults.publicSignupOpenTime, signupDefaults.signupCloseTime];
+    if (dayValues.some((days) => !Number.isFinite(days) || days < 0 || days > 90) || timeValues.some((time) => !/^\d{2}:\d{2}$/.test(time))) return null;
+    const sortValues = [
+      getClassDefaultSignupRelativeMinutes(signupDefaults.memberSignupOpenDaysBefore, signupDefaults.memberSignupOpenTime),
+      getClassDefaultSignupRelativeMinutes(signupDefaults.publicSignupOpenDaysBefore, signupDefaults.publicSignupOpenTime),
+      getClassDefaultSignupRelativeMinutes(signupDefaults.signupCloseDaysBefore, signupDefaults.signupCloseTime),
+    ];
+    if (!(sortValues[0] < sortValues[1] && sortValues[1] < sortValues[2])) return null;
+  }
   return {
     weekday,
     startTime,
     endTime,
     title: String(value.title || "社課").trim().slice(0, 100),
     location: String(value.location || "").trim().slice(0, 200),
-    signupLimit: Number.isFinite(signupLimit) && signupLimit > 0 ? Math.floor(signupLimit) : null,
+    signupRequired,
+    signupLimit: signupRequired && Number.isFinite(signupLimit) && signupLimit > 0 ? Math.floor(signupLimit) : null,
+    ...signupDefaults,
   };
 };
 
 const getClassDefaultRowMarkup = (item = {}) => `
   <div class="class-default-row" data-class-default-row>
-    <div class="form-field"><label>星期</label><select name="weekday">${DATE_WEEKDAY_ORDER.map((key) => `<option value="${key}"${item.weekday === key ? " selected" : ""}>${escapeHtml(getWeekdayLabel(key))}</option>`).join("")}</select></div>
-    <div class="form-field"><label>開始</label><input name="startTime" type="time" step="300" value="${escapeHtml(item.startTime || "")}" required /></div>
-    <div class="form-field"><label>結束</label><input name="endTime" type="time" step="300" value="${escapeHtml(item.endTime || "")}" required /></div>
-    <div class="form-field"><label>人數上限（選填）</label><input name="signupLimit" min="1" placeholder="不限" type="number" value="${escapeHtml(item.signupLimit || "")}" /></div>
-    <div class="form-field"><label>標題</label><input name="title" type="text" value="${escapeHtml(item.title || "社課")}" /></div>
-    <div class="form-field"><label>地點（選填）</label><input name="location" type="text" value="${escapeHtml(item.location || "")}" /></div>
-    <button class="member-delete-button" data-class-default-remove type="button">移除</button>
+    <div class="class-default-basic-grid">
+      <div class="form-field"><label>星期</label><select name="weekday">${DATE_WEEKDAY_ORDER.map((key) => `<option value="${key}"${item.weekday === key ? " selected" : ""}>${escapeHtml(getWeekdayLabel(key))}</option>`).join("")}</select></div>
+      <div class="form-field"><label>開始</label><input name="startTime" type="time" step="300" value="${escapeHtml(item.startTime || "")}" required /></div>
+      <div class="form-field"><label>結束</label><input name="endTime" type="time" step="300" value="${escapeHtml(item.endTime || "")}" required /></div>
+      <div class="form-field"><label>標題</label><input name="title" type="text" value="${escapeHtml(item.title || "社課")}" /></div>
+      <div class="form-field"><label>地點（選填）</label><input name="location" type="text" value="${escapeHtml(item.location || "")}" /></div>
+    </div>
+    <label class="class-default-signup-toggle">
+      <input name="signupRequired" type="checkbox"${item.signupRequired ? " checked" : ""} />
+      <span><strong>需要報名</strong><small>開啟後可設定各階段報名時間與人數上限</small></span>
+    </label>
+    <div class="class-default-signup-fields" data-class-default-signup-fields${item.signupRequired ? "" : " hidden"}>
+      <div class="class-default-signup-period">
+        <strong>① 社員報名開始</strong>
+        <div class="form-field"><label>社課前幾天</label><input name="memberSignupOpenDaysBefore" min="0" max="90" type="number" value="${escapeHtml(item.memberSignupOpenDaysBefore ?? 7)}" /></div>
+        <div class="form-field"><label>時間</label><input name="memberSignupOpenTime" type="time" step="300" value="${escapeHtml(item.memberSignupOpenTime || "12:00")}" /></div>
+      </div>
+      <div class="class-default-signup-period">
+        <strong>② 全面開放報名</strong>
+        <div class="form-field"><label>社課前幾天</label><input name="publicSignupOpenDaysBefore" min="0" max="90" type="number" value="${escapeHtml(item.publicSignupOpenDaysBefore ?? 2)}" /></div>
+        <div class="form-field"><label>時間</label><input name="publicSignupOpenTime" type="time" step="300" value="${escapeHtml(item.publicSignupOpenTime || "12:00")}" /></div>
+      </div>
+      <div class="class-default-signup-period">
+        <strong>③ 報名截止</strong>
+        <div class="form-field"><label>社課前幾天</label><input name="signupCloseDaysBefore" min="0" max="90" type="number" value="${escapeHtml(item.signupCloseDaysBefore ?? 0)}" /></div>
+        <div class="form-field"><label>時間</label><input name="signupCloseTime" type="time" step="300" value="${escapeHtml(item.signupCloseTime || "12:00")}" /></div>
+      </div>
+      <div class="form-field"><label>人數上限（選填）</label><input name="signupLimit" min="1" placeholder="不限" type="number" value="${escapeHtml(item.signupLimit || "")}" /></div>
+    </div>
+    <button class="member-delete-button class-default-remove" data-class-default-remove type="button">移除</button>
   </div>
 `;
+
+const bindClassDefaultRow = (row) => {
+  if (!row) return;
+  const toggle = row.querySelector("[name='signupRequired']");
+  const fields = row.querySelector("[data-class-default-signup-fields]");
+  const sync = () => {
+    if (fields) fields.hidden = !toggle?.checked;
+  };
+  toggle?.addEventListener("change", sync);
+  row.querySelector("[data-class-default-remove]")?.addEventListener("click", () => row.remove());
+  sync();
+};
 
 const renderClassDefaultSettings = () => {
   const list = document.querySelector("[data-class-default-list]");
@@ -8006,7 +8091,7 @@ const renderClassDefaultSettings = () => {
   list.innerHTML = (classScheduleDefaults.length ? classScheduleDefaults : [{ weekday: "fri", startTime: "", endTime: "", signupLimit: "", title: "社課", location: "" }])
     .map(getClassDefaultRowMarkup)
     .join("");
-  list.querySelectorAll("[data-class-default-remove]").forEach((button) => button.addEventListener("click", () => button.closest("[data-class-default-row]")?.remove()));
+  list.querySelectorAll("[data-class-default-row]").forEach(bindClassDefaultRow);
 };
 
 const bindClassDefaultSettings = () => {
@@ -8018,7 +8103,7 @@ const bindClassDefaultSettings = () => {
   addButton?.addEventListener("click", () => {
     const list = form.querySelector("[data-class-default-list]");
     list?.insertAdjacentHTML("beforeend", getClassDefaultRowMarkup({ weekday: "fri", title: "社課" }));
-    list?.lastElementChild?.querySelector("[data-class-default-remove]")?.addEventListener("click", (event) => event.currentTarget.closest("[data-class-default-row]")?.remove());
+    bindClassDefaultRow(list?.lastElementChild);
   });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -8030,9 +8115,16 @@ const bindClassDefaultSettings = () => {
       signupLimit: row.querySelector("[name='signupLimit']")?.value,
       title: row.querySelector("[name='title']")?.value,
       location: row.querySelector("[name='location']")?.value,
+      signupRequired: Boolean(row.querySelector("[name='signupRequired']")?.checked),
+      memberSignupOpenDaysBefore: row.querySelector("[name='memberSignupOpenDaysBefore']")?.value,
+      memberSignupOpenTime: row.querySelector("[name='memberSignupOpenTime']")?.value,
+      publicSignupOpenDaysBefore: row.querySelector("[name='publicSignupOpenDaysBefore']")?.value,
+      publicSignupOpenTime: row.querySelector("[name='publicSignupOpenTime']")?.value,
+      signupCloseDaysBefore: row.querySelector("[name='signupCloseDaysBefore']")?.value,
+      signupCloseTime: row.querySelector("[name='signupCloseTime']")?.value,
     }));
     if (parsed.some((item) => !item)) {
-      setMessageTone(form.querySelector("[data-class-default-hint]"), "請確認每個時段都有星期、開始與結束時間，且結束晚於開始。", "error");
+      setMessageTone(form.querySelector("[data-class-default-hint]"), "請確認社課與報名時間完整，且依序為社員開始、全面開放、報名截止。", "error");
       return;
     }
     const submitButton = form.querySelector("[data-class-default-save]");

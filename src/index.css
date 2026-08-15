@@ -4204,7 +4204,16 @@ button.admin-calendar-day:focus-visible {
 .admin-section-nav a:hover, .admin-section-nav a:focus-visible { background: rgba(25, 78, 63, 0.1); }
 .admin-category { display: grid; gap: 1rem; margin-bottom: 2.5rem; scroll-margin-top: 8rem; }
 .class-default-list { display: grid; gap: 0.8rem; }
-.class-default-row { display: grid; grid-template-columns: 0.75fr 0.75fr 0.75fr 0.9fr 1fr 1.4fr auto; align-items: end; gap: 0.75rem; padding: 0.9rem; border: 1px solid rgba(17, 24, 39, 0.1); border-radius: 0.9rem; }
+.class-default-row { display: grid; gap: 0.9rem; padding: 0.9rem; border: 1px solid rgba(17, 24, 39, 0.1); border-radius: 0.9rem; }
+.class-default-basic-grid { display: grid; grid-template-columns: 0.7fr 0.7fr 0.7fr 1fr 1.3fr; align-items: end; gap: 0.75rem; }
+.class-default-signup-toggle { display: flex; align-items: center; gap: 0.65rem; cursor: pointer; }
+.class-default-signup-toggle input { width: 1.1rem; height: 1.1rem; accent-color: var(--brand); }
+.class-default-signup-toggle span { display: grid; gap: 0.1rem; }
+.class-default-signup-toggle small { color: var(--muted); }
+.class-default-signup-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(130px, 0.7fr); gap: 0.75rem; padding: 0.85rem; border-radius: 0.8rem; background: rgba(15, 76, 129, 0.05); }
+.class-default-signup-period { display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem; }
+.class-default-signup-period > strong { grid-column: 1 / -1; color: var(--brand); font-size: 0.82rem; }
+.class-default-remove { justify-self: end; }
 .admin-calendar-default-shortcuts { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.8rem; }
 .class-default-shortcut { border: 1px solid rgba(25, 78, 63, 0.24); border-radius: 999px; background: #fff; color: inherit; padding: 0.45rem 0.7rem; cursor: pointer; }
 .class-default-shortcut.is-matching-day { border-color: #194e3f; background: rgba(25, 78, 63, 0.1); font-weight: 700; }
@@ -4218,8 +4227,9 @@ button.admin-calendar-day:focus-visible {
   .menu-button[aria-expanded="true"]::before { top: 1.3rem; transform: rotate(45deg); box-shadow: none; }
   .menu-button[aria-expanded="true"]::after { top: 1.3rem; transform: rotate(-45deg); }
   .member-table-wrap, .table-wrap, .responsive-table { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; -webkit-overflow-scrolling: touch; }
-  .class-default-row { grid-template-columns: 1fr 1fr; }
-  .class-default-row .member-delete-button { grid-column: 1 / -1; }
+  .class-default-basic-grid, .class-default-signup-fields { grid-template-columns: 1fr; }
+  .class-default-signup-period { grid-template-columns: 1fr 1fr; }
+  .class-default-row .member-delete-button { width: 100%; }
   .cash-payment-option-row { grid-template-columns: 1fr; }
   .cash-payment-option-row .member-delete-button { width: 100%; }
   .account-danger-zone { align-items: stretch; flex-direction: column; }
