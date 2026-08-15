@@ -2569,7 +2569,7 @@ const getPublicClassSignupModalState = (session) => {
   const isSignupSession = Boolean(session.signupRequired);
   const signupOpen = isSignupSession && isClassSignupWindowOpen(session);
   const statusLabel = isSignupSession
-    ? signupOpen ? "開放報名" : isNonMemberPriorityWindow(session) ? "社員優先報名中" : "尚未開放"
+    ? signupOpen ? "開放報名" : isClassSignupWindowClosed(session) ? "報名已截止" : isNonMemberPriorityWindow(session) ? "社員優先報名中" : "尚未開放"
     : "固定社課";
 
   return {
@@ -3962,6 +3962,73 @@ const downloadMembersExcel = (members = []) => {
   window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
 };
 
+const buildClassSignupWorksheetMarkup = (name, session, signups = [], membersById = {}) => {
+  const columns = ["姓名", "學號", "Email", "報名狀態", "候補順位", "零打費", "備註", "報名時間"];
+  const rows = signups.map((signup, index) => {
+    const member = membersById[signup.userId] || null;
+    const computedStatus = getComputedSignupStatus(signup, index, session);
+    const position = computedStatus === "waitlisted" ? Math.max(0, Number(signup.waitlistPosition || 0)) : 0;
+    return [
+      signup.name || "",
+      signup.studentId || "",
+      signup.email || "",
+      getSignupStatusLabel({ ...signup, signupStatus: computedStatus }),
+      position || "",
+      getSignupPaymentLabel(signup, member),
+      signup.note || "",
+      formatTimestamp(signup.createdAt || signup.submittedAt),
+    ];
+  });
+  const allRows = [
+    [`${session.title || "社課"}－${name}`],
+    ["社課時間", [getClassSessionDateLabel(session), getClassSessionTimeLabel(session)].filter(Boolean).join(" / ")],
+    ["匯出時間", new Date().toLocaleString("zh-TW")],
+    ["人數", String(rows.length)],
+    [""],
+    columns,
+    ...rows,
+  ];
+  const rowMarkup = allRows.map((row) => `<Row>${row.map((cell) => `<Cell><Data ss:Type="String">${escapeSpreadsheetXml(cell)}</Data></Cell>`).join("")}</Row>`).join("");
+  return `<Worksheet ss:Name="${escapeSpreadsheetXml(name)}"><Table>${rowMarkup}</Table></Worksheet>`;
+};
+
+const buildClassSignupExportWorkbook = (session, signups = []) => {
+  const membersById = Object.fromEntries(membersDashboardCache.members.map((member) => [member.uid || member.id, member]));
+  const sortedSignups = [...signups]
+    .sort((a, b) => getTimestampMs(a.createdAt || a.submittedAt) - getTimestampMs(b.createdAt || b.submittedAt))
+    .map((signup, index) => ({ ...signup, signupStatus: getComputedSignupStatus(signup, index, session) }));
+  const memberSignups = sortedSignups.filter((signup) => isFormalMemberSignup(signup, membersById[signup.userId] || null));
+  const nonMemberSignups = sortedSignups.filter((signup) => !isFormalMemberSignup(signup, membersById[signup.userId] || null));
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ ${buildClassSignupWorksheetMarkup("社員", session, memberSignups, membersById)}
+ ${buildClassSignupWorksheetMarkup("非社員", session, nonMemberSignups, membersById)}
+</Workbook>`;
+};
+
+const isClassSignupExportAvailable = (session = {}) => {
+  return isClassSignupWindowClosed(session);
+};
+
+const downloadClassSignupExcel = (session, signups = []) => {
+  if (!isClassSignupExportAvailable(session)) throw new Error("報名截止後才能匯出名單。");
+  const workbook = buildClassSignupExportWorkbook(session, signups);
+  const blob = new Blob([workbook], { type: "application/vnd.ms-excel;charset=utf-8;" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const sessionDate = String(session.date || session.sessionDate || "session").replaceAll(/[^0-9-]/g, "");
+  link.href = url;
+  link.download = `ntust-class-signups-${sessionDate || "session"}-${formatExportTimestamp()}.xls`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+};
+
 const getMemberStatusOptionsMarkup = (status) => {
   const selectedStatus = getManagedMembershipStatus(status);
   return [
@@ -4724,6 +4791,11 @@ function isClassSignupWindowOpen(session) {
   return endOfSessionDayMs > now;
 }
 
+function isClassSignupWindowClosed(session = {}) {
+  const closeMs = getDateTimeLocalMs(session.signupCloseAt);
+  return Boolean(closeMs && Date.now() > closeMs);
+}
+
 function isNonMemberPriorityWindow(session) {
   if (hasFormalMemberAccess(classSignupPageState.approval)) return false;
   const now = Date.now();
@@ -4913,8 +4985,20 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
   const noteValue = ownSignup?.note || "";
   const sessionId = getClassSessionId(session);
   const deleteButton = ownSignup
-    ? `<button class="button-secondary" data-class-signup-delete type="button" data-session-id="${escapeHtml(sessionId)}">刪除報名</button>`
+    ? `<button class="button-secondary" data-class-signup-delete type="button" data-session-id="${escapeHtml(sessionId)}">取消報名</button>`
     : "";
+
+  if (ownSignup && (!signupOpen || !canSignup)) {
+    return `
+      <div class="class-session-locked">
+        <p class="signup-alert ${ownSignup.signupStatus === "waitlisted" ? "is-waitlisted" : "is-success"}">
+          <strong>${escapeHtml(getSignupStatusLabel(ownSignup))}</strong>
+          ${signupOpen ? "你仍可自行取消這筆報名。" : "報名期間已結束，但你仍可自行取消；若為正取，系統會自動遞補候補者。"}
+        </p>
+        <div class="class-signup-actions">${deleteButton}</div>
+      </div>
+    `;
+  }
 
   if (!canSignup) {
     return `
@@ -4927,7 +5011,7 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
   if (!signupOpen) {
     return `
       <div class="class-session-locked">
-        <p class="content-copy">${isNonMemberPriorityWindow(session) ? "目前為社員優先報名期間。非社員請於管理員設定的全面開放時間後再報名。" : "這場社課尚未開放報名，請稍後再回來查看。"}</p>
+        <p class="content-copy">${isClassSignupWindowClosed(session) ? "這場社課報名已截止。" : isNonMemberPriorityWindow(session) ? "目前為社員優先報名期間。非社員請於管理員設定的全面開放時間後再報名。" : "這場社課尚未開放報名，請稍後再回來查看。"}</p>
       </div>
     `;
   }
@@ -4986,7 +5070,7 @@ function renderClassSessionBoard(sessions = []) {
       const isSignupSession = Boolean(session.signupRequired);
       const openForSignup = isSignupSession && isClassSignupWindowOpen(session);
       const statusLabel = isSignupSession
-        ? openForSignup ? "報名中" : isNonMemberPriorityWindow(session) ? "社員優先報名中" : "尚未開放"
+        ? openForSignup ? "報名中" : isClassSignupWindowClosed(session) ? "報名已截止" : isNonMemberPriorityWindow(session) ? "社員優先報名中" : "尚未開放"
         : "固定社課";
       const liveSignupMarkup = isSignupSession ? `<div class="class-capacity-summary"><strong>${escapeHtml(getRemainingCapacityMarkup(session))}</strong></div>` : "";
 
@@ -5099,7 +5183,7 @@ function bindClassSignupBoardEvents() {
         return;
       }
 
-      const confirmed = window.confirm("要刪除這筆社課報名嗎？");
+      const confirmed = window.confirm("確定要取消這筆社課報名嗎？若你是正取，名額會自動遞補給候補者。");
       if (!confirmed) {
         return;
       }
@@ -6385,6 +6469,7 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
           .map(({ session, sessionId, signups: sessionSignups }) => {
             const limit = getSessionSignupLimit(session);
             const sortedSignups = [...sessionSignups].sort((a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt));
+            const exportAvailable = isClassSignupExportAvailable(session);
             return `
               <article class="member-row">
                 <div class="member-row-top">
@@ -6392,6 +6477,11 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
                   <p class="member-row-status">${limit ? `上限 ${limit} 人` : "不限人數"}</p>
                 </div>
                 <p class="member-row-email">${escapeHtml([getClassSessionDateLabel(session), getClassSessionTimeLabel(session)].filter(Boolean).join(" / "))}</p>
+                <div class="application-actions">
+                  <button class="button-primary" data-class-signup-export type="button" data-session-id="${escapeHtml(sessionId)}"${exportAvailable ? "" : " disabled"}>
+                    ${exportAvailable ? "匯出 Excel（社員／非社員）" : "報名截止後可匯出 Excel"}
+                  </button>
+                </div>
                 <div class="member-list">
                   ${sortedSignups
                     .map((signup, index) => {
@@ -6755,6 +6845,23 @@ function bindAdminClassCalendarActions() {
         window.alert(`更新零打費狀態失敗：${error?.message || "請稍後再試一次。"}`);
       } finally {
         button.disabled = false;
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-class-signup-export]").forEach((button) => {
+    if (button.dataset.initialized === "true") return;
+    button.dataset.initialized = "true";
+    button.addEventListener("click", () => {
+      const sessionId = String(button.dataset.sessionId || "").trim();
+      const session = membersDashboardCache.classSessions.find((entry) => getClassSessionId(entry) === sessionId);
+      const signups = membersDashboardCache.classSessionSignups.filter((entry) => String(entry.sessionId || "") === sessionId);
+      if (!session) return;
+      try {
+        downloadClassSignupExcel(session, signups);
+        showToast(`已匯出「${session.title || "社課"}」名單，並分成社員與非社員工作表。`, { tone: "success" });
+      } catch (error) {
+        showToast(error?.message || "請稍後再試一次。", { tone: "error", title: "匯出失敗" });
       }
     });
   });
