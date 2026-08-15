@@ -6418,8 +6418,11 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
             .map(
               (event) => `
                 <span class="admin-calendar-day-event">
-                  <strong class="announcement-calendar-title">${escapeHtml(event.title)}</strong>
-                  ${event.timeLabel ? `<small>${escapeHtml(event.timeLabel)}</small>` : ""}
+                  <span class="admin-calendar-day-event-bullet" aria-hidden="true">•</span>
+                  <span class="admin-calendar-day-event-copy">
+                    <strong class="announcement-calendar-title">${escapeHtml(event.title)}</strong>
+                    ${event.timeLabel ? `<small>${escapeHtml(event.timeLabel)}</small>` : ""}
+                  </span>
                 </span>
               `,
             )

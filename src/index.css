@@ -3011,7 +3011,22 @@ button.admin-calendar-day:focus-visible {
 
 .admin-calendar-day-event {
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+}
+
+.admin-calendar-day-event-bullet {
+  color: var(--brand);
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.admin-calendar-day-event-copy {
+  display: grid;
   gap: 2px;
+  min-width: 0;
 }
 
 .admin-calendar-day-event small {
