@@ -1947,6 +1947,26 @@ body.spa-navigating .page-main {
   margin-top: 24px;
 }
 
+.cash-payment-option-setting {
+  display: grid;
+  gap: 12px;
+}
+
+.cash-payment-option-list {
+  display: grid;
+  gap: 10px;
+}
+
+.cash-payment-option-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 14px;
+}
+
 .auth-status-label {
   margin: 0;
   color: var(--brand);
@@ -4182,6 +4202,8 @@ button.admin-calendar-day:focus-visible {
   .member-table-wrap, .table-wrap, .responsive-table { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; -webkit-overflow-scrolling: touch; }
   .class-default-row { grid-template-columns: 1fr 1fr; }
   .class-default-row .member-delete-button { grid-column: 1 / -1; }
+  .cash-payment-option-row { grid-template-columns: 1fr; }
+  .cash-payment-option-row .member-delete-button { width: 100%; }
   .account-danger-zone { align-items: stretch; flex-direction: column; }
   .account-danger-zone .member-delete-button { width: 100%; }
   .admin-calendar-signup-time-grid .form-field,

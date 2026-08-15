@@ -228,14 +228,16 @@
                       <label for="payment-account-number">轉帳帳號</label>
                       <input id="payment-account-number" name="accountNumber" inputmode="numeric" type="text" />
                     </div>
-                    <div class="form-field">
-                      <label for="payment-cash-office">社辦現金繳費說明</label>
-                      <input id="payment-cash-office" name="cashOfficeLabel" placeholder="例如：每週三中午 12:20–13:10 社辦" type="text" />
+                  </div>
+                  <div class="cash-payment-option-setting">
+                    <div class="member-filter-header">
+                      <div>
+                        <label>現金繳費方式</label>
+                        <p class="content-copy">設定申請社員時可選擇的現金繳費地點或時段。</p>
+                      </div>
+                      <button class="button-secondary" data-cash-payment-option-add type="button">新增選項</button>
                     </div>
-                    <div class="form-field">
-                      <label for="payment-cash-class">社課現金繳費說明</label>
-                      <input id="payment-cash-class" name="cashClassLabel" placeholder="例如：每週五社課現場" type="text" />
-                    </div>
+                    <div class="cash-payment-option-list" data-cash-payment-option-list></div>
                   </div>
                   <p class="login-note" data-membership-payment-setting-hint></p>
                   <button class="button-primary" data-membership-payment-setting-save type="submit">儲存繳費資訊</button>
@@ -292,7 +294,7 @@
                 <div class="section-header is-compact">
                   <div class="section-kicker">Members</div>
                   <h3 class="content-title">社員名單</h3>
-                  <p class="section-description">只顯示已繳費並設定為「社員」的正式社員資料。</p>
+                  <p class="section-description">只顯示已繳費並設定為「社員」的正式社員資料；展開後可修改基本資料、學年度與學期。</p>
                 </div>
                 <div class="member-list" data-members-list></div>
               </section>

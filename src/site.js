@@ -140,13 +140,16 @@ let notificationRefreshTimer = null;
 let configuredAcademicYear = "";
 let configuredAcademicTerm = "";
 let configuredAcademicPeriodKey = "";
+const DEFAULT_CASH_PAYMENT_OPTIONS = [
+  { id: "office_lunch", label: "中午至社辦繳費" },
+  { id: "class", label: "社課現場繳費" },
+];
 let membershipPaymentSettings = {
   bankName: "",
   bankCode: "",
   accountName: "",
   accountNumber: "",
-  cashOfficeLabel: "中午至社辦繳費",
-  cashClassLabel: "社課現場繳費",
+  cashPaymentOptions: DEFAULT_CASH_PAYMENT_OPTIONS.map((option) => ({ ...option })),
 };
 let membershipRegistrationSettings = {
   openAt: "",
@@ -488,7 +491,7 @@ const loginModalMarkup = `
                 <div class="membership-choice-grid">
                   <label class="membership-choice-option">
                     <input name="paymentMethod" type="radio" value="cash" />
-                    <span><strong>現金</strong><small>社辦或社課繳費</small></span>
+                    <span><strong>現金</strong><small>依現金繳費選項辦理</small></span>
                   </label>
                   <label class="membership-choice-option">
                     <input name="paymentMethod" type="radio" value="transfer" />
@@ -498,11 +501,9 @@ const loginModalMarkup = `
               </fieldset>
               <div class="membership-payment-panel" data-cash-payment-panel hidden>
                 <div class="form-field">
-                  <label for="signup-cash-slot">預計現金繳費場合</label>
-                  <select id="signup-cash-slot" name="cashPaymentSlot">
+                  <label for="signup-cash-slot">預計現金繳費方式</label>
+                  <select id="signup-cash-slot" name="cashPaymentSlot" data-cash-payment-options-select>
                     <option value="">請選擇</option>
-                    <option data-cash-office-option value="office_lunch">中午至社辦繳費</option>
-                    <option data-cash-class-option value="class">社課現場繳費</option>
                   </select>
                 </div>
               </div>
@@ -549,7 +550,7 @@ const loginModalMarkup = `
               </div>
             </fieldset>
             <div class="membership-payment-panel" data-cash-payment-panel hidden>
-              <div class="form-field"><label>預計現金繳費場合</label><select name="cashPaymentSlot"><option value="">請選擇</option><option data-cash-office-option value="office_lunch">中午至社辦繳費</option><option data-cash-class-option value="class">社課現場繳費</option></select></div>
+              <div class="form-field"><label>預計現金繳費方式</label><select name="cashPaymentSlot" data-cash-payment-options-select><option value="">請選擇</option></select></div>
             </div>
             <div class="membership-payment-panel" data-transfer-payment-panel hidden>
               <div class="transfer-account-card" data-transfer-account-card></div>
@@ -1525,12 +1526,28 @@ const hasFormalMemberAccess = (approvalData = null) =>
 const getPaymentMethodLabel = (value) =>
   ({ cash: "現金", transfer: "轉帳", later: "尚未選擇", none: "未申請" })[String(value || "")] || "尚未選擇";
 
-const getCashPaymentSlotLabel = (value) =>
-  value === "office_lunch"
-    ? membershipPaymentSettings.cashOfficeLabel
-    : value === "class"
-      ? membershipPaymentSettings.cashClassLabel
-      : "尚未選擇";
+const normalizeCashPaymentOption = (value = {}) => {
+  const id = String(value.id || "").trim().slice(0, 50);
+  const label = String(value.label || "").trim().slice(0, 100);
+  return id && label ? { id, label } : null;
+};
+
+const getCashPaymentOptionsFromSettings = (settings = {}) => {
+  if (Array.isArray(settings.cashPaymentOptions)) {
+    const options = settings.cashPaymentOptions.map(normalizeCashPaymentOption).filter(Boolean);
+    if (options.length) return options;
+  }
+  const legacyOptions = [
+    { id: "office_lunch", label: String(settings.cashOfficeLabel || "").trim() },
+    { id: "class", label: String(settings.cashClassLabel || "").trim() },
+  ].map(normalizeCashPaymentOption).filter(Boolean);
+  return legacyOptions.length ? legacyOptions : DEFAULT_CASH_PAYMENT_OPTIONS.map((option) => ({ ...option }));
+};
+
+const getCashPaymentSlotLabel = (value) => {
+  const slot = String(value || "");
+  return membershipPaymentSettings.cashPaymentOptions.find((option) => option.id === slot)?.label || (slot ? "已停用的現金繳費方式" : "尚未選擇");
+};
 
 const getMembershipIntentFromProfile = (profile = {}) =>
   profile.membershipIntent === "join" || ["pending_payment", "formal_member"].includes(String(profile.membershipStatus || profile.status || ""))
@@ -1613,11 +1630,16 @@ const syncMembershipPaymentForm = (form) => {
   form.querySelectorAll("[data-transfer-account-card]").forEach((card) => {
     card.innerHTML = buildTransferAccountMarkup();
   });
-  form.querySelectorAll("[data-cash-office-option]").forEach((option) => {
-    option.textContent = membershipPaymentSettings.cashOfficeLabel;
-  });
-  form.querySelectorAll("[data-cash-class-option]").forEach((option) => {
-    option.textContent = membershipPaymentSettings.cashClassLabel;
+  form.querySelectorAll("[data-cash-payment-options-select]").forEach((select) => {
+    if (!(select instanceof HTMLSelectElement)) return;
+    const selectedValue = select.value;
+    const placeholder = new Option("請選擇", "");
+    const options = membershipPaymentSettings.cashPaymentOptions.map((option) => new Option(option.label, option.id));
+    if (selectedValue && !membershipPaymentSettings.cashPaymentOptions.some((option) => option.id === selectedValue)) {
+      options.push(new Option("已停用的現金繳費方式", selectedValue));
+    }
+    select.replaceChildren(placeholder, ...options);
+    select.value = selectedValue;
   });
 };
 
@@ -1641,7 +1663,13 @@ const validateMembershipPaymentData = (data) => {
     return "請選擇社費方式。";
   }
   if (data.paymentMethod === "cash" && !data.cashPaymentSlot) {
-    return "請選擇預計現金繳費場合。";
+    return "請選擇預計現金繳費方式。";
+  }
+  if (
+    data.paymentMethod === "cash" &&
+    !membershipPaymentSettings.cashPaymentOptions.some((option) => option.id === data.cashPaymentSlot)
+  ) {
+    return "這個現金繳費方式已停用，請重新選擇。";
   }
   if (data.paymentMethod === "transfer" && (!membershipPaymentSettings.accountName || !membershipPaymentSettings.accountNumber)) {
     return "管理員尚未設定轉帳帳戶，請選擇現金或向幹部確認。";
@@ -3084,10 +3112,7 @@ const loadCurrentTermSettings = async () => {
       bankCode: String(settingsData?.membershipPayment?.bankCode || "").trim(),
       accountName: String(settingsData?.membershipPayment?.accountName || "").trim(),
       accountNumber: String(settingsData?.membershipPayment?.accountNumber || "").trim(),
-      cashOfficeLabel:
-        String(settingsData?.membershipPayment?.cashOfficeLabel || "").trim() || membershipPaymentSettings.cashOfficeLabel,
-      cashClassLabel:
-        String(settingsData?.membershipPayment?.cashClassLabel || "").trim() || membershipPaymentSettings.cashClassLabel,
+      cashPaymentOptions: getCashPaymentOptionsFromSettings(settingsData?.membershipPayment || {}),
     };
     const membershipRegistration = settingsData?.membershipRegistration || {};
     membershipRegistrationSettings = {
@@ -3223,6 +3248,54 @@ const getAcademicTermLabel = (value) => {
     return "第二學期";
   }
   return value || "未設定";
+};
+
+const getMemberAcademicYearOptionsMarkup = (selectedValue) => {
+  const selected = isValidAcademicYearValue(selectedValue) ? String(selectedValue) : getConfiguredAcademicYear();
+  const years = Array.from(
+    new Set([selected, getConfiguredAcademicYear(), ...getStoredAdminAcademicYears(), ...buildAdminAcademicYearOptions()]),
+  )
+    .filter(isValidAcademicYearValue)
+    .sort((a, b) => Number(b) - Number(a));
+  return years
+    .map((year) => `<option value="${escapeHtml(year)}"${year === selected ? " selected" : ""}>${escapeHtml(getAcademicYearLabel(year))}</option>`)
+    .join("");
+};
+
+const getMemberAcademicTermOptionsMarkup = (selectedValue) => {
+  const selected = DEFAULT_TERMS.slice(0, 2).includes(selectedValue) ? selectedValue : getConfiguredAcademicTerm();
+  return DEFAULT_TERMS.slice(0, 2)
+    .map((term) => `<option value="${escapeHtml(term)}"${term === selected ? " selected" : ""}>${escapeHtml(getAcademicTermLabel(term))}</option>`)
+    .join("");
+};
+
+const backfillUnsetMemberAcademicPeriods = async (members = [], academicYear = configuredAcademicYear, term = configuredAcademicTerm) => {
+  if (!currentUserIsAdmin || !isValidAcademicYearValue(academicYear) || !DEFAULT_TERMS.slice(0, 2).includes(term)) {
+    return 0;
+  }
+  const pendingMembers = members
+    .map((member) => {
+      const update = {};
+      if (!isValidAcademicYearValue(member.academicYear)) update.academicYear = academicYear;
+      if (!DEFAULT_TERMS.slice(0, 2).includes(member.term)) update.term = term;
+      return Object.keys(update).length && member.id ? { member, update } : null;
+    })
+    .filter(Boolean);
+
+  for (let index = 0; index < pendingMembers.length; index += 200) {
+    const entries = pendingMembers.slice(index, index + 200);
+    const batch = writeBatch(db);
+    entries.forEach(({ member, update }) => {
+      batch.set(
+        getMemberDocRef(member.id),
+        { ...update, academicPeriodBackfilledAt: serverTimestamp(), updatedAt: serverTimestamp() },
+        { merge: true },
+      );
+    });
+    await batch.commit();
+    entries.forEach(({ member, update }) => Object.assign(member, update));
+  }
+  return pendingMembers.length;
 };
 
 const matchesMemberFilter = (entry) => {
@@ -3620,9 +3693,20 @@ const bindMemberEditForms = (memberList) => {
         school: String(values.school || "").trim(),
         department: String(values.department || "").trim(),
         phone: String(values.phone || "").trim(),
+        academicYear: String(values.academicYear || "").trim(),
+        term: String(values.term || "").trim(),
       };
-      if (!memberId || !payload.name || !payload.studentId || !["臺科大", "外校"].includes(payload.school) || !payload.department || !payload.phone) {
-        showToast("請完整填寫社員姓名、學號、學校、系別與電話。", { tone: "error" });
+      if (
+        !memberId ||
+        !payload.name ||
+        !payload.studentId ||
+        !["臺科大", "外校"].includes(payload.school) ||
+        !payload.department ||
+        !payload.phone ||
+        !isValidAcademicYearValue(payload.academicYear) ||
+        !DEFAULT_TERMS.slice(0, 2).includes(payload.term)
+      ) {
+        showToast("請完整填寫社員姓名、學號、學校、系別、電話、學年度與學期。", { tone: "error" });
         return;
       }
       setButtonLoading(submitButton, true, "儲存中…");
@@ -4178,6 +4262,8 @@ const renderMembersList = (members = []) => {
                 <div class="form-field"><label>學校</label><select name="school" required><option value="臺科大"${school === "臺科大" ? " selected" : ""}>臺科大</option><option value="外校"${school === "外校" ? " selected" : ""}>外校</option></select></div>
                 <div class="form-field"><label>系別</label><input name="department" value="${escapeHtml(member.department || "")}" required /></div>
                 <div class="form-field"><label>電話</label><input name="phone" type="tel" value="${escapeHtml(member.phone || "")}" required /></div>
+                <div class="form-field"><label>學年度</label><select name="academicYear" required>${getMemberAcademicYearOptionsMarkup(member.academicYear)}</select></div>
+                <div class="form-field"><label>學期</label><select name="term" required>${getMemberAcademicTermOptionsMarkup(member.term)}</select></div>
               </div>
               <button class="button-primary" data-member-edit-save type="submit">儲存社員資料</button>
             </form>
@@ -4361,6 +4447,11 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
             loadWithFallback("社員名單", dashboardWarnings, () => getCollectionEntries("members"), []),
             loadWithFallback("管理員名單", dashboardWarnings, () => getCollectionEntries("admins"), []),
           ]);
+          try {
+            await backfillUnsetMemberAcademicPeriods(members);
+          } catch (error) {
+            dashboardWarnings.push({ label: "補齊社員學年度與學期", error });
+          }
 
           membersDashboardCache = {
             ...membersDashboardCache,
@@ -5528,6 +5619,10 @@ function bindFaqQuestionForm() {
 
     if (question.length < 2) {
       window.alert("請輸入想詢問的問題。");
+      return;
+    }
+    if (/[<>]/.test(question)) {
+      window.alert("問題內容不可包含 HTML 標籤或角括號。");
       return;
     }
 
@@ -7087,6 +7182,8 @@ const handleAuthSubmit = async (event) => {
         department: signupProfile.department,
         school: signupProfile.school,
         phone: signupProfile.phone,
+        academicYear: getConfiguredAcademicYear(),
+        term: getConfiguredAcademicTerm(),
         membershipIntent: "not_join",
         paymentMethod: "none",
         cashPaymentSlot: "",
@@ -7594,6 +7691,7 @@ const bindAcademicYearSetting = () => {
       configuredAcademicYear = value;
       configuredAcademicTerm = term;
       configuredAcademicPeriodKey = `${value}-${term}`;
+      await backfillUnsetMemberAcademicPeriods(membersDashboardCache.members, value, term);
       memberFilters.year = value;
       memberFilters.term = term;
       patchMembersFilterUI();
@@ -7618,6 +7716,33 @@ const bindAcademicYearSetting = () => {
   });
 };
 
+const createCashPaymentOptionId = () =>
+  `cash_${Date.now().toString(36)}_${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`;
+
+const getCashPaymentOptionRowMarkup = (option = {}) => `
+  <div class="cash-payment-option-row" data-cash-payment-option-row>
+    <div class="form-field">
+      <label>選項說明</label>
+      <input
+        name="cashPaymentOptionLabel"
+        data-cash-payment-option-id="${escapeHtml(option.id || createCashPaymentOptionId())}"
+        maxlength="100"
+        placeholder="例如：每週三中午 12:20–13:10 社辦"
+        type="text"
+        value="${escapeHtml(option.label || "")}"
+        required
+      />
+    </div>
+    <button class="member-delete-button" data-cash-payment-option-delete type="button">刪除</button>
+  </div>
+`;
+
+const renderCashPaymentOptionSettings = (options = membershipPaymentSettings.cashPaymentOptions) => {
+  const list = document.querySelector("[data-cash-payment-option-list]");
+  if (!list) return;
+  list.innerHTML = options.map(getCashPaymentOptionRowMarkup).join("");
+};
+
 const syncMembershipPaymentSettingForm = () => {
   const form = document.querySelector("[data-membership-payment-setting-form]");
   if (!(form instanceof HTMLFormElement)) {
@@ -7629,6 +7754,7 @@ const syncMembershipPaymentSettingForm = () => {
       field.value = value;
     }
   });
+  renderCashPaymentOptionSettings();
 };
 
 const syncMembershipRegistrationSettingForm = () => {
@@ -7765,21 +7891,41 @@ const bindMembershipPaymentSetting = () => {
   }
   form.dataset.bound = "true";
   syncMembershipPaymentSettingForm();
+  form.querySelector("[data-cash-payment-option-add]")?.addEventListener("click", () => {
+    const list = form.querySelector("[data-cash-payment-option-list]");
+    if (!list || list.querySelectorAll("[data-cash-payment-option-row]").length >= 10) {
+      setMessageTone(form.querySelector("[data-membership-payment-setting-hint]"), "現金繳費方式最多可設定 10 個。", "error");
+      return;
+    }
+    list.insertAdjacentHTML("beforeend", getCashPaymentOptionRowMarkup());
+    list.lastElementChild?.querySelector("input")?.focus();
+  });
+  form.querySelector("[data-cash-payment-option-list]")?.addEventListener("click", (event) => {
+    const deleteButton = event.target.closest("[data-cash-payment-option-delete]");
+    if (!deleteButton) return;
+    deleteButton.closest("[data-cash-payment-option-row]")?.remove();
+  });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(form);
+    const cashPaymentOptions = Array.from(form.querySelectorAll("[data-cash-payment-option-id]"))
+      .map((input) => normalizeCashPaymentOption({ id: input.dataset.cashPaymentOptionId, label: input.value }))
+      .filter(Boolean);
     const nextSettings = {
       bankName: String(formData.get("bankName") || "").trim(),
       bankCode: String(formData.get("bankCode") || "").trim(),
       accountName: String(formData.get("accountName") || "").trim(),
       accountNumber: String(formData.get("accountNumber") || "").replace(/\s+/g, ""),
-      cashOfficeLabel: String(formData.get("cashOfficeLabel") || "").trim(),
-      cashClassLabel: String(formData.get("cashClassLabel") || "").trim(),
+      cashPaymentOptions,
     };
     const hint = form.querySelector("[data-membership-payment-setting-hint]");
     const submitButton = form.querySelector("[data-membership-payment-setting-save]");
-    if (!nextSettings.accountName || !nextSettings.accountNumber || !nextSettings.cashOfficeLabel || !nextSettings.cashClassLabel) {
-      setMessageTone(hint, "請至少填寫戶名、轉帳帳號與兩個現金繳費說明。", "error");
+    if (!nextSettings.accountName || !nextSettings.accountNumber || !nextSettings.cashPaymentOptions.length) {
+      setMessageTone(hint, "請至少填寫戶名、轉帳帳號與一個現金繳費方式。", "error");
+      return;
+    }
+    if (new Set(nextSettings.cashPaymentOptions.map((option) => option.label)).size !== nextSettings.cashPaymentOptions.length) {
+      setMessageTone(hint, "現金繳費方式不可重複。", "error");
       return;
     }
     submitButton.disabled = true;
