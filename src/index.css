@@ -3050,6 +3050,30 @@ button.admin-calendar-day:focus-visible {
   color: #a66b29;
 }
 
+.calendar-color-blue { --calendar-accent: #0f4c81; }
+.calendar-color-green { --calendar-accent: #287a4b; }
+.calendar-color-orange { --calendar-accent: #a65f16; }
+.calendar-color-red { --calendar-accent: #b23b3b; }
+.calendar-color-purple { --calendar-accent: #7046a3; }
+.calendar-color-teal { --calendar-accent: #147f82; }
+.calendar-color-pink { --calendar-accent: #b24478; }
+.calendar-color-gray { --calendar-accent: #627080; }
+
+.admin-calendar-day-event[class*="calendar-color-"] .admin-calendar-day-event-bullet,
+.admin-calendar-day-event[class*="calendar-color-"] .announcement-calendar-title,
+.announcement-calendar-title[class*="calendar-color-"] {
+  color: var(--calendar-accent);
+}
+
+.calendar-color-border-blue { border-left: 4px solid #0f4c81; }
+.calendar-color-border-green { border-left: 4px solid #287a4b; }
+.calendar-color-border-orange { border-left: 4px solid #a65f16; }
+.calendar-color-border-red { border-left: 4px solid #b23b3b; }
+.calendar-color-border-purple { border-left: 4px solid #7046a3; }
+.calendar-color-border-teal { border-left: 4px solid #147f82; }
+.calendar-color-border-pink { border-left: 4px solid #b24478; }
+.calendar-color-border-gray { border-left: 4px solid #627080; }
+
 .admin-calendar-day-badge.is-announcement {
   background: rgba(20, 32, 44, 0.08);
   color: var(--ink);

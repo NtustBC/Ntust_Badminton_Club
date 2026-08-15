@@ -105,6 +105,9 @@ const MEMBER_NOTIFICATION_COLLECTION = "memberNotifications";
 const FAQ_COLLECTION = "faqEntries";
 const FAQ_QUESTION_COLLECTION = "faqQuestions";
 const SITE_SETTINGS_COLLECTION = "siteSettings";
+const CALENDAR_HOLIDAY_SEED_DOC = "calendarHolidayDefaults";
+const DEFAULT_CALENDAR_COLOR = "blue";
+const CALENDAR_COLOR_OPTIONS = ["blue", "green", "orange", "red", "purple", "teal", "pink", "gray"];
 const CURRENT_TERM_SETTINGS_DOC = "currentTerm";
 const CLUB_LOGO_URL = new URL("../assets/club-logo-cropped.png", import.meta.url).href;
 const DEFAULT_MAINTENANCE_SETTINGS = {
@@ -752,11 +755,25 @@ const adminClassCalendarModalMarkup = `
                 <select id="admin-calendar-event-type" name="eventType">
                   <option value="class">社課</option>
                   <option value="announcement">公告</option>
+                  <option value="holiday">連續假期</option>
                 </select>
               </div>
               <div class="form-field">
                 <label for="admin-calendar-event-title">標題</label>
                 <input id="admin-calendar-event-title" name="title" type="text" placeholder="例如：雙打練習 / 場地異動" />
+              </div>
+              <div class="form-field">
+                <label for="admin-calendar-event-color">顯示顏色</label>
+                <select id="admin-calendar-event-color" name="color">
+                  <option value="blue">藍色</option>
+                  <option value="green">綠色</option>
+                  <option value="orange">橘色</option>
+                  <option value="red">紅色</option>
+                  <option value="purple">紫色</option>
+                  <option value="teal">青色</option>
+                  <option value="pink">粉紅色</option>
+                  <option value="gray">灰色</option>
+                </select>
               </div>
             </div>
           </section>
@@ -1040,6 +1057,37 @@ const getClassAnnouncementDocRef = (announcementId) => doc(db, CLASS_ANNOUNCEMEN
 const getFaqDocRef = (faqId) => doc(db, FAQ_COLLECTION, faqId);
 const getFaqQuestionDocRef = (questionId) => doc(db, FAQ_QUESTION_COLLECTION, questionId);
 const getSiteSettingsDocRef = (settingId) => doc(db, SITE_SETTINGS_COLLECTION, settingId);
+
+const normalizeCalendarColor = (value) => {
+  const color = String(value || "").trim().toLowerCase();
+  return CALENDAR_COLOR_OPTIONS.includes(color) ? color : DEFAULT_CALENDAR_COLOR;
+};
+
+const ensureDefaultCalendarHolidaysSeeded = async () => {
+  if (!db || !currentUserIsAdmin) return;
+  const seedRef = getSiteSettingsDocRef(CALENDAR_HOLIDAY_SEED_DOC);
+  const seedSnapshot = await getDoc(seedRef);
+  if (seedSnapshot.exists() && Number(seedSnapshot.data()?.version || 0) >= 1) return;
+  const batch = writeBatch(db);
+  TAIWAN_LONG_HOLIDAYS.forEach((holiday) => {
+    const holidayRef = getClassAnnouncementDocRef(`holiday-${holiday.startDate}`);
+    batch.set(holidayRef, {
+      date: holiday.startDate,
+      endDate: holiday.endDate,
+      title: holiday.title,
+      eventType: "holiday",
+      calendarEventType: "holiday",
+      color: "orange",
+      reminder: "連續假期",
+      body: "連續假期",
+      isDefaultHoliday: true,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  });
+  batch.set(seedRef, { version: 1, seededAt: serverTimestamp(), updatedBy: currentUser?.uid || "" }, { merge: true });
+  await batch.commit();
+};
 
 const isMaintenanceBlocking = () => maintenanceSettings.enabled && !currentUserIsAdmin;
 
@@ -2408,7 +2456,10 @@ const getAdminCalendarAnnouncementId = (announcement = {}) => String(announcemen
 const getAnnouncementTimeLabel = (announcement = {}) =>
   buildEventTimeLabel(announcement.startTime, announcement.endTime, announcement.timeLabel || announcement.time);
 const getAnnouncementNote = (announcement = {}) => String(announcement.body || announcement.note || announcement.reminder || "").trim();
-const getNoticeEventType = (entry = {}) => (entry.calendarEventType === "class" ? "class" : "announcement");
+const getNoticeEventType = (entry = {}) => {
+  const type = String(entry.calendarEventType || entry.eventType || "").trim();
+  return type === "class" ? "class" : type === "holiday" ? "holiday" : "announcement";
+};
 const normalizeClassSessionAsNotice = (session = {}) => ({
   ...session,
   id: `class-${getClassSessionId(session)}`,
@@ -2417,6 +2468,7 @@ const normalizeClassSessionAsNotice = (session = {}) => ({
   title: session.title || "社課",
   body: session.description || session.reminder || "請查看社課日期與內容。",
   reminder: "社課",
+  color: normalizeCalendarColor(session.color),
   calendarEventType: "class",
   sourceSessionId: getClassSessionId(session),
 });
@@ -2475,6 +2527,7 @@ const getAdminCalendarEventsForDate = (dateKey) => {
       timeLabel: getClassSessionTimeLabel(session),
       location: session.location || "",
       note: session.reminder || session.description || "",
+      color: normalizeCalendarColor(session.color),
       albumUrl: membersDashboardCache.classAlbums.find((album) => album.id === getClassSessionId(session))?.url || "",
       source: session,
     }));
@@ -2482,12 +2535,13 @@ const getAdminCalendarEventsForDate = (dateKey) => {
   const announcementEvents = membersDashboardCache.announcements
     .filter((announcement) => isDateWithinAnnouncement(dateKey, announcement))
     .map((announcement) => ({
-      type: "announcement",
+      type: getNoticeEventType(announcement),
       id: getAdminCalendarAnnouncementId(announcement),
       title: announcement.title || "未命名內容",
-      timeLabel: getAnnouncementTimeLabel(announcement),
+      timeLabel: getNoticeEventType(announcement) === "holiday" ? "連續假期" : getAnnouncementTimeLabel(announcement),
       location: announcement.location || "",
       note: getAnnouncementNote(announcement),
+      color: normalizeCalendarColor(announcement.color || (getNoticeEventType(announcement) === "holiday" ? "orange" : "blue")),
       source: announcement,
     }));
 
@@ -2714,7 +2768,7 @@ const buildPublicCalendarEventMarkup = (event, { includeSignupAction = false } =
       : "";
 
   return `
-    <article class="admin-calendar-modal-session">
+    <article class="admin-calendar-modal-session calendar-color-border-${escapeHtml(normalizeCalendarColor(event.color))}">
       <div class="admin-calendar-modal-session-head">
         <div>
           <h3 class="admin-calendar-modal-session-title">${escapeHtml(event.title || "未命名內容")}</h3>
@@ -2790,8 +2844,9 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   form.querySelector("[name='date']").value = sourceDate;
   form.querySelector("[name='eventType']").value = event?.type || "class";
   form.querySelector("[name='title']").value = event?.title || "";
+  form.querySelector("[name='color']").value = normalizeCalendarColor(event?.color || event?.source?.color || (event?.type === "holiday" ? "orange" : "blue"));
   const legacyTimeParts = getLegacyTimeParts(event?.timeLabel || "");
-  form.querySelector("[name='endDate']").value = event?.type === "announcement" ? event.source?.endDate || sourceDate : "";
+  form.querySelector("[name='endDate']").value = event?.type && event.type !== "class" ? event?.source?.endDate || sourceDate : "";
   form.querySelector("[name='startTime']").value = event?.source?.startTime || legacyTimeParts.startTime;
   form.querySelector("[name='endTime']").value = event?.source?.endTime || legacyTimeParts.endTime;
   form.querySelector("[name='location']").value = event?.location || event?.source?.location || "";
@@ -2850,7 +2905,7 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   if (stateNode) {
     stateNode.textContent = eventId
       ? `目前正在編輯「${event?.title || "未命名內容"}」，儲存後會直接覆蓋原本資料。`
-      : "目前為新增模式，可建立社課或公告；同一天可以儲存多筆內容。";
+      : "目前為新增模式，可建立社課、公告或連續假期；同一天可以儲存多筆內容。";
   }
   if (saveButton) {
     saveButton.textContent = eventId ? "更新內容" : "儲存";
@@ -2918,14 +2973,14 @@ const openAdminClassCalendarModal = (dateKey, trigger = null) => {
 
   list.innerHTML = `
       <div class="admin-calendar-modal-list-header">
-        <p class="content-copy">${events.length ? "選擇既有內容進行編輯，或新增同一天的另一筆內容。" : "這一天目前沒有社課或公告。"}</p>
+        <p class="content-copy">${events.length ? "選擇既有內容進行編輯，或新增同一天的另一筆內容。" : "這一天目前沒有社課、公告或連續假期。"}</p>
         <button class="button-primary" data-admin-calendar-event-add type="button">新增內容</button>
       </div>
       ${events.length ? `
       ${events
         .map((event) => {
           return `
-            <button class="admin-calendar-event-chip is-${escapeHtml(event.type)}" data-admin-calendar-event-edit type="button" data-event-type="${escapeHtml(event.type)}" data-event-id="${escapeHtml(event.id)}">
+            <button class="admin-calendar-event-chip is-${escapeHtml(event.type)} calendar-color-border-${escapeHtml(normalizeCalendarColor(event.color))}" data-admin-calendar-event-edit type="button" data-event-type="${escapeHtml(event.type)}" data-event-id="${escapeHtml(event.id)}">
               <strong>${escapeHtml(event.title)}</strong>
               <small>${event.timeLabel ? escapeHtml(event.timeLabel) : "不指定時間"}${event.location ? ` · ${escapeHtml(event.location)}` : ""}</small>
             </button>
@@ -4607,6 +4662,11 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
       if (!membersDashboardLoadPromise) {
         membersDashboardLoadPromise = (async () => {
           const dashboardWarnings = [];
+          try {
+            await ensureDefaultCalendarHolidaysSeeded();
+          } catch (error) {
+            dashboardWarnings.push({ label: "建立預設連續假期", error });
+          }
           const supportingDataPromise = Promise.all([
             loadWithFallback("社課日期", dashboardWarnings, () => getCollectionEntries(CLASS_SESSION_COLLECTION), []),
             loadWithFallback("社課報名", dashboardWarnings, () => getCollectionEntries(CLASS_SIGNUP_COLLECTION), []),
@@ -5536,18 +5596,19 @@ function renderAnnouncementsBoard(announcements = []) {
     const dateKey = formatDateInputValue(new Date(year, month, day));
     const dayAnnouncements = (announcementsByDate[dateKey] || []).sort((a, b) => getAnnouncementSortMs(a) - getAnnouncementSortMs(b));
     const hasAnnouncement = dayAnnouncements.length > 0;
+    const hasHoliday = dayAnnouncements.some((announcement) => getNoticeEventType(announcement) === "holiday");
     const isToday = dateKey === todayKey;
 
     const dayTag = hasAnnouncement ? "button" : "article";
     const dayAttrs = hasAnnouncement ? ` type="button" data-public-announcement-day data-date-key="${escapeHtml(dateKey)}"` : "";
     cells.push(`
-      <${dayTag} class="admin-calendar-day${hasAnnouncement ? " is-session has-announcement is-clickable" : ""}${isToday ? " is-today" : ""}"${dayAttrs}>
+      <${dayTag} class="admin-calendar-day${hasAnnouncement ? " is-session has-announcement is-clickable" : ""}${hasHoliday ? " has-holiday" : ""}${isToday ? " is-today" : ""}"${dayAttrs}>
         <span class="admin-calendar-day-number">${escapeHtml(String(day))}</span>
         <span class="admin-calendar-day-events">
           ${dayAnnouncements
             .map(
               (announcement) => `
-                <strong class="announcement-calendar-title">${escapeHtml(announcement.title || "未命名內容")}</strong>
+                <strong class="announcement-calendar-title calendar-color-${escapeHtml(normalizeCalendarColor(announcement.color || (getNoticeEventType(announcement) === "holiday" ? "orange" : "blue")))}">${escapeHtml(announcement.title || "未命名內容")}</strong>
               `,
             )
             .join("")}
@@ -5569,7 +5630,7 @@ function renderAnnouncementsBoard(announcements = []) {
         <div>
           <p class="section-kicker">Calendar</p>
           <h3 class="content-title">${escapeHtml(monthLabel)}</h3>
-          <p class="section-description">社課與公告會依照日期顯示，有異動時可以直接查看當天內容。</p>
+          <p class="section-description">管理行事曆中的社課、公告與連續假期會同步顯示在這裡。</p>
         </div>
         <div class="admin-calendar-nav">
           <button class="button-secondary" data-announcement-calendar-prev type="button">上個月</button>
@@ -5610,9 +5671,10 @@ function renderAnnouncementsBoard(announcements = []) {
           type: getNoticeEventType(announcement),
           id: getAdminCalendarAnnouncementId(announcement),
           title: announcement.title || (getNoticeEventType(announcement) === "class" ? "社課" : "公告"),
-          timeLabel: getAnnouncementTimeLabel(announcement),
+          timeLabel: getNoticeEventType(announcement) === "holiday" ? "連續假期" : getAnnouncementTimeLabel(announcement),
           location: announcement.location || "",
           note: getAnnouncementNote(announcement),
+          color: normalizeCalendarColor(announcement.color || (getNoticeEventType(announcement) === "holiday" ? "orange" : "blue")),
           source: announcement,
         }));
       const parsedDate = parseDateKey(dateKey);
@@ -5654,7 +5716,7 @@ async function refreshAnnouncementsPageSafe({ force = false } = {}) {
   try {
     const loadWarnings = [];
     if (force || !announcementPageState.loaded) {
-      const [announcements, sessions] = await Promise.all([
+      const [announcements, sessions, holidaySeedSnapshot] = await Promise.all([
         loadWithFallback(
           "公告",
           loadWarnings,
@@ -5667,10 +5729,30 @@ async function refreshAnnouncementsPageSafe({ force = false } = {}) {
           () => getCollectionEntries(CLASS_SESSION_COLLECTION),
           [],
         ),
+        loadWithFallback(
+          "連續假期設定",
+          loadWarnings,
+          () => getDoc(getSiteSettingsDocRef(CALENDAR_HOLIDAY_SEED_DOC)),
+          null,
+        ),
       ]);
+      const defaultHolidayEntries = holidaySeedSnapshot?.exists?.()
+        ? []
+        : TAIWAN_LONG_HOLIDAYS.map((holiday) => ({
+            id: `holiday-${holiday.startDate}`,
+            date: holiday.startDate,
+            endDate: holiday.endDate,
+            title: holiday.title,
+            reminder: "連續假期",
+            body: "連續假期",
+            color: "orange",
+            eventType: "holiday",
+            calendarEventType: "holiday",
+          }));
       announcementPageState.announcements = [
-        ...announcements.map((entry) => ({ ...entry, calendarEventType: "announcement" })),
+        ...announcements.map((entry) => ({ ...entry, calendarEventType: getNoticeEventType(entry) })),
         ...sessions.map(normalizeClassSessionAsNotice),
+        ...defaultHolidayEntries,
       ];
       announcementPageState.loadWarnings = loadWarnings;
       announcementPageState.loaded = true;
@@ -6585,9 +6667,6 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
   const dayLabels = ["日", "一", "二", "三", "四", "五", "六"];
   const todayKey = formatDateInputValue(new Date());
   const cells = [];
-  const getLongHolidaysForDate = (dateKey) =>
-    TAIWAN_LONG_HOLIDAYS.filter((holiday) => dateKey >= holiday.startDate && dateKey <= holiday.endDate);
-
   for (let index = 0; index < offset; index += 1) {
     cells.push(`<div class="admin-calendar-day is-empty" aria-hidden="true"></div>`);
   }
@@ -6597,23 +6676,20 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
     const dateKey = formatDateInputValue(date);
     const daySessions = (sessionsByDate[dateKey] || []).sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
     const dayAnnouncements = announcementsByDate[dateKey] || [];
-    const dayHolidays = getLongHolidaysForDate(dateKey);
+    const dayHolidays = dayAnnouncements.filter((announcement) => getNoticeEventType(announcement) === "holiday");
     const dayEvents = [
       ...daySessions.map((session) => ({
         title: session.title || "未命名內容",
         timeLabel: getClassSessionTimeLabel(session),
         sortMs: getClassSessionSortMs(session),
+        color: normalizeCalendarColor(session.color),
       })),
       ...dayAnnouncements.map((announcement) => ({
         title: announcement.title || "未命名內容",
-        timeLabel: getAnnouncementTimeLabel(announcement),
+        timeLabel: getNoticeEventType(announcement) === "holiday" ? "連續假期" : getAnnouncementTimeLabel(announcement),
         sortMs: getAnnouncementSortMs(announcement),
-      })),
-      ...dayHolidays.map((holiday) => ({
-        title: holiday.title,
-        timeLabel: "連續假期",
-        sortMs: new Date(`${holiday.startDate}T00:00:00+08:00`).getTime(),
-        isHoliday: true,
+        color: normalizeCalendarColor(announcement.color || (getNoticeEventType(announcement) === "holiday" ? "orange" : "blue")),
+        isHoliday: getNoticeEventType(announcement) === "holiday",
       })),
     ].sort((a, b) => a.sortMs - b.sortMs || a.title.localeCompare(b.title, "zh-Hant"));
     const eventCount = dayEvents.length;
@@ -6632,7 +6708,7 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
           ${dayEvents
             .map(
               (event) => `
-                <span class="admin-calendar-day-event${event.isHoliday ? " is-holiday" : ""}">
+                <span class="admin-calendar-day-event calendar-color-${escapeHtml(event.color || DEFAULT_CALENDAR_COLOR)}${event.isHoliday ? " is-holiday" : ""}">
                   <span class="admin-calendar-day-event-bullet" aria-hidden="true">•</span>
                   <span class="admin-calendar-day-event-copy">
                     <strong class="announcement-calendar-title">${escapeHtml(event.title)}</strong>
@@ -6755,6 +6831,10 @@ function bindAdminClassCalendarActions() {
       const announcementEndDateField = form.querySelector("[data-announcement-end-date-field]");
       const classAlbumField = form.querySelector("[data-class-album-field]");
       const signupFieldsHidden = event.target.value !== "class";
+      const colorSelect = form.querySelector("[name='color']");
+      if (colorSelect instanceof HTMLSelectElement && event.target.value === "holiday" && colorSelect.value === DEFAULT_CALENDAR_COLOR) {
+        colorSelect.value = "orange";
+      }
       if (signupToggle) {
         signupToggle.hidden = signupFieldsHidden;
       }
@@ -6953,7 +7033,8 @@ async function handleAdminCalendarEventSubmit(event) {
   const date = String(form.querySelector("[name='date']")?.value || "").trim();
   const eventType = String(form.querySelector("[name='eventType']")?.value || form.dataset.editingType || "class").trim();
   const title = String(form.querySelector("[name='title']")?.value || "").trim();
-  const endDate = eventType === "announcement" ? String(form.querySelector("[name='endDate']")?.value || date).trim() : date;
+  const endDate = eventType !== "class" ? String(form.querySelector("[name='endDate']")?.value || date).trim() : date;
+  const color = normalizeCalendarColor(form.querySelector("[name='color']")?.value);
   const startTime = String(form.querySelector("[name='startTime']")?.value || "").trim();
   const endTime = String(form.querySelector("[name='endTime']")?.value || "").trim();
   const timeLabel = buildEventTimeLabel(startTime, endTime);
@@ -6966,6 +7047,11 @@ async function handleAdminCalendarEventSubmit(event) {
   const signupCloseAt = String(form.querySelector("[name='signupCloseAt']")?.value || "").trim();
   const signupLimit = Number(form.querySelector("[name='signupLimit']")?.value || 0);
   const weekday = getWeekdayKeyFromDateValue(date);
+
+  if (!["class", "announcement", "holiday"].includes(eventType)) {
+    showToast("請選擇有效的行事曆類型。", { tone: "error" });
+    return;
+  }
 
   if (!date || !title) {
     showToast("請先填寫標題與日期。", { tone: "error", title: "資料尚未完整" });
@@ -6983,8 +7069,8 @@ async function handleAdminCalendarEventSubmit(event) {
     return;
   }
 
-  if (eventType === "announcement" && endDate < date) {
-    showToast("公告結束日期不能早於開始日期。", { tone: "error" });
+  if (eventType !== "class" && endDate < date) {
+    showToast("結束日期不能早於開始日期。", { tone: "error" });
     form.querySelector("[name='endDate']")?.focus();
     return;
   }
@@ -7011,7 +7097,7 @@ async function handleAdminCalendarEventSubmit(event) {
   setButtonLoading(submitButton, true, "儲存中…");
 
   try {
-    if (eventType === "announcement") {
+    if (eventType !== "class") {
       const announcementRef = eventId ? getClassAnnouncementDocRef(eventId) : doc(collection(db, CLASS_ANNOUNCEMENT_COLLECTION));
       const existing = eventId ? await getDoc(announcementRef) : null;
       await setDoc(
@@ -7020,6 +7106,9 @@ async function handleAdminCalendarEventSubmit(event) {
           date,
           endDate,
           title,
+          eventType,
+          calendarEventType: eventType,
+          color,
           startTime,
           endTime,
           timeLabel,
@@ -7042,6 +7131,7 @@ async function handleAdminCalendarEventSubmit(event) {
           date,
           weekday,
           title,
+          color,
           startTime,
           endTime,
           timeLabel,
@@ -7101,7 +7191,8 @@ async function handleAdminCalendarEventDelete() {
     return;
   }
 
-  const confirmed = window.confirm(`確定要刪除這筆${eventType === "announcement" ? "公告" : "社課"}嗎？`);
+  const eventTypeLabel = eventType === "holiday" ? "連續假期" : eventType === "announcement" ? "公告" : "社課";
+  const confirmed = window.confirm(`確定要刪除這筆${eventTypeLabel}嗎？`);
   if (!confirmed) {
     return;
   }
@@ -7109,7 +7200,7 @@ async function handleAdminCalendarEventDelete() {
   deleteButton.disabled = true;
 
   try {
-    if (eventType === "announcement") {
+    if (eventType !== "class") {
       await deleteDoc(getClassAnnouncementDocRef(eventId));
     } else {
       await adminDeleteClassSession(eventId);
