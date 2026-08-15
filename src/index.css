@@ -3036,6 +3036,20 @@ button.admin-calendar-day:focus-visible {
   line-height: 1.35;
 }
 
+.admin-calendar-day.has-holiday {
+  background: linear-gradient(180deg, rgba(255, 248, 232, 0.96), rgba(255, 252, 245, 0.98));
+  border-color: rgba(177, 112, 25, 0.24);
+}
+
+.admin-calendar-day-event.is-holiday .admin-calendar-day-event-bullet,
+.admin-calendar-day-event.is-holiday .announcement-calendar-title {
+  color: #9a5a12;
+}
+
+.admin-calendar-day-event.is-holiday small {
+  color: #a66b29;
+}
+
 .admin-calendar-day-badge.is-announcement {
   background: rgba(20, 32, 44, 0.08);
   color: var(--ink);
@@ -4199,6 +4213,48 @@ button.admin-calendar-day:focus-visible {
 @keyframes toast-in { from { opacity: 0; transform: translateY(-0.5rem); } }
 
 /* Admin information architecture */
+[data-members-content] {
+  --admin-control-height: 48px;
+  --admin-control-radius: 12px;
+  --admin-card-radius: 18px;
+  --admin-border: rgba(15, 76, 129, 0.14);
+}
+[data-members-content] .content-card { border-radius: var(--admin-card-radius); border-color: var(--admin-border); }
+[data-members-content] .form-grid { gap: 16px; }
+[data-members-content] .form-field { display: grid; gap: 7px; }
+[data-members-content] .form-field > label { color: var(--brand); font-size: 0.84rem; font-weight: 800; letter-spacing: 0.04em; }
+[data-members-content] .form-field input:not([type="checkbox"]):not([type="radio"]),
+[data-members-content] .form-field select,
+[data-members-content] .form-field textarea {
+  width: 100%;
+  min-height: var(--admin-control-height);
+  padding: 11px 14px;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-control-radius);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+[data-members-content] .form-field textarea { min-height: 120px; resize: vertical; }
+[data-members-content] .form-field input:not([type="checkbox"]):not([type="radio"]):focus,
+[data-members-content] .form-field select:focus,
+[data-members-content] .form-field textarea:focus {
+  outline: none;
+  border-color: rgba(15, 76, 129, 0.36);
+  box-shadow: 0 0 0 4px rgba(15, 76, 129, 0.08);
+}
+[data-members-content] .button-primary,
+[data-members-content] .button-secondary,
+[data-members-content] .member-delete-button {
+  min-height: 44px;
+  border-radius: var(--admin-control-radius);
+  padding: 10px 16px;
+  font-weight: 800;
+}
+[data-members-content] .member-filter-header { align-items: center; gap: 16px; }
+[data-members-content] .section-description,
+[data-members-content] .content-copy,
+[data-members-content] .login-note { line-height: 1.65; }
 .admin-section-nav { position: sticky; top: 5.5rem; z-index: 5; display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0 2rem; padding: 0.7rem; border: 1px solid rgba(17, 24, 39, 0.1); border-radius: 1rem; background: rgba(255, 255, 255, 0.94); backdrop-filter: blur(12px); }
 .admin-section-nav a { padding: 0.55rem 0.8rem; border-radius: 999px; color: inherit; text-decoration: none; font-weight: 700; }
 .admin-section-nav a:hover, .admin-section-nav a:focus-visible { background: rgba(25, 78, 63, 0.1); }

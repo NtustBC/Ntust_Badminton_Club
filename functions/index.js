@@ -375,6 +375,103 @@ async function getSessionSignupCounts(sessionId) {
   }, { signupCount: 0, waitlistCount: 0 });
 }
 
+function getSessionNotificationLabel(session = {}) {
+  return String(session.title || "社課").trim() || "社課";
+}
+
+function getSessionNotificationTime(session = {}) {
+  return [session.date || session.sessionDate || "", session.timeLabel || ""].filter(Boolean).join(" ");
+}
+
+function setMemberNotification(transaction, firestore, data = {}) {
+  const userId = String(data.userId || "").trim();
+  if (!userId) return;
+  const notificationRef = firestore.collection("memberNotifications").doc();
+  transaction.set(notificationRef, {
+    userId,
+    category: data.category || "registrationUpdates",
+    type: data.type || "class_update",
+    title: String(data.title || "社課通知").slice(0, 120),
+    message: String(data.message || "請查看最新社課資訊。").slice(0, 500),
+    sessionId: String(data.sessionId || ""),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
+async function cancelClassSessionSignup({ firestore, signupRef, sessionId, cancelledBy = "member" }) {
+  const statsRef = firestore.collection("classSessionStats").doc(sessionId);
+  const sessionRef = firestore.collection("classSessions").doc(sessionId);
+  let removed = false;
+  await firestore.runTransaction(async (transaction) => {
+    const signupsQuery = firestore.collection("classSessionSignups").where("sessionId", "==", sessionId);
+    const [signup, sessionSnapshot, sessionSignups] = await Promise.all([
+      transaction.get(signupRef),
+      transaction.get(sessionRef),
+      transaction.get(signupsQuery),
+    ]);
+    if (!signup.exists) return;
+
+    removed = true;
+    const removedData = signup.data();
+    if (String(removedData.sessionId || "") !== sessionId) throw new HttpsError("invalid-argument", "報名資料與社課不相符。");
+    const removedStatus = removedData.signupStatus || "accepted";
+    const session = sessionSnapshot.exists ? sessionSnapshot.data() : removedData;
+    const sessionTitle = getSessionNotificationLabel(session);
+    const sessionTime = getSessionNotificationTime(session);
+    const remainingWaitlisted = sessionSignups.docs
+      .filter((entry) => entry.id !== signup.id && entry.data().signupStatus === "waitlisted")
+      .sort((a, b) => Number(a.data().createdAt?.toMillis?.() || 0) - Number(b.data().createdAt?.toMillis?.() || 0));
+
+    transaction.delete(signupRef);
+    setMemberNotification(transaction, firestore, {
+      userId: removedData.userId,
+      type: "signup_cancelled",
+      title: "社課報名已取消",
+      message: `${cancelledBy === "admin" ? "管理員已取消" : "你已取消"}「${sessionTitle}」的報名${sessionTime ? `（${sessionTime}）` : ""}。`,
+      sessionId,
+    });
+
+    const actualSignupCount = sessionSignups.docs.filter((entry) => entry.data().signupStatus !== "waitlisted").length;
+    const actualWaitlistCount = sessionSignups.size - actualSignupCount;
+    let signupCount = Math.max(0, actualSignupCount - Number(removedStatus !== "waitlisted"));
+    let waitlistCount = Math.max(0, actualWaitlistCount - Number(removedStatus === "waitlisted"));
+    if (removedStatus !== "waitlisted" && remainingWaitlisted.length) {
+      const promoted = remainingWaitlisted.shift();
+      transaction.set(promoted.ref, {
+        signupStatus: "accepted",
+        waitlistPosition: null,
+        promotedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+      setMemberNotification(transaction, firestore, {
+        userId: promoted.data().userId,
+        type: "waitlist_promoted",
+        title: "候補已轉為正取",
+        message: `「${sessionTitle}」已有名額釋出，你已由候補轉為報名成功${sessionTime ? `（${sessionTime}）` : ""}。`,
+        sessionId,
+      });
+      signupCount += 1;
+      waitlistCount = Math.max(0, waitlistCount - 1);
+    }
+
+    remainingWaitlisted.forEach((entry, index) => {
+      const waitlistPosition = index + 1;
+      if (Number(entry.data().waitlistPosition || 0) === waitlistPosition) return;
+      transaction.set(entry.ref, { waitlistPosition, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      setMemberNotification(transaction, firestore, {
+        userId: entry.data().userId,
+        type: "waitlist_position",
+        title: `候補順位更新：第 ${waitlistPosition} 位`,
+        message: `「${sessionTitle}」目前候補順位為第 ${waitlistPosition} 位。`,
+        sessionId,
+      });
+    });
+    transaction.set(statsRef, { sessionId, signupCount, waitlistCount, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  });
+  if (removed) await firestore.collection("classPublicRosters").doc(signupRef.id).delete().catch(() => {});
+  return removed;
+}
+
 exports.upsertClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "請先登入後再報名。");
@@ -427,13 +524,16 @@ exports.upsertClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (
     }
 
     stage = "計算目前名額";
-    const seedCount = statsSnapshot.exists ? Number(statsSnapshot.data().signupCount || 0) : await getSessionSignupSeedCount(sessionId);
+    const seedCounts = statsSnapshot.exists
+      ? { signupCount: Number(statsSnapshot.data().signupCount || 0), waitlistCount: Number(statsSnapshot.data().waitlistCount || 0) }
+      : await getSessionSignupCounts(sessionId);
     stage = "寫入報名資料";
     await firestore.runTransaction(async (transaction) => {
       const existingSignup = await transaction.get(signupRef);
       const currentStats = await transaction.get(statsRef);
       const existingData = existingSignup.exists ? existingSignup.data() : {};
-      const count = currentStats.exists ? Number(currentStats.data().signupCount || 0) : seedCount;
+      const count = currentStats.exists ? Number(currentStats.data().signupCount || 0) : seedCounts.signupCount;
+      const waitlistCount = currentStats.exists ? Number(currentStats.data().waitlistCount || 0) : seedCounts.waitlistCount;
       const limit = Number(session.signupLimit || 0);
       const signupStatus = existingSignup.exists
         ? existingData.signupStatus || "accepted"
@@ -443,15 +543,30 @@ exports.upsertClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (
         membershipStatusAtSignup: isFormalMember ? "formal_member" : String(member.membershipStatus || "non_member"),
         isFormalMemberAtSignup: isFormalMember, dropInPaymentStatus: isFormalMember ? "not_required" : existingData.dropInPaymentStatus || "unpaid",
         sessionDate: session.date || "", sessionWeekday: session.weekday || "", sessionTitle: session.title || "", sessionTimeLabel: session.timeLabel || "",
-        signupStatus, createdAt: existingData.createdAt || admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        signupStatus,
+        waitlistPosition: signupStatus === "waitlisted" ? existingData.waitlistPosition || waitlistCount + 1 : null,
+        createdAt: existingData.createdAt || admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
-      const waitlistCount = currentStats.exists ? Number(currentStats.data().waitlistCount || 0) : 0;
       transaction.set(statsRef, {
         sessionId,
         signupCount: existingSignup.exists || signupStatus === "waitlisted" ? count : count + 1,
         waitlistCount: existingSignup.exists ? waitlistCount : waitlistCount + Number(signupStatus === "waitlisted"),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
+      if (!existingSignup.exists) {
+        const sessionTitle = getSessionNotificationLabel(session);
+        const sessionTime = getSessionNotificationTime(session);
+        const waitlistPosition = waitlistCount + 1;
+        setMemberNotification(transaction, firestore, {
+          userId: uid,
+          type: signupStatus === "waitlisted" ? "signup_waitlisted" : "signup_accepted",
+          title: signupStatus === "waitlisted" ? `已加入候補：第 ${waitlistPosition} 位` : "社課報名成功",
+          message: signupStatus === "waitlisted"
+            ? `「${sessionTitle}」目前額滿，你的候補順位為第 ${waitlistPosition} 位。`
+            : `你已成功報名「${sessionTitle}」${sessionTime ? `（${sessionTime}）` : ""}。`,
+          sessionId,
+        });
+      }
     });
     const savedSignup = await signupRef.get();
     return { ok: true, signupStatus: savedSignup.data()?.signupStatus || "accepted" };
@@ -468,26 +583,64 @@ exports.deleteClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (
   const sessionId = String(request.data?.sessionId || "").trim();
   const firestore = admin.firestore();
   const signupRef = firestore.collection("classSessionSignups").doc(`${sessionId}-${uid}`);
-  const statsRef = firestore.collection("classSessionStats").doc(sessionId);
-  await firestore.runTransaction(async (transaction) => {
-    const signupsQuery = firestore.collection("classSessionSignups").where("sessionId", "==", sessionId);
-    const [signup, stats, sessionSignups] = await Promise.all([transaction.get(signupRef), transaction.get(statsRef), transaction.get(signupsQuery)]);
-    if (!signup.exists) return;
-    const removedStatus = signup.data().signupStatus || "accepted";
-    const nextWaitlisted = sessionSignups.docs
-      .filter((entry) => entry.id !== signup.id && entry.data().signupStatus === "waitlisted")
-      .sort((a, b) => Number(a.data().createdAt?.toMillis?.() || 0) - Number(b.data().createdAt?.toMillis?.() || 0))[0];
-    transaction.delete(signupRef);
-    let signupCount = Math.max(0, Number(stats.data()?.signupCount || 0) - Number(removedStatus !== "waitlisted"));
-    let waitlistCount = Math.max(0, Number(stats.data()?.waitlistCount || 0) - Number(removedStatus === "waitlisted"));
-    if (removedStatus !== "waitlisted" && nextWaitlisted) {
-      transaction.set(nextWaitlisted.ref, { signupStatus: "accepted", promotedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-      signupCount += 1;
-      waitlistCount = Math.max(0, waitlistCount - 1);
-    }
-    transaction.set(statsRef, { sessionId, signupCount, waitlistCount, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await cancelClassSessionSignup({ firestore, signupRef, sessionId, cancelledBy: "member" });
+  return { ok: true };
+});
+
+exports.adminDeleteClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "請先登入。");
+  const firestore = admin.firestore();
+  if (!(await firestore.collection("admins").doc(uid).get()).exists) throw new HttpsError("permission-denied", "只有管理員可以刪除報名。");
+  const sessionId = String(request.data?.sessionId || "").trim();
+  const signupId = String(request.data?.signupId || "").trim();
+  if (!sessionId || !signupId) throw new HttpsError("invalid-argument", "缺少社課或報名資料。");
+  await cancelClassSessionSignup({
+    firestore,
+    signupRef: firestore.collection("classSessionSignups").doc(signupId),
+    sessionId,
+    cancelledBy: "admin",
   });
   return { ok: true };
+});
+
+exports.adminDeleteClassSession = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "請先登入。");
+  const firestore = admin.firestore();
+  if (!(await firestore.collection("admins").doc(uid).get()).exists) throw new HttpsError("permission-denied", "只有管理員可以刪除社課。");
+  const sessionId = String(request.data?.sessionId || "").trim();
+  if (!sessionId) throw new HttpsError("invalid-argument", "缺少社課資料。");
+  const [sessionSnapshot, signupsSnapshot] = await Promise.all([
+    firestore.collection("classSessions").doc(sessionId).get(),
+    firestore.collection("classSessionSignups").where("sessionId", "==", sessionId).get(),
+  ]);
+  if (!sessionSnapshot.exists) return { ok: true };
+  const session = sessionSnapshot.data();
+  const sessionTitle = getSessionNotificationLabel(session);
+  const sessionTime = getSessionNotificationTime(session);
+  const writer = firestore.bulkWriter();
+  signupsSnapshot.docs.forEach((signup) => {
+    const userId = String(signup.data().userId || "").trim();
+    if (userId) {
+      writer.set(firestore.collection("memberNotifications").doc(), {
+        userId,
+        category: "classReminders",
+        type: "class_cancelled",
+        title: "社課已取消",
+        message: `「${sessionTitle}」${sessionTime ? `（${sessionTime}）` : ""}已由管理員取消。`,
+        sessionId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+    writer.delete(signup.ref);
+    writer.delete(firestore.collection("classPublicRosters").doc(signup.id));
+  });
+  writer.delete(firestore.collection("classSessionStats").doc(sessionId));
+  writer.delete(firestore.collection("classAlbums").doc(sessionId));
+  writer.delete(firestore.collection("classSessions").doc(sessionId));
+  await writer.close();
+  return { ok: true, notifiedCount: signupsSnapshot.size };
 });
 
 exports.syncClassSessionStats = onDocumentWritten({ document: "classSessionSignups/{signupId}", region: REGION }, async (event) => {
@@ -495,5 +648,10 @@ exports.syncClassSessionStats = onDocumentWritten({ document: "classSessionSignu
   if (!sessionId) return;
   const firestore = admin.firestore();
   const counts = await getSessionSignupCounts(sessionId);
+  const sessionSnapshot = await firestore.collection("classSessions").doc(sessionId).get();
+  if (!sessionSnapshot.exists) {
+    await firestore.collection("classSessionStats").doc(sessionId).delete().catch(() => {});
+    return;
+  }
   await firestore.collection("classSessionStats").doc(sessionId).set({ sessionId, ...counts, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
 });

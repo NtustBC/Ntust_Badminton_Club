@@ -101,6 +101,7 @@ const CLASS_SESSION_STATS_COLLECTION = "classSessionStats";
 const CLASS_ANNOUNCEMENT_COLLECTION = "classAnnouncements";
 const CLASS_ALBUM_COLLECTION = "classAlbums";
 const ADMIN_NOTIFICATION_COLLECTION = "adminNotifications";
+const MEMBER_NOTIFICATION_COLLECTION = "memberNotifications";
 const FAQ_COLLECTION = "faqEntries";
 const FAQ_QUESTION_COLLECTION = "faqQuestions";
 const SITE_SETTINGS_COLLECTION = "siteSettings";
@@ -112,6 +113,27 @@ const DEFAULT_MAINTENANCE_SETTINGS = {
   message: "我們正在進行系統維護，請稍後再回來。",
   estimatedResumeAt: "",
 };
+// 行政院人事行政總處公告之三日以上連續假期。
+const TAIWAN_LONG_HOLIDAYS = [
+  { title: "除夕及春節連假", startDate: "2026-02-14", endDate: "2026-02-22" },
+  { title: "和平紀念日連假", startDate: "2026-02-27", endDate: "2026-03-01" },
+  { title: "兒童節及清明節連假", startDate: "2026-04-03", endDate: "2026-04-06" },
+  { title: "勞動節連假", startDate: "2026-05-01", endDate: "2026-05-03" },
+  { title: "端午節連假", startDate: "2026-06-19", endDate: "2026-06-21" },
+  { title: "中秋節及教師節連假", startDate: "2026-09-25", endDate: "2026-09-28" },
+  { title: "國慶日連假", startDate: "2026-10-09", endDate: "2026-10-11" },
+  { title: "臺灣光復紀念日連假", startDate: "2026-10-24", endDate: "2026-10-26" },
+  { title: "行憲紀念日連假", startDate: "2026-12-25", endDate: "2026-12-27" },
+  { title: "開國紀念日連假", startDate: "2027-01-01", endDate: "2027-01-03" },
+  { title: "除夕及春節連假", startDate: "2027-02-04", endDate: "2027-02-10" },
+  { title: "和平紀念日連假", startDate: "2027-02-27", endDate: "2027-03-01" },
+  { title: "兒童節及清明節連假", startDate: "2027-04-03", endDate: "2027-04-06" },
+  { title: "勞動節連假", startDate: "2027-04-30", endDate: "2027-05-02" },
+  { title: "國慶日連假", startDate: "2027-10-09", endDate: "2027-10-11" },
+  { title: "臺灣光復紀念日連假", startDate: "2027-10-23", endDate: "2027-10-25" },
+  { title: "行憲紀念日連假", startDate: "2027-12-24", endDate: "2027-12-26" },
+  { title: "開國紀念日連假", startDate: "2027-12-31", endDate: "2028-01-02" },
+];
 const MEMBERSHIP_REGISTRATION_STATS_COLLECTION = "membershipRegistrationStats";
 const CLASS_WEEKDAY_LABELS = {
   mon: "星期一",
@@ -1079,6 +1101,11 @@ const applyMaintenanceView = () => {
   resume.textContent = resumeLabel ? `預計恢復時間：${resumeLabel}` : "";
 };
 const getClassSessionSortMs = (session = {}) => getDateKeyMs(session.date || session.sessionDate);
+const getClassSessionStartMs = (session = {}) => {
+  const date = String(session.date || session.sessionDate || "").trim();
+  const startTime = String(session.startTime || getLegacyTimeParts(session.timeLabel || session.time).startTime || "").trim();
+  return date && startTime ? getDateTimeLocalMs(`${date}T${startTime}`) : getClassSessionSortMs(session);
+};
 const getAnnouncementSortMs = (announcement) => getTimestampMs(announcement.createdAt || announcement.updatedAt || announcement.date);
 const getFaqSortMs = (faq) => getTimestampMs(faq.createdAt || faq.updatedAt || faq.date);
 const getWeekdayKeyFromDateValue = (value) => {
@@ -1270,8 +1297,25 @@ const loadNotificationItems = async () => {
       });
     });
   }
+  const shouldLoadClassData = preferences.classReminders !== false || preferences.registrationUpdates !== false;
+  const [sessions, ownSignupSnapshot, memberNotificationSnapshot] = shouldLoadClassData
+    ? await Promise.all([
+        getCollectionEntries(CLASS_SESSION_COLLECTION),
+        currentUser?.uid
+          ? getDocs(query(collection(db, CLASS_SIGNUP_COLLECTION), where("userId", "==", currentUser.uid)))
+          : Promise.resolve({ docs: [] }),
+        currentUser?.uid
+          ? getDocs(query(collection(db, MEMBER_NOTIFICATION_COLLECTION), where("userId", "==", currentUser.uid)))
+          : Promise.resolve({ docs: [] }),
+      ])
+    : [[], { docs: [] }, { docs: [] }];
+  const ownSignups = ownSignupSnapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+  const ownSignupBySession = new Map(ownSignups.map((entry) => [String(entry.sessionId || ""), entry]));
+  const upcomingWindowMs = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const isUpcoming = (targetMs) => Number.isFinite(targetMs) && targetMs > now && targetMs <= now + upcomingWindowMs;
+
   if (preferences.classReminders !== false) {
-    const sessions = await getCollectionEntries(CLASS_SESSION_COLLECTION);
     sessions
       .sort((a, b) => getNotificationChangeMs(b) - getNotificationChangeMs(a))
       .slice(0, 12)
@@ -1284,7 +1328,60 @@ const loadNotificationItems = async () => {
           sortMs: getNotificationChangeMs(entry) || getClassSessionSortMs(entry),
         });
       });
+    sessions.forEach((session) => {
+      const sessionId = getClassSessionId(session);
+      const ownSignup = ownSignupBySession.get(sessionId);
+      const startsAtMs = getClassSessionStartMs(session);
+      if (ownSignup?.signupStatus !== "waitlisted" && ownSignup && isUpcoming(startsAtMs)) {
+        items.push({
+          id: `class-starting:${sessionId}:${startsAtMs}`,
+          title: "社課即將開始",
+          copy: `你報名的「${session.title || "社課"}」將於 24 小時內開始${session.location ? `，地點：${session.location}` : ""}。`,
+          date: startsAtMs,
+          sortMs: startsAtMs - upcomingWindowMs,
+        });
+      }
+    });
   }
+  if (preferences.registrationUpdates !== false) {
+    const hasFormalAccess = currentUserIsAdmin || getManagedMembershipStatus(currentMemberProfile || currentMemberStatus) === "formal_member" || currentMemberProfile?.paymentStatus === "paid";
+    sessions.filter((session) => session.signupRequired === true).forEach((session) => {
+      const sessionId = getClassSessionId(session);
+      const openAtMs = hasFormalAccess ? getMemberSignupOpenMs(session) : getPublicSignupOpenMs(session);
+      const closeAtMs = getDateTimeLocalMs(session.signupCloseAt);
+      if (isUpcoming(openAtMs)) {
+        items.push({
+          id: `signup-opening:${sessionId}:${openAtMs}`,
+          title: "社課報名即將開始",
+          copy: `「${session.title || "社課"}」將於 ${new Date(openAtMs).toLocaleString("zh-TW")} 開放報名。`,
+          date: openAtMs,
+          sortMs: openAtMs - upcomingWindowMs,
+        });
+      }
+      if (isUpcoming(closeAtMs)) {
+        items.push({
+          id: `signup-closing:${sessionId}:${closeAtMs}`,
+          title: "社課報名即將截止",
+          copy: `「${session.title || "社課"}」將於 ${new Date(closeAtMs).toLocaleString("zh-TW")} 截止報名。`,
+          date: closeAtMs,
+          sortMs: closeAtMs - upcomingWindowMs,
+        });
+      }
+    });
+  }
+  memberNotificationSnapshot.docs.forEach((entry) => {
+    const notification = entry.data();
+    if (notification.category === "classReminders" && preferences.classReminders === false) return;
+    if (notification.category !== "classReminders" && preferences.registrationUpdates === false) return;
+    const createdAtMs = getTimestampMs(notification.createdAt);
+    items.push({
+      id: `member:${entry.id}`,
+      title: notification.title || "社課通知",
+      copy: notification.message || "請查看最新社課資訊。",
+      date: notification.createdAt || new Date(),
+      sortMs: Number.isFinite(createdAtMs) ? createdAtMs : Date.now(),
+    });
+  });
   if (preferences.registrationUpdates !== false && currentMemberProfile?.membershipStatus === "pending_payment") {
     const pendingDate = currentMemberProfile.paymentSubmittedAt || currentMemberProfile.updatedAt || currentMemberProfile.createdAt || new Date();
     items.unshift({ id: `membership:pending-payment:${getTimestampMs(pendingDate) || "current"}`, title: "社員申請處理中", copy: "幹部確認社費後，系統會更新社員資格。", date: pendingDate, sortMs: getTimestampMs(pendingDate) });
@@ -4661,7 +4758,8 @@ function getSignupStatusLabel(signup = {}) {
     return "報名成功";
   }
   if (signup.signupStatus === "waitlisted") {
-    return "候補";
+    const position = Math.max(0, Number(signup.waitlistPosition || 0));
+    return position ? `候補第 ${position} 位` : "候補";
   }
   return "待確認";
 }
@@ -5154,6 +5252,16 @@ async function deleteClassSessionSignupDirect(sessionId) {
 async function deleteClassSessionSignup(sessionId) {
   if (!functionsClient || !httpsCallable) throw new Error("取消報名服務目前無法使用，請稍後再試。");
   await httpsCallable(functionsClient, "deleteClassSessionSignup")({ sessionId });
+}
+
+async function adminDeleteClassSessionSignup(sessionId, signupId) {
+  if (!functionsClient || !httpsCallable) throw new Error("管理報名服務目前無法使用，請稍後再試。");
+  await httpsCallable(functionsClient, "adminDeleteClassSessionSignup")({ sessionId, signupId });
+}
+
+async function adminDeleteClassSession(sessionId) {
+  if (!functionsClient || !httpsCallable) throw new Error("管理社課服務目前無法使用，請稍後再試。");
+  return (await httpsCallable(functionsClient, "adminDeleteClassSession")({ sessionId })).data || { ok: true };
 }
 
 async function handleClassSignupSubmit(event) {
@@ -6387,6 +6495,8 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
   const dayLabels = ["日", "一", "二", "三", "四", "五", "六"];
   const todayKey = formatDateInputValue(new Date());
   const cells = [];
+  const getLongHolidaysForDate = (dateKey) =>
+    TAIWAN_LONG_HOLIDAYS.filter((holiday) => dateKey >= holiday.startDate && dateKey <= holiday.endDate);
 
   for (let index = 0; index < offset; index += 1) {
     cells.push(`<div class="admin-calendar-day is-empty" aria-hidden="true"></div>`);
@@ -6397,6 +6507,7 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
     const dateKey = formatDateInputValue(date);
     const daySessions = (sessionsByDate[dateKey] || []).sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
     const dayAnnouncements = announcementsByDate[dateKey] || [];
+    const dayHolidays = getLongHolidaysForDate(dateKey);
     const dayEvents = [
       ...daySessions.map((session) => ({
         title: session.title || "未命名內容",
@@ -6408,6 +6519,12 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
         timeLabel: getAnnouncementTimeLabel(announcement),
         sortMs: getAnnouncementSortMs(announcement),
       })),
+      ...dayHolidays.map((holiday) => ({
+        title: holiday.title,
+        timeLabel: "連續假期",
+        sortMs: new Date(`${holiday.startDate}T00:00:00+08:00`).getTime(),
+        isHoliday: true,
+      })),
     ].sort((a, b) => a.sortMs - b.sortMs || a.title.localeCompare(b.title, "zh-Hant"));
     const eventCount = dayEvents.length;
     const announcementCount = dayAnnouncements.length;
@@ -6415,7 +6532,7 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
 
     cells.push(`
       <button
-        class="admin-calendar-day${eventCount > 0 ? " is-session" : ""}${announcementCount > 0 ? " has-announcement" : ""}${isToday ? " is-today" : ""}"
+        class="admin-calendar-day${eventCount > 0 ? " is-session" : ""}${announcementCount > 0 ? " has-announcement" : ""}${dayHolidays.length ? " has-holiday" : ""}${isToday ? " is-today" : ""}"
         type="button"
         data-admin-calendar-day
         data-date-key="${escapeHtml(dateKey)}"
@@ -6425,7 +6542,7 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
           ${dayEvents
             .map(
               (event) => `
-                <span class="admin-calendar-day-event">
+                <span class="admin-calendar-day-event${event.isHoliday ? " is-holiday" : ""}">
                   <span class="admin-calendar-day-event-bullet" aria-hidden="true">•</span>
                   <span class="admin-calendar-day-event-copy">
                     <strong class="announcement-calendar-title">${escapeHtml(event.title)}</strong>
@@ -6658,22 +6775,7 @@ function bindAdminClassCalendarActions() {
 
       button.disabled = true;
       try {
-        const signupRef = doc(db, CLASS_SIGNUP_COLLECTION, signupId);
-        const statsRef = doc(db, CLASS_SESSION_STATS_COLLECTION, sessionId);
-        await runTransaction(db, async (transaction) => {
-          const signupSnapshot = await transaction.get(signupRef);
-          const statsSnapshot = await transaction.get(statsRef);
-          if (!signupSnapshot.exists()) return;
-          transaction.delete(signupRef);
-          if (statsSnapshot.exists()) {
-            transaction.set(statsRef, {
-              sessionId,
-              signupCount: Math.max(0, Number(statsSnapshot.data().signupCount || 1) - 1),
-              updatedAt: serverTimestamp(),
-            }, { merge: true });
-          }
-        });
-        await deleteDoc(doc(db, CLASS_PUBLIC_ROSTER_COLLECTION, signupId));
+        await adminDeleteClassSessionSignup(sessionId, signupId);
         await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
       } catch (error) {
         console.error("Delete class signup failed:", error);
@@ -6721,16 +6823,7 @@ function bindAdminClassCalendarActions() {
       }
 
       try {
-        const relatedSignups = membersDashboardCache.classSessionSignups.filter((signup) => String(signup.sessionId || "") === sessionId);
-        await Promise.all(
-          relatedSignups.flatMap((signup) => [
-            deleteDoc(doc(db, CLASS_SIGNUP_COLLECTION, signup.id)),
-            deleteDoc(doc(db, CLASS_PUBLIC_ROSTER_COLLECTION, signup.id)),
-          ]),
-        );
-        await deleteDoc(doc(db, CLASS_SESSION_STATS_COLLECTION, sessionId));
-        await deleteDoc(getClassAlbumDocRef(sessionId));
-        await deleteDoc(getClassSessionDocRef(sessionId));
+        await adminDeleteClassSession(sessionId);
 
         if (adminClassSessionEditingId === sessionId) {
           clearAdminClassSessionFormMode();
@@ -6912,15 +7005,7 @@ async function handleAdminCalendarEventDelete() {
     if (eventType === "announcement") {
       await deleteDoc(getClassAnnouncementDocRef(eventId));
     } else {
-      const relatedSignups = membersDashboardCache.classSessionSignups.filter((signup) => String(signup.sessionId || "") === eventId);
-      await Promise.all(
-        relatedSignups.flatMap((signup) => [
-          deleteDoc(doc(db, CLASS_SIGNUP_COLLECTION, signup.id)),
-          deleteDoc(doc(db, CLASS_PUBLIC_ROSTER_COLLECTION, signup.id)),
-        ]),
-      );
-      await deleteDoc(doc(db, CLASS_SESSION_STATS_COLLECTION, eventId));
-      await deleteDoc(getClassSessionDocRef(eventId));
+      await adminDeleteClassSession(eventId);
     }
 
     await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });

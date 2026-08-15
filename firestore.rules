@@ -270,6 +270,13 @@ service cloud.firestore {
       allow create: if false;
     }
 
+    match /memberNotifications/{notificationId} {
+      allow get, list: if isAdmin() || (
+        isSignedIn() && resource.data.userId == request.auth.uid
+      );
+      allow create, update, delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
