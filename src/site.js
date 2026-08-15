@@ -6390,8 +6390,16 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
     const daySessions = (sessionsByDate[dateKey] || []).sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
     const dayAnnouncements = announcementsByDate[dateKey] || [];
     const dayEvents = [
-      ...daySessions.map((session) => ({ title: session.title || "未命名內容", sortMs: getClassSessionSortMs(session) })),
-      ...dayAnnouncements.map((announcement) => ({ title: announcement.title || "未命名內容", sortMs: getAnnouncementSortMs(announcement) })),
+      ...daySessions.map((session) => ({
+        title: session.title || "未命名內容",
+        timeLabel: getClassSessionTimeLabel(session),
+        sortMs: getClassSessionSortMs(session),
+      })),
+      ...dayAnnouncements.map((announcement) => ({
+        title: announcement.title || "未命名內容",
+        timeLabel: getAnnouncementTimeLabel(announcement),
+        sortMs: getAnnouncementSortMs(announcement),
+      })),
     ].sort((a, b) => a.sortMs - b.sortMs || a.title.localeCompare(b.title, "zh-Hant"));
     const eventCount = dayEvents.length;
     const announcementCount = dayAnnouncements.length;
@@ -6405,9 +6413,17 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
         data-date-key="${escapeHtml(dateKey)}"
       >
         <span class="admin-calendar-day-number">${escapeHtml(String(day))}</span>
-        ${eventCount > 0 ? `<span class="admin-calendar-day-marker" aria-hidden="true"></span>` : ""}
         <span class="admin-calendar-day-events">
-          ${dayEvents.map((event) => `<strong class="announcement-calendar-title">${escapeHtml(event.title)}</strong>`).join("")}
+          ${dayEvents
+            .map(
+              (event) => `
+                <span class="admin-calendar-day-event">
+                  <strong class="announcement-calendar-title">${escapeHtml(event.title)}</strong>
+                  ${event.timeLabel ? `<small>${escapeHtml(event.timeLabel)}</small>` : ""}
+                </span>
+              `,
+            )
+            .join("")}
         </span>
       </button>
     `);

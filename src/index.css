@@ -2991,14 +2991,6 @@ button.admin-calendar-day:focus-visible {
   font-weight: 800;
 }
 
-.admin-calendar-day-marker {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  background: var(--brand);
-  box-shadow: 0 0 0 6px rgba(15, 76, 129, 0.12);
-}
-
 .admin-calendar-day-badge {
   justify-self: start;
   display: inline-flex;
@@ -3013,9 +3005,20 @@ button.admin-calendar-day:focus-visible {
 }
 
 .admin-calendar-day-events {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 6px;
+}
+
+.admin-calendar-day-event {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-calendar-day-event small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .admin-calendar-day-badge.is-announcement {
