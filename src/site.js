@@ -105,6 +105,7 @@ const FAQ_COLLECTION = "faqEntries";
 const FAQ_QUESTION_COLLECTION = "faqQuestions";
 const SITE_SETTINGS_COLLECTION = "siteSettings";
 const CURRENT_TERM_SETTINGS_DOC = "currentTerm";
+const CLUB_LOGO_URL = new URL("../assets/club-logo-cropped.png", import.meta.url).href;
 const DEFAULT_MAINTENANCE_SETTINGS = {
   enabled: false,
   title: "網站維護中",
@@ -1045,7 +1046,7 @@ const ensureMaintenanceScreen = () => {
     `<main class="maintenance-screen" data-maintenance-screen hidden>
       <section class="maintenance-card" role="status" aria-live="polite">
         <div class="maintenance-mark" aria-hidden="true">
-          <img src="./assets/club-logo-cropped.png" alt="" />
+          <img src="${escapeHtml(CLUB_LOGO_URL)}" alt="" />
         </div>
         <p class="section-kicker">NTUST BADMINTON CLUB</p>
         <h1 data-maintenance-title>網站維護中</h1>
