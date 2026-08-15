@@ -1,6 +1,7 @@
 import { appCheckSiteKey, firebaseConfig } from "./firebase-config.js";
 import { downloadCsv } from "./csv.js";
 import { clearLoadingState, renderLoadingSkeleton, setButtonLoading, showToast } from "./ui.js";
+import { applyPageLanguage } from "./i18n.js";
 
 let initializeApp;
 let initializeAppCheck;
@@ -3015,14 +3016,16 @@ const closeAdminClassCalendarModal = () => {
 };
 
 const applyLanguage = (lang) => {
-  document.documentElement.lang = lang;
-  body.dataset.language = lang;
+  const normalizedLanguage = lang === "en" ? "en" : "zh-Hant";
+  document.documentElement.lang = normalizedLanguage;
+  body.dataset.language = normalizedLanguage;
 
   languageSelects.forEach((select) => {
-    select.value = lang;
+    select.value = normalizedLanguage;
   });
 
-  window.localStorage.setItem(STORAGE_KEYS.language, lang);
+  applyPageLanguage(normalizedLanguage);
+  window.localStorage.setItem(STORAGE_KEYS.language, normalizedLanguage);
 };
 
 const syncMemberProfile = async (user, source, profile = {}) => {
@@ -7931,6 +7934,7 @@ const syncMembersPageHero = () => {
 
   syncAcademicYearSetting();
   document.title = `${currentUserIsAdmin ? "社團管理頁" : "社員註冊名單"} | 臺科大羽球社`;
+  applyLanguage(window.localStorage.getItem(STORAGE_KEYS.language) || body.dataset.language || "zh-Hant");
 };
 
 const getDefaultAdminAcademicYear = () => getConfiguredAcademicYear();
@@ -8710,6 +8714,7 @@ const activateCurrentPage = async () => {
   initPublicBoardAutoRefresh();
   syncGlobalNavigationLabels();
   updateLoginButtons();
+  applyLanguage(window.localStorage.getItem(STORAGE_KEYS.language) || body.dataset.language || "zh-Hant");
 
   if (isMaintenanceBlocking()) {
     applyMaintenanceView();

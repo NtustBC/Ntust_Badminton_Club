@@ -1,0 +1,507 @@
+const EN_TRANSLATIONS = {
+  "臺科大羽球社": "NTUST Badminton Club",
+  "臺科大羽球社 NTUST Badminton Club | 加入我們，一起揮灑汗水！": "NTUST Badminton Club | Join Us and Play",
+  "關於我們 | 臺科大羽球社": "About Us | NTUST Badminton Club",
+  "加入社團 | 臺科大羽球社": "Join the Club | NTUST Badminton Club",
+  "社課報名 | NTUST Badminton Club": "Class Registration | NTUST Badminton Club",
+  "訊息公告 | NTUST Badminton Club": "Announcements | NTUST Badminton Club",
+  "常見 QA | 臺科大羽球社": "FAQ | NTUST Badminton Club",
+  "社員名單 | 臺科大羽球社": "Member Dashboard | NTUST Badminton Club",
+  "社員註冊名單 | 臺科大羽球社": "Member Dashboard | NTUST Badminton Club",
+  "社團管理頁 | 臺科大羽球社": "Club Administration | NTUST Badminton Club",
+  "隱私權政策與個人資料蒐集聲明 | 臺科大羽球社": "Privacy Policy and Personal Data Notice | NTUST Badminton Club",
+  "首頁": "Home",
+  "關於我們": "About Us",
+  "加入社團": "Join the Club",
+  "社課報名": "Class Registration",
+  "訊息公告": "Announcements",
+  "登入／註冊": "Sign In / Register",
+  "隱私權政策": "Privacy Policy",
+  "聯絡信箱": "Email Us",
+  "聯絡我們": "Contact Us",
+  "中文": "Chinese",
+  "© 2026 臺科大羽球社 NTUST Badminton Club. All Rights Reserved.": "© 2026 NTUST Badminton Club. All Rights Reserved.",
+
+  "不受經驗侷限，只看對羽球的純粹熱忱。現在就開始你的訓練。": "Experience does not define you—passion for badminton does. Start training today.",
+  "每週三 15:30 - 18:20、每週日 13:00 - 16:00": "Wednesdays 15:30–18:20 and Sundays 13:00–16:00",
+  "臺科大體育館 2F 羽球場": "NTUST Gymnasium, 2F Badminton Courts",
+  "不限程度， 歡迎零基礎新手": "All levels welcome, including complete beginners",
+  "不限程度，": "All levels welcome,",
+  "歡迎零基礎新手": "including complete beginners",
+  "了解社團": "Learn About Us",
+  "立即報名": "Register Now",
+  "穩定上場": "Play Consistently",
+  "從固定社課開始，慢慢把手感養回來。": "Build your rhythm through regular club sessions.",
+  "展開你的訓練": "Start Your Training",
+  "選擇你需要的服務，完成報名與登記，隨時準備上場。": "Choose what you need, complete registration, and get ready to play.",
+  "介紹社團定位、活動節奏、適合加入的對象，以及臺科大羽球社的日常樣貌。": "Discover our club, weekly rhythm, who can join, and everyday life at NTUST Badminton Club.",
+  "想加入社團的同學可以從這裡開始，看清楚報名流程、聯絡方式與加入前的說明。": "Start here to review the membership process, contact details, and what to know before joining.",
+  "查看近期社課安排、報名方式與注意事項，讓練習安排更清楚。": "View upcoming sessions, registration details, and important notes.",
+  "集中整理近期活動、社課調整、體驗資訊與重要通知，不用再回頭翻聊天室。": "Find recent events, class changes, trial information, and important updates in one place.",
+  "常見 QA": "FAQ",
+  "先看新手最常問的問題，像是零基礎能不能加入、需不需要自備球拍，以及報名差異。": "Read answers about joining as a beginner, equipment, and registration options.",
+  "如果你想加入社團、詢問社課、查看近期公告，或先讀常見 QA，這裡就是最直接的入口。": "This is the quickest place to join, ask about classes, read updates, or browse the FAQ.",
+  "任何關於入社、社課訓練或合作的詢問，歡迎透過 Instagram 或官方信箱與我們聯繫。": "For membership, training, or collaboration inquiries, contact us on Instagram or by email.",
+
+  "在球場裡， 把練習變成日常": "Make training a part of everyday life",
+  "在球場裡，": "On the court,",
+  "把練習變成日常": "make practice a habit",
+  "臺科大羽球社提供一個友善、有節奏、能長期投入的練習環境。無論你是剛開始接觸羽球， 還是已經有固定打球習慣，都可以在這裡找到一起訓練、交流、累積默契的人。": "NTUST Badminton Club offers a friendly, structured environment for long-term practice. Whether you are new to badminton or already play regularly, you can find teammates to train, connect, and improve with.",
+  "查看入社流程": "View Membership Process",
+  "固定練習， 也保留交流的空間": "Consistent practice, with room to connect",
+  "固定練習，": "Consistent practice,",
+  "也保留交流的空間": "with room to connect",
+  "依據社團章程與近期社課企劃，社團持續以定期練習、技巧提升、團隊合作與健康運動為核心， 也會透過校內外交流，讓羽球不只是課後活動，而是一個能持續投入的社群。": "Our club centers on regular practice, skill development, teamwork, and healthy exercise. On- and off-campus exchanges make badminton more than an after-class activity—it becomes a lasting community.",
+  "社團想做的， 不只是把人聚在一起": "We aim to do more than bring people together",
+  "社團想做的，": "We aim to do more",
+  "不只是把人聚在一起": "than bring people together",
+  "我們希望每一次練習都有目的，每一次交流都有收穫。以下是社團網站目前最核心的三個方向。": "We want every practice to have purpose and every exchange to be rewarding. These are our three core directions.",
+  "專注與紀律": "Focus and Discipline",
+  "羽球不僅是技術的展現，更是心智的鍛鍊。我們在每一次的訓練中建立團隊默契， 讓無畏的態度與運動家精神成為社員的內建基因。": "Badminton develops both technique and mindset. Every practice builds teamwork, courage, and sportsmanship.",
+  "精準的時間分配": "Fair Court Time",
+  "拋棄傳統社團的無序等待。透過嚴格的上場標準，我們以精確的制度保障相同的打球時間， 讓每一份對羽球的熱忱都不被場下的等待所消耗。": "Clear rotation standards protect fair playing time, so enthusiasm is spent on court—not waiting on the sideline.",
+  "實力就是對話": "Let Your Game Speak",
+  "無論你來自哪裡、說著什麼語言。透過持續的跨校交流與日常訓練，站上球場， 我們只用球技與態度來交朋友。": "No matter where you come from or what language you speak, skill and attitude connect us on court.",
+  "我們的社團日常": "Life in Our Club",
+  "不論你是羽球小白還是控球高手，在台科羽球社都能找到屬於你的舞台！以下是我們每週的核心活動：": "Whether you are a beginner or an experienced player, there is a place for you. Here are our core weekly activities:",
+  "紮實有趣的社課安排": "Structured and Engaging Classes",
+  "社課皆在固定時段進行，每週由專業教練精心規劃不同主題。從最基礎的揮拍動作、步伐位移，到進階的戰術指導一應俱全，讓你每次練球都有感進步！": "Professional coaches plan weekly topics at fixed times, covering fundamentals, footwork, and advanced tactics so every session moves you forward.",
+  "既是戰友，也是最好的朋友": "Teammates On and Off Court",
+  "我們在球場上盡情切磋、激發潛能；在球場下我們歡樂互助，活動辦好辦滿！對內我們重視溫馨的社團氛圍，對外也會舉辦友誼賽，一起組隊出戰、累積實戰經驗。": "We challenge each other on court and support each other off it, with a welcoming club culture and friendly matches that build real experience.",
+  "跨校交流與社會服務": "Intercollegiate Exchange and Service",
+  "走出校園更精采！社團定期與他校羽球社進行交流友誼賽，拓寬你的羽球人脈圈。同時我們也投入中小學羽球陪伴營隊，用熱情把羽球的快樂分享給更多人。": "We regularly play friendly matches with other universities and support youth badminton camps to share the joy of the sport.",
+  "零門檻！歡迎所有熱愛羽球的你": "No Experience Required",
+  "不需要任何高超球技，只要你熱愛羽球、想揮灑汗水，完成簡單的入社程序就是我們的夥伴！我們也會細心引導第一次參加的新同學，讓你光速融入這個大家庭。": "You only need enthusiasm and a willingness to play. Complete the simple membership process and we will help first-time participants settle in quickly.",
+  "從社課、對打到日常練習，這些畫面就是臺科大羽球社最真實的節奏。不是刻意擺拍，而是每一次移動、 每一次出拍累積起來的社團樣子。": "From coached sessions to matches and everyday practice, these moments capture the real rhythm of our club.",
+  "絕對制空": "Own the Air",
+  "捨棄猶豫。將爆發力與幾何判斷，凝結於起跳的瞬間。": "Commit without hesitation—combine explosive power and precision at the moment of takeoff.",
+  "靜態張力": "Focused Tension",
+  "爆發前的絕對冷靜。專注於站位與重心的微小刻度。": "Stay calm before the burst, attentive to every detail of position and balance.",
+  "背負之名": "Wear the Name",
+  "穿上 TAIWAN TECH，是一種不容妥協的紀律。": "Wearing TAIWAN TECH represents uncompromising discipline.",
+  "秩序與流動": "Order and Flow",
+  "在這片 13.4 米的矩形中，我們演繹著競爭、合作與無情的對抗。": "Within this 13.4-meter court, competition, cooperation, and intensity come alive.",
+  "絕對同步": "Perfect Sync",
+  "不需言語。透過腳步與呼吸的交疊，建立起無懈可擊的防線。": "No words needed—footwork and rhythm create an unbreakable defense.",
+
+  "加入臺科大羽球社": "Join NTUST Badminton Club",
+  "註冊帳號時可以決定本學期是否申請社員；只有選擇申請、完成社費繳納並經幹部確認後，才會成為正式社員。": "When registering, choose whether to apply for membership this semester. Membership becomes active after payment is confirmed by club staff.",
+  "入社資格怎麼算？": "How Membership Works",
+  "社員完成社費繳納後，參加社課不必每次繳交零打費，並享有社員優先報名時段。非社員需等管理員設定的全面開放時間且仍有名額時才能報名，每次到場則需另繳單次零打費；之後仍可從帳號資訊申請社員資格。": "Paid members receive priority registration and do not pay a drop-in fee for each class. Non-members may register during public registration when space remains and pay a per-session fee. You can apply for membership later from account settings.",
+  "入社流程": "Membership Process",
+  "註冊時依序選擇是否申請與社費方式；管理員核對社費前，帳號仍會顯示為非社員。": "Choose whether to apply and select a payment method during registration. Your account remains a non-member until payment is confirmed.",
+  "註冊帳號": "Create an Account",
+  "填寫正確姓名、學號、系級、聯絡電話與電子郵件。": "Enter your name, student ID, department, phone number, and email.",
+  "選擇是否申請社員": "Choose Whether to Apply",
+  "選擇「是」可申請社員資格並享有社員優先報名；選擇「否」則維持非社員，需於社員報名後有剩餘名額時才能參加。": "Choose Yes to apply and receive priority registration. Choose No to remain a non-member and register only when public spaces remain.",
+  "選擇社費方式": "Choose a Payment Method",
+  "可選現金或轉帳；轉帳後請確認成功並保留截圖。": "Pay by cash or bank transfer. Keep proof of a successful transfer.",
+  "幹部確認社費": "Payment Confirmation",
+  "幹部確認收款後，帳號狀態才會由非社員更新為社員。": "Your status changes to member after club staff confirm payment.",
+  "如果你還沒決定是否加入，也可以先用 IG 或 Gmail 跟我們聊聊。": "Not sure yet? Talk with us first on Instagram or Gmail.",
+  "報名、社課或公告相關問題，都可以從這裡聯繫。": "Contact us here with questions about membership, classes, or announcements.",
+
+  "這裡只會顯示目前開放報名的社課日期與剩餘名額；社員操作頁不會公開報名者姓名或學號。": "This page shows classes currently open for registration and their remaining capacity. Participant names and student IDs are not publicly displayed.",
+  "管理員可依每場社課設定報名期間。": "Administrators can set a registration period for each class.",
+  "報名開放後，日期會顯示在下方；是否開放非社員參加會依各場社課設定。": "Open classes appear below. Non-member eligibility depends on each class setting.",
+  "可報名社課日期": "Classes Open for Registration",
+  "只列出目前報名期間已開放的社課日期。": "Only classes whose registration window is currently open are listed.",
+  "社課報名頁會依照 Firestore 的社課資料自動更新，讓社員與管理員看到同一份內容。": "This page updates automatically from Firestore so members and administrators see the same information.",
+  "如果看不到社課資料，請先登入並確認帳號已通過審核，必要時聯絡社團幹部協助處理。": "If classes are not visible, sign in and confirm your account is approved, or contact club staff for help.",
+
+  "這裡會整理社團公告與提醒事項，方便你直接看每天有哪些重要訊息。": "Club announcements and reminders are organized here by date.",
+  "前往社課報名": "Go to Class Registration",
+  "回到首頁": "Back to Home",
+  "訊息公告內容會先寫入後台，再同步顯示到前台。": "Announcements entered in the admin dashboard are synchronized here.",
+  "社費、社課異動、比賽資訊或提醒事項都會依日期整理，讓社員打開頁面就能快速找到當天內容。": "Fees, schedule changes, competitions, and reminders are organized by date for quick access.",
+  "社團訊息公告": "Club Announcements",
+  "有公告的日期會顯示標題、時間與備註，可以用上個月、下個月切換查看。": "Dates with updates show titles, times, and notes. Use Previous or Next Month to navigate.",
+  "訊息公告頁會隨 Firestore 的資料自動更新，避免社員看到舊訊息。": "This page updates automatically from Firestore to keep information current.",
+  "如果訊息公告內容有誤，請聯絡社團幹部修正後台內容。": "If an announcement is incorrect, contact club staff to update it.",
+
+  "報名前先看， 常見問題一次整理": "Read Before Registering—Frequently Asked Questions",
+  "報名前先看，": "Read Before Registering—",
+  "常見問題一次整理": "Frequently Asked Questions",
+  "如果你正在猶豫要不要加入、還不確定加入社團和社課報名的差別，或想先知道新手適不適合， 這頁會是最快的起點。": "If you are deciding whether to join, comparing membership with class registration, or wondering if beginners are welcome, start here.",
+  "前往加入社團": "Go to Membership",
+  "查看訊息公告": "View Announcements",
+  "先把疑問排好，再決定要不要加入": "Get Answers Before You Join",
+  "FAQ 目前先收錄最常被問到的內容。之後如果社團有固定問答、裝備建議或收費規則，也可以直接往這頁補。": "The FAQ collects common questions and can grow with equipment advice, fee rules, and other club guidance.",
+  "先用這一頁回答大部分新手問題，之後若要改成真正的問答資料庫，也能直接沿用這個版型。": "Use this page for common beginner questions; it is also ready to grow into a full knowledge base.",
+  "直接問問題": "Ask a Question",
+  "登入後即可送出問題；管理員回答完成後，問題與回覆會出現在上方 FAQ。": "Sign in to submit a question. Once answered by an administrator, it will appear in the FAQ above.",
+  "你的問題": "Your Question",
+  "送出問題": "Submit Question",
+  "如果你是第一次接觸羽球，或還不確定怎麼加入，FAQ 會是最適合先看的頁面。": "If you are new to badminton or unsure how to join, the FAQ is the best place to start.",
+  "如果 FAQ 還沒有回答到你的問題，歡迎直接私訊社團。": "If the FAQ does not answer your question, feel free to message the club.",
+
+  "隱私權政策與個人資料蒐集聲明": "Privacy Policy and Personal Data Collection Notice",
+  "歡迎您來到「臺科大羽球社網站」（以下簡稱本網站）。為了讓您能夠安心使用本網站提供的各項服務與資訊，我們特別向您說明本網站的隱私權保護政策，以保障您的權益。請您於註冊或勾選同意前詳閱下列內容：": "Welcome to the NTUST Badminton Club website. This policy explains how we protect your privacy and personal data. Please read it before registering or giving consent.",
+  "一、 隱私權保護政策的適用範圍": "1. Scope of This Privacy Policy",
+  "本隱私權政策適用於您在本網站進行帳號註冊、加入社團、報名社課或參與活動時，所涉及之個人資料的蒐集、處理與利用。本政策不適用於本網站以外的相關連結網站，也不適用於非本網站所委託或參與管理的人員。": "This policy covers personal data collected, processed, and used when you create an account, join the club, register for classes, or participate in activities. It does not apply to external websites or unaffiliated personnel.",
+  "二、 蒐集目的與個人資料類別": "2. Purposes and Categories of Personal Data",
+  "為了提供您完善的社團服務，我們將會蒐集您的相關資料，範圍如下：": "We collect the following information to provide club services:",
+  "蒐集目的：": "Purpose:",
+  "主要用於社員帳號驗證、資格管理、社費核對、社課與活動報名、安全與緊急聯繫，以及發送您同意接收的社團相關通知。": "Account verification, membership management, payment confirmation, class and event registration, safety and emergency contact, and club notifications you agree to receive.",
+  "資料類別：": "Data Categories:",
+  "姓名、學號、就讀系別、電子郵件（G-mail）、聯絡電話，以及您的社員申請與活動報名紀錄。": "Name, student ID, department, email, phone number, membership applications, and activity registration records.",
+  "三、 資料利用之期間、地區、對象及方式": "3. Period, Region, Recipients, and Use",
+  "利用期間：": "Retention Period:",
+  "您於本網站的帳號存續期間，以及社團行政作業所需之保留期間。": "While your account remains active and for the period required for club administration.",
+  "利用地區：": "Region:",
+  "台灣地區（或社團營運及伺服器主機所在地）。": "Taiwan, or the locations where club operations and servers are hosted.",
+  "利用對象：": "Recipients:",
+  "僅限於「臺科大羽球社」授權之現任幹部，於社團管理與營運範圍內使用。本網站系統之資料儲存與運算將交由 Firebase 等安全的雲端服務供應商處理。": "Only currently authorized NTUST Badminton Club officers may use the data for club administration and operations. Secure cloud providers such as Firebase process and store website data.",
+  "利用方式：": "Method of Use:",
+  "以數位化形式進行資料之建檔、核對與管理。除依法令規定或為維護本網站之正常運作外，我們絕不會將您的個人資料提供、交換或出售給任何無關之第三方。": "Data is recorded, verified, and managed digitally. Except where legally required or necessary to operate the website, we do not provide, exchange, or sell personal data to unrelated third parties.",
+  "四、 您的權利與行使方式": "4. Your Rights",
+  "依據《個人資料保護法》，您可對我們所蒐集之您的個人資料，行使下列權利：": "Under Taiwan's Personal Data Protection Act, you may exercise the following rights:",
+  "查詢、請求閱覽或請求製給複製本（您亦可直接登入個人介面中查看）。": "Request access, review, or a copy of your data; you may also view it after signing in.",
+  "請求補充或更正資料。": "Request additions or corrections.",
+  "請求停止蒐集、處理、利用，或請求刪除。": "Request that collection, processing, or use stop, or request deletion.",
+  "注意事項：": "Important:",
+  "若您拒絕提供註冊或報名所需的必要個人資料，將可能導致您無法註冊帳號，或無法使用需身分確認的報名服務。非必要的通知訊息，您隨時有權利取消接收。": "If you decline to provide required registration data, you may be unable to create an account or use identity-verified registration services. You may opt out of non-essential notifications at any time.",
+  "五、 資料安全與保護機制": "5. Data Security",
+  "本網站採用嚴格的身分驗證機制、後端權限檢查與「最小化公開」原則來保護您的個人資料。僅有經過授權之社團幹部能接觸您的資料，若您發現資料有誤或疑似遭到未經授權的存取，請立即與我們聯繫。": "We protect personal data through strict authentication, backend authorization, and minimum-public-access principles. Only authorized officers may access it. Contact us immediately if information is incorrect or may have been accessed without authorization.",
+  "六、 隱私權政策之修正": "6. Policy Changes",
+  "本網站之隱私權保護政策將因應法規或社團需求隨時進行修正，修正後的條款將刊登於本網站上。當您於隱私權政策修改後繼續使用本網站": "This policy may be revised in response to legal or club requirements. Updated terms will be published on this website. Continued use after changes indicates acceptance of the revised policy.",
+  "若你對資料使用方式有疑問，歡迎直接與我們聯繫。": "Contact us if you have questions about how your data is used.",
+  "網站內容仍可持續調整，未來若接正式系統，這一頁也會再更新。": "This page will be updated as the website and its systems evolve.",
+
+  "社員註冊名單": "Registered Accounts",
+  "這裡會顯示透過 Firebase 註冊進來的社員帳號，方便你快速查看目前註冊數、信箱與最近登入時間。": "View accounts registered through Firebase, including totals, email addresses, and recent sign-ins.",
+  "這裡看的是註冊帳號，不是完整社員資料": "This Shows Registered Accounts, Not Full Member Records",
+  "這裡看到的是註冊帳號，不是完整社員資料": "This Shows Registered Accounts, Not Full Member Records",
+  "按上方": "Use",
+  "後登入，才能查看管理資料。": "above to sign in and view management data.",
+  "如果你之後想再追蹤姓名、系級、社費或報名紀錄，我們可以繼續在 Firestore 往下擴充欄位與管理介面。": "Additional Firestore fields can track names, departments, fees, and registration records.",
+  "監看註冊狀態": "Registration Status",
+  "註冊名單總覽": "Registration Overview",
+  "這一頁只會顯示透過 Firebase 帳號登入後的社員資料。若有設定管理員信箱，也會只讓指定信箱看到完整管理區。": "This page shows member records associated with Firebase accounts. Full management data is restricted to authorized administrators.",
+  "這一頁只會在你登入後載入資料。若有設定管理員信箱，也會只讓指定信箱看到名單。": "Data loads only after sign-in, and the list is restricted to authorized administrators.",
+  "先點右上角登入／註冊，之後這裡就會顯示社員名單。": "Use Sign In / Register in the upper-right corner to view the member list.",
+  "學期預設": "Semester Defaults",
+  "本學期預設資料": "Current Semester Defaults",
+  "集中管理學年度、入社繳費方式與每週社課時段。": "Manage the academic year, membership payment methods, and weekly class schedule.",
+  "目前學年度與學期": "Current Academic Year and Semester",
+  "網站維護模式": "Maintenance Mode",
+  "開啟後，一般使用者只會看到維護提示；已登入的管理員仍可正常瀏覽與操作網站。": "When enabled, regular visitors see a maintenance notice while signed-in administrators retain access.",
+  "啟用維護模式": "Enable Maintenance Mode",
+  "儲存後立即套用至所有頁面": "Apply to all pages immediately after saving",
+  "提示標題": "Notice Title",
+  "提示說明": "Notice Message",
+  "預計恢復時間（選填）": "Estimated Resume Time (optional)",
+  "儲存維護設定": "Save Maintenance Settings",
+  "社員申請名額與期間": "Membership Application Period and Capacity",
+  "限制本學期可申請社員的人數，並設定開放及截止時間；非社員帳號仍可正常註冊。": "Set this semester's membership capacity and application period. Non-member accounts may still register normally.",
+  "開放申請時間": "Applications Open",
+  "結束申請時間": "Applications Close",
+  "社員名額": "Member Capacity",
+  "儲存社員申請設定": "Save Application Settings",
+  "入社繳費資訊": "Membership Payment Information",
+  "這些資料會顯示在註冊及帳號資訊的轉帳／現金社費介面。": "These details appear in registration and account payment screens.",
+  "銀行名稱": "Bank Name",
+  "銀行代碼": "Bank Code",
+  "帳戶名稱": "Account Name",
+  "轉帳帳號": "Account Number",
+  "現金繳費方式": "Cash Payment Options",
+  "設定申請社員時可選擇的現金繳費地點或時段。": "Set the available cash payment locations or time slots.",
+  "每週社課時間": "Weekly Class Schedule",
+  "學年度與學期": "Academic Year and Semester",
+  "先選擇你要查看的區間，下方會直接以表格顯示名單與狀態。": "Choose a period to display the corresponding list and statuses below.",
+  "只顯示已繳費並設定為「社員」的正式社員資料；展開後可修改基本資料、學年度與學期。": "Only paid active members are shown. Expand a record to edit profile and semester details.",
+  "社課與公告行事曆": "Classes and Announcements Calendar",
+  "點選日期先查看內容；按「新增內容」或選擇既有項目後才會開啟編輯表單。": "Select a date to view entries, then add a new entry or edit an existing one.",
+  "訪客送出的問題會條列在這裡；回答後會自動發布到 FAQ，也可以直接刪除。": "Visitor questions appear here. Answering publishes them to the FAQ; they may also be deleted.",
+  "如果你想把這個頁面再變成更完整的社員後台，我們可以再接著擴充。": "The member dashboard can continue to grow with additional management tools.",
+
+  "請先登入": "Please Sign In",
+  "儲存": "Save",
+  "刪除": "Delete",
+  "取消": "Cancel",
+  "關閉": "Close",
+  "上一個月": "Previous Month",
+  "上個月": "Previous Month",
+  "下一個月": "Next Month",
+  "下個月": "Next Month",
+  "今天": "Today",
+  "新增內容": "Add Entry",
+  "公告": "Announcement",
+  "社課": "Class",
+  "連續假期": "Long Holiday",
+  "標題": "Title",
+  "開始日期": "Start Date",
+  "結束日期": "End Date",
+  "開始時間（選填）": "Start Time (optional)",
+  "結束時間（選填）": "End Time (optional)",
+  "地點（選填）": "Location (optional)",
+  "備註": "Notes",
+  "顯示顏色": "Display Color",
+  "藍色": "Blue",
+  "綠色": "Green",
+  "橘色": "Orange",
+  "紅色": "Red",
+  "紫色": "Purple",
+  "青色": "Teal",
+  "粉紅色": "Pink",
+  "灰色": "Gray",
+  "報名成功": "Registered",
+  "取消報名": "Cancel Registration",
+  "送出報名": "Register",
+  "加入候補": "Join Waitlist",
+  "報名已截止": "Registration Closed",
+  "開放報名": "Registration Open",
+  "尚未開放": "Not Open Yet",
+  "社課即將開始": "Class Starting Soon",
+  "社課報名即將開始": "Registration Opening Soon",
+  "社課報名即將截止": "Registration Closing Soon",
+  "社課已取消": "Class Cancelled",
+  "社課報名已取消": "Registration Cancelled",
+  "候補已轉為正取": "Promoted from Waitlist",
+  "通知中心": "Notifications",
+  "目前沒有通知": "No Notifications",
+  "社課資料載入中": "Loading class information",
+  "公告載入中": "Loading announcements",
+  "FAQ 載入中": "Loading FAQ",
+  "通知載入中": "Loading notifications",
+  "行事曆載入中": "Loading calendar",
+  "社員名單載入中": "Loading member list",
+  "管理摘要載入中": "Loading dashboard summary",
+  "載入中": "Loading",
+  "帳號設定": "Account Settings",
+  "登出": "Sign Out",
+  "姓名": "Name",
+  "學號": "Student ID",
+  "系級": "Department / Year",
+  "電話": "Phone",
+  "電子郵件": "Email",
+  "學年度": "Academic Year",
+  "學期": "Semester",
+  "上學期": "Fall Semester",
+  "下學期": "Spring Semester",
+  "未設定": "Not Set",
+  "第一學期": "First Semester",
+  "第二學期": "Second Semester",
+  "社員": "Member",
+  "非社員": "Non-member",
+  "前社員": "Former Member",
+  "管理員": "Administrator",
+  "正式社員": "Member",
+  "社員管理": "Member Management",
+  "行事曆": "Calendar",
+  "社員名單": "Member List",
+  "搜尋社員": "Search Members",
+  "全部學期": "All Semesters",
+  "新增選項": "Add Option",
+  "儲存繳費資訊": "Save Payment Information",
+  "新增時段": "Add Time Slot",
+  "儲存社課時間": "Save Class Schedule",
+  "FAQ 管理": "FAQ Management",
+  "問題": "Question",
+  "回答": "Answer",
+  "儲存 FAQ": "Save FAQ",
+  "訪客提問": "Visitor Questions",
+  "已發布 FAQ": "Published FAQ",
+  "自行新增 FAQ": "Add FAQ Manually",
+  "登入": "Sign In",
+  "註冊": "Register",
+  "會員登入": "Member Sign In",
+  "社員登入": "Member Sign In",
+  "登入後可以報名參加社團；社費一次繳清後會顯示為正式社員。": "Sign in to register for club activities. Your account becomes an active member after the one-time membership fee is confirmed.",
+  "輸入已建立的帳號密碼即可登入。": "Enter your registered email and password to sign in.",
+  "先註冊帳號，再決定本學期是否申請社員資格。": "Create an account, then choose whether to apply for membership this semester.",
+  "選擇申請社員時，請一併填寫社費方式；幹部確認社費後才會成為正式社員。": "If applying for membership, select a payment method. Membership becomes active after payment is confirmed.",
+  "帳號資訊": "Account Information",
+  "你目前已登入，可以在這裡查看社員狀態與登出。": "You are signed in. View your membership status or sign out here.",
+  "社員狀態": "Membership Status",
+  "查看／修改本學期申請": "View / Edit This Semester's Application",
+  "編輯個人資料與通知設定": "Edit Profile and Notifications",
+  "帳號資料": "Account Profile",
+  "基本資料": "Profile",
+  "這些資料會用於社員資格及社課報名核對。": "This information is used to verify membership and class registration.",
+  "顯示名稱": "Display Name",
+  "顯示在帳號選單中的名稱": "Name shown in the account menu",
+  "學校": "School",
+  "請先選擇學校": "Select a school",
+  "臺科大": "NTUST",
+  "外校": "Other School",
+  "系別": "Department",
+  "請選擇或輸入系別": "Select or enter a department",
+  "聯絡電話": "Phone Number",
+  "連絡電話": "Phone Number",
+  "通知偏好": "Notification Preferences",
+  "選擇要在網站右上角收到的內容。": "Choose which updates appear in the notification center.",
+  "社團公告": "Club Announcements",
+  "社課提醒與異動": "Class Reminders and Changes",
+  "報名與候補狀態": "Registration and Waitlist Updates",
+  "儲存個人設定": "Save Profile Settings",
+  "社員申請設定": "Membership Application Settings",
+  "刪除帳號": "Delete Account",
+  "永久刪除帳號": "Permanently Delete Account",
+  "將永久刪除登入帳號、個人資料、入社申請及社課報名紀錄，且無法復原。": "This permanently deletes your account, profile, membership applications, and class registrations. It cannot be undone.",
+  "登入資訊": "Sign-in Information",
+  "使用常用電子郵件並設定至少 8 個字元的密碼。": "Use an active email address and a password of at least 8 characters.",
+  "密碼": "Password",
+  "確認密碼": "Confirm Password",
+  "至少 8 個字元": "At least 8 characters",
+  "忘記密碼": "Forgot Password",
+  "忘記密碼？": "Forgot Password?",
+  "再輸入一次密碼": "Enter the password again",
+  "請填寫可供社員資格與報名核對的資料。": "Enter the information required to verify membership and registration.",
+  "選擇學校後選擇或輸入系別": "Select a school, then select or enter a department",
+  "社員資格": "Membership",
+  "選擇本學期是否申請社員，之後仍可在帳號設定中修改。": "Choose whether to apply this semester. You can change this later in account settings.",
+  "本學期是否申請成為社員？": "Apply for membership this semester?",
+  "是，我要申請社員": "Yes, apply for membership",
+  "否，只註冊帳號（非社員）": "No, create a non-member account",
+  "選擇社費方式": "Choose a Membership Fee Method",
+  "現金": "Cash",
+  "轉帳": "Bank Transfer",
+  "請選擇": "Select an option",
+  "預計現金繳費方式": "Planned Cash Payment Option",
+  "轉帳日期與時間": "Transfer Date and Time",
+  "轉出帳號末五碼": "Last Five Digits of Sending Account",
+  "我已閱讀並同意": "I have read and agree to",
+  "儲存申請資料": "Save Application",
+  "目前暫不提供系統寄信與自動密碼重設。": "Automatic password-reset email is currently unavailable.",
+  "如需重設密碼，請聯絡社團幹部核對身分後協助處理。": "Contact club staff to verify your identity and reset your password.",
+  "知道了": "Got It",
+  "社員申請": "Membership Application",
+  "想補充的資訊可以寫在這裡": "Add any additional information here",
+  "送出申請": "Submit Application",
+  "申請已送出！": "Application Submitted!",
+  "儲存完畢": "Saved",
+  "內容已更新。": "Content updated.",
+  "確認": "Confirm",
+  "類型": "Type",
+  "內容資訊": "Entry Information",
+  "選擇類型並填寫顯示名稱": "Choose a type and enter its display name",
+  "日期與時間": "Date and Time",
+  "設定活動時段與進行地點": "Set the event schedule and location",
+  "補充說明": "Additional Information",
+  "填寫參加者需要知道的資訊": "Add information participants should know",
+  "儲存內容": "Save Entry",
+  "送出": "Submit",
+  "選擇語言": "Select language",
+  "語言切換": "Select language",
+  "開啟選單": "Open menu",
+  "回到頂部": "Back to top",
+  "關閉登入視窗": "Close sign-in window",
+  "關閉通知中心": "Close notifications",
+  "關閉內容視窗": "Close details",
+  "關閉社課報名視窗": "Close class registration",
+  "臺科大羽球社 Logo": "NTUST Badminton Club Logo",
+};
+
+const EN_PATTERNS = [
+  [/^按上方 (.+) 後登入，才能查看管理資料。$/, "Use $1 above to sign in and view management data."],
+  [/^候補第 (\d+) 位$/, "Waitlist position: $1"],
+  [/^候補順位更新：第 (\d+) 位$/, "Waitlist updated: position $1"],
+  [/^已加入候補：第 (\d+) 位$/, "Added to waitlist: position $1"],
+  [/^剩餘 (\d+) 名$/, "$1 spots remaining"],
+  [/^(\d+) 人正取，(\d+) 人候補$/, "$1 confirmed, $2 waitlisted"],
+  [/^(\d+) 人正取$/, "$1 confirmed"],
+  [/^(\d+) 筆內容$/, "$1 entries"],
+  [/^上限 (\d+) 人$/, "Limit: $1"],
+  [/^第 (\d+) 位$/, "Position $1"],
+];
+
+const textState = new WeakMap();
+const attributeState = new WeakMap();
+let activeLanguage = "zh-Hant";
+let observer = null;
+let titleSource = "";
+let titleTranslated = "";
+
+const translateValue = (value) => {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  if (EN_TRANSLATIONS[normalized]) return EN_TRANSLATIONS[normalized];
+  for (const [pattern, replacement] of EN_PATTERNS) {
+    if (pattern.test(normalized)) return normalized.replace(pattern, replacement);
+  }
+  return "";
+};
+
+const replacePreservingSpace = (raw, translated) => {
+  const leading = String(raw).match(/^\s*/)?.[0] || "";
+  const trailing = String(raw).match(/\s*$/)?.[0] || "";
+  return `${leading}${translated}${trailing}`;
+};
+
+const translateTextNode = (node) => {
+  if (!node?.parentElement || node.parentElement.closest("script, style, [data-no-translate]")) return;
+  const current = node.nodeValue || "";
+  const previous = textState.get(node);
+  if (activeLanguage === "en") {
+    if (previous && current === previous.translated) return;
+    const translated = translateValue(current);
+    if (!translated) return;
+    const next = replacePreservingSpace(current, translated);
+    textState.set(node, { source: current, translated: next });
+    node.nodeValue = next;
+    return;
+  }
+  if (previous && current === previous.translated) node.nodeValue = previous.source;
+  textState.delete(node);
+};
+
+const translateAttributes = (element) => {
+  if (!(element instanceof Element) || element.closest("[data-no-translate]")) return;
+  const attributes = ["aria-label", "placeholder", "title"];
+  const saved = attributeState.get(element) || {};
+  attributes.forEach((name) => {
+    if (!element.hasAttribute(name)) return;
+    const current = element.getAttribute(name) || "";
+    if (activeLanguage === "en") {
+      if (saved[name] && current === saved[name].translated) return;
+      const translated = translateValue(current);
+      if (!translated) return;
+      saved[name] = { source: current, translated };
+      element.setAttribute(name, translated);
+    } else if (saved[name] && current === saved[name].translated) {
+      element.setAttribute(name, saved[name].source);
+      delete saved[name];
+    }
+  });
+  if (Object.keys(saved).length) attributeState.set(element, saved);
+  else attributeState.delete(element);
+};
+
+const translateTree = (root = document.body) => {
+  if (!root) return;
+  if (root.nodeType === Node.TEXT_NODE) translateTextNode(root);
+  if (root.nodeType === Node.ELEMENT_NODE) translateAttributes(root);
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node) {
+    if (node.nodeType === Node.TEXT_NODE) translateTextNode(node);
+    else translateAttributes(node);
+    node = walker.nextNode();
+  }
+};
+
+export const applyPageLanguage = (language) => {
+  activeLanguage = language === "en" ? "en" : "zh-Hant";
+  translateTree(document.body);
+  if (activeLanguage === "en") {
+    if (!titleSource || document.title !== titleTranslated) titleSource = document.title;
+    titleTranslated = translateValue(titleSource) || titleSource;
+    document.title = titleTranslated;
+  } else {
+    if (titleSource && document.title === titleTranslated) document.title = titleSource;
+    titleTranslated = "";
+  }
+  if (!observer) {
+    observer = new MutationObserver((mutations) => {
+      if (activeLanguage !== "en") return;
+      mutations.forEach((mutation) => {
+        if (mutation.type === "characterData") translateTextNode(mutation.target);
+        mutation.addedNodes.forEach((node) => translateTree(node));
+      });
+    });
+    observer.observe(document.body, { childList: true, characterData: true, subtree: true });
+  }
+};
+
+export const translateUiText = (value) => activeLanguage === "en" ? translateValue(value) || value : value;
