@@ -2946,7 +2946,7 @@ body.spa-navigating .page-main {
   box-shadow: var(--shadow);
   display: grid;
   gap: 8px;
-  align-content: space-between;
+  align-content: start;
   text-align: left;
 }
 
