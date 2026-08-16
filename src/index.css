@@ -4279,7 +4279,7 @@ button.admin-calendar-day:focus-visible {
 [data-members-content] .section-description,
 [data-members-content] .content-copy,
 [data-members-content] .login-note { line-height: 1.65; }
-.admin-section-nav { position: sticky; top: 5.5rem; z-index: 5; display: flex; width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0 2rem; padding: 0.7rem; border: 1px solid rgba(17, 24, 39, 0.1); border-radius: 1rem; background: rgba(255, 255, 255, 0.94); box-shadow: 0 14px 36px rgba(15, 42, 67, 0.08); backdrop-filter: blur(12px); }
+.admin-section-nav { position: static; display: flex; width: fit-content; max-width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0 2rem; padding: 0.7rem; border: 1px solid rgba(17, 24, 39, 0.1); border-radius: 1rem; background: rgba(255, 255, 255, 0.94); box-shadow: 0 14px 36px rgba(15, 42, 67, 0.08); }
 .admin-section-nav a { padding: 0.65rem 1rem; border-radius: 999px; color: inherit; text-align: center; text-decoration: none; font-weight: 800; transition: color 160ms ease, background 160ms ease, box-shadow 160ms ease; }
 .admin-section-nav a:hover, .admin-section-nav a:focus-visible { background: rgba(25, 78, 63, 0.1); }
 .admin-section-nav a[aria-selected="true"] { background: var(--brand); color: #fff; box-shadow: 0 8px 18px rgba(15, 76, 129, 0.2); }
@@ -4319,6 +4319,6 @@ button.admin-calendar-day:focus-visible {
   .admin-calendar-signup-time-grid .form-field,
   .admin-calendar-limit-field { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .admin-calendar-limit-field::after { margin-top: -2px; }
-  .admin-section-nav { top: 4.5rem; justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; }
+  .admin-section-nav { justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; }
   .admin-section-nav a { flex: 0 0 auto; }
 }
