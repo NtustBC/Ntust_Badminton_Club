@@ -187,6 +187,7 @@ let membershipRegistrationSettings = {
 let maintenanceSettings = { ...DEFAULT_MAINTENANCE_SETTINGS };
 let maintenanceRefreshTimer = null;
 let classScheduleDefaults = [];
+let homeClassScheduleTimer = null;
 let authMode = "signin";
 let authReadyPromise = null;
 let lastLoginTrigger = null;
@@ -941,7 +942,13 @@ const formatExportTimestamp = (date = new Date()) =>
 const syncGlobalNavigationLabels = () => {
   document.querySelectorAll('a[href="./club-signup.html"]').forEach((link) => {
     if (link.closest(".site-nav") || link.closest(".mobile-nav")) {
-      link.textContent = "加入社團";
+      link.textContent = "加入我們";
+    }
+  });
+
+  document.querySelectorAll('a[href="./faq.html"]').forEach((link) => {
+    if (link.closest(".site-nav") || link.closest(".mobile-nav")) {
+      link.textContent = "常見QA";
     }
   });
 
@@ -1166,6 +1173,64 @@ const getWeekdayKeyFromDateValue = (value) => {
   return DATE_WEEKDAY_ORDER[date.getDay()] || "";
 };
 const getWeekdayLabel = (weekday) => CLASS_WEEKDAY_LABELS[String(weekday || "").trim().toLowerCase()] || String(weekday || "");
+
+const HOME_CLASS_SCHEDULE_FALLBACK = [
+  { weekday: "wed", startTime: "15:30", endTime: "18:20" },
+  { weekday: "sun", startTime: "13:00", endTime: "16:00" },
+];
+
+const renderHomeClassSchedule = () => {
+  if (homeClassScheduleTimer) {
+    window.clearInterval(homeClassScheduleTimer);
+    homeClassScheduleTimer = null;
+  }
+
+  const target = document.querySelector("[data-home-class-schedule]");
+  if (!target) return;
+
+  const source = classScheduleDefaults.length ? classScheduleDefaults : HOME_CLASS_SCHEDULE_FALLBACK;
+  const schedules = source
+    .filter((item) => item?.weekday && item?.startTime && item?.endTime);
+  if (!schedules.length) return;
+
+  const isEnglish = body.dataset.language === "en";
+  const englishWeekdays = {
+    sun: "Sunday",
+    mon: "Monday",
+    tue: "Tuesday",
+    wed: "Wednesday",
+    thu: "Thursday",
+    fri: "Friday",
+    sat: "Saturday",
+  };
+  const labels = schedules.map((item) => {
+    const weekday = isEnglish ? englishWeekdays[item.weekday] || item.weekday : getWeekdayLabel(item.weekday).replace(/^星期/, "");
+    return isEnglish
+      ? `Every ${weekday} ${item.startTime}–${item.endTime}`
+      : `每週${weekday} ${item.startTime}–${item.endTime}`;
+  });
+
+  let currentIndex = 0;
+  target.textContent = labels[currentIndex];
+  target.setAttribute("aria-label", labels.join(isEnglish ? "; " : "、"));
+
+  if (labels.length < 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  homeClassScheduleTimer = window.setInterval(() => {
+    if (!target.isConnected || pageName !== "home") {
+      window.clearInterval(homeClassScheduleTimer);
+      homeClassScheduleTimer = null;
+      return;
+    }
+    target.classList.add("is-changing");
+    window.setTimeout(() => {
+      if (!target.isConnected) return;
+      currentIndex = (currentIndex + 1) % labels.length;
+      target.textContent = labels[currentIndex];
+      target.classList.remove("is-changing");
+    }, 180);
+  }, 3600);
+};
 const getClassSessionDateLabel = (session) => {
   const dateLabel = formatDateKey(session.date || session.sessionDate || "", {
     year: "numeric",
@@ -3025,6 +3090,7 @@ const applyLanguage = (lang) => {
   });
 
   applyPageLanguage(normalizedLanguage);
+  renderHomeClassSchedule();
   window.localStorage.setItem(STORAGE_KEYS.language, normalizedLanguage);
 };
 
@@ -3293,6 +3359,7 @@ const loadCurrentTermSettings = async () => {
     classScheduleDefaults = Array.isArray(settingsData?.classScheduleDefaults)
       ? settingsData.classScheduleDefaults.map(normalizeClassScheduleDefault).filter(Boolean)
       : [];
+    renderHomeClassSchedule();
     document.querySelectorAll("[data-login-form], [data-account-membership-form]").forEach(syncMembershipPaymentForm);
     syncMembershipPaymentSettingForm();
     syncMembershipRegistrationSettingForm();
@@ -8420,6 +8487,7 @@ const bindClassDefaultSettings = () => {
     try {
       await setDoc(getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC), { classScheduleDefaults: parsed, updatedAt: serverTimestamp(), updatedBy: currentUser?.uid || "" }, { merge: true });
       classScheduleDefaults = parsed;
+      renderHomeClassSchedule();
       setMessageTone(form.querySelector("[data-class-default-hint]"), "預設社課時間已儲存。", "success");
       showToast("行事曆新增快捷鍵已更新。", { tone: "success" });
     } catch (error) {

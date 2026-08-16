@@ -623,6 +623,21 @@ body.spa-navigating .page-main {
   line-height: 1.5;
 }
 
+.home-schedule-ticker {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.home-schedule-ticker.is-changing {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-schedule-ticker {
+    transition: none;
+  }
+}
+
 .side-card {
   display: grid;
   gap: 22px;
