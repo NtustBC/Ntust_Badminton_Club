@@ -21,7 +21,6 @@ let getFirestore;
 let getFunctions;
 let httpsCallable;
 let query;
-let runTransaction;
 let serverTimestamp;
 let setDoc;
 let setPersistence;
@@ -58,7 +57,6 @@ const ensureFirebaseModules = async () => {
         getFunctions,
         httpsCallable,
         query,
-        runTransaction,
         serverTimestamp,
         setDoc,
         setPersistence,
@@ -1036,15 +1034,6 @@ const formatNotificationDate = (value) => {
   if (!Number.isFinite(timestampMs)) return "";
   return new Date(timestampMs).toLocaleDateString("zh-TW", { month: "long", day: "numeric" });
 };
-const buildSelectOptionsMarkup = (options = [], selectedValue = "") =>
-  options
-    .map((option) => {
-      const value = typeof option === "string" ? option : String(option.value ?? "");
-      const label = typeof option === "string" ? option : String(option.label ?? option.value ?? "");
-      const selected = value === selectedValue ? " selected" : "";
-      return `<option value="${escapeHtml(value)}"${selected}>${escapeHtml(label)}</option>`;
-    })
-    .join("");
 const getClassSessionId = (session = {}) => {
   const explicitId = String(session.sessionId || session.id || "").trim();
   if (explicitId) {
@@ -1057,9 +1046,6 @@ const getClassSessionId = (session = {}) => {
 };
 const getClassSessionDocRef = (sessionId) => doc(db, CLASS_SESSION_COLLECTION, sessionId);
 const getClassAlbumDocRef = (sessionId) => doc(db, CLASS_ALBUM_COLLECTION, sessionId);
-const getClassSignupDocRef = (sessionId, userId) => doc(db, CLASS_SIGNUP_COLLECTION, `${sessionId}-${userId}`);
-const getApprovedMemberDocId = (applicationId) => `application-${applicationId}`;
-const getApprovedMemberDocRef = (applicationId) => doc(db, "members", getApprovedMemberDocId(applicationId));
 const getClassAnnouncementDocRef = (announcementId) => doc(db, CLASS_ANNOUNCEMENT_COLLECTION, announcementId);
 const getFaqDocRef = (faqId) => doc(db, FAQ_COLLECTION, faqId);
 const getFaqQuestionDocRef = (questionId) => doc(db, FAQ_QUESTION_COLLECTION, questionId);
@@ -1702,7 +1688,6 @@ const getManagedMembershipStatus = (value = "") => {
 
 const getMembershipStatusCopy = (status) => membershipStatusCopy[getManagedMembershipStatus(status)];
 const getCurrentMembershipStatus = () => (currentUserIsAdmin ? "admin" : getManagedMembershipStatus(currentMemberStatus));
-const isOfficialMemberStatus = () => currentUserIsAdmin || getManagedMembershipStatus(currentMemberStatus) === "formal_member";
 const hasFormalMemberAccess = (approvalData = null) =>
   currentUserIsAdmin ||
   getManagedMembershipStatus(currentMemberProfile || currentMemberStatus) === "formal_member" ||
@@ -2744,23 +2729,6 @@ const renderClassSignupModalContent = (sessionId) => {
   bindClassSignupBoardEvents();
 };
 
-const bindClassSignupModalTabs = (calendarModal) => {
-  calendarModal.querySelectorAll("[data-class-signup-tab]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const nextTab = button.dataset.classSignupTab === "roster" ? "roster" : "signup";
-      calendarModal.dataset.activeTab = nextTab;
-      calendarModal.querySelectorAll("[data-class-signup-tab]").forEach((tabButton) => {
-        const isActive = tabButton.dataset.classSignupTab === nextTab;
-        tabButton.classList.toggle("is-active", isActive);
-        tabButton.setAttribute("aria-selected", String(isActive));
-      });
-      calendarModal.querySelectorAll("[data-class-signup-panel]").forEach((panel) => {
-        panel.hidden = panel.dataset.classSignupPanel !== nextTab;
-      });
-    });
-  });
-};
-
 const openClassSignupModal = (sessionId, trigger = null) => {
   const { calendarModal } = getClassSignupModalElements();
   if (!calendarModal || !sessionId) {
@@ -3135,99 +3103,6 @@ const syncMemberProfile = async (user, source, profile = {}) => {
         }),
     );
   }
-};
-
-const ensureSignupApproved = async (email) => {
-  if (!db) {
-    return false;
-  }
-
-  const approvalDoc = await getDoc(getApprovalDocRef(email));
-  return approvalDoc.exists();
-};
-
-const syncApprovalFromApplication = async (applicationId, data) => {
-  const email = String(data?.email || "").trim().toLowerCase();
-  if (!email) {
-    return;
-  }
-
-  const approvalRef = getApprovalDocRef(email);
-  const reviewStatus = data.reviewStatus || (data.approved ? "approved" : "pending");
-
-  if (reviewStatus === "approved") {
-    await setDoc(
-      approvalRef,
-      {
-        name: data.name || "",
-        email,
-        applicationId,
-        applicationType: data.applicationType || "club",
-        studentId: data.studentId || "",
-        department: data.department || data.school || "",
-        phone: data.phone || "",
-        school: data.school || data.department || "",
-        academicYear: data.academicYear || "未設定",
-        term: data.term || "未設定",
-        approvedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
-    return;
-  }
-
-  const approvalDoc = await getDoc(approvalRef);
-  if (approvalDoc.exists()) {
-    await deleteDoc(approvalRef);
-  }
-};
-
-const syncMemberRecordFromApplication = async (application, applicationId) => {
-  if (!db || !application?.email) {
-    return;
-  }
-
-  const reviewStatus = getApplicationReviewStatus(application);
-  if (reviewStatus !== "approved") {
-    return;
-  }
-
-  const memberRef = getApprovedMemberDocRef(applicationId);
-  const payload = {
-    name: application.name || "",
-    email: application.email.trim().toLowerCase(),
-    studentId: application.studentId || "",
-    department: application.department || application.school || "",
-    phone: application.phone || "",
-    school: application.school || application.department || "",
-    applicationType: application.applicationType || "club",
-    applicationId,
-    academicYear: application.academicYear || "未設定",
-    term: application.term || "未設定",
-    source: "application-approval",
-    status: "approved",
-    approvedAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  };
-
-  await setDoc(
-    memberRef,
-    {
-      ...payload,
-      uid: getApprovedMemberDocId(applicationId),
-      createdAt: serverTimestamp(),
-    },
-    { merge: true },
-  );
-};
-
-const getApplicationReviewStatus = (application) => {
-  if (application.reviewStatus) {
-    return application.reviewStatus;
-  }
-
-  return application.approved ? "approved" : "pending";
 };
 
 const getRocAcademicYear = (date = new Date()) => {
@@ -3648,45 +3523,6 @@ const rememberApplicationSubmit = (email, applicationType) => {
   window.localStorage.setItem(getApplicationCooldownKey(email, applicationType), String(Date.now()));
 };
 
-const getApplicationYearOptionsMarkup = (selectedValue) =>
-  buildAdminAcademicYearOptions()
-    .filter((value) => value !== "all")
-    .map((value) => {
-      const selected = value === selectedValue ? " selected" : "";
-      return `<option value="${escapeHtml(value)}"${selected}>${escapeHtml(getAcademicYearLabel(value))}</option>`;
-    })
-    .join("");
-
-const getApplicationTermOptionsMarkup = (selectedValue) =>
-  DEFAULT_TERMS.map((value) => {
-    const selected = value === selectedValue ? " selected" : "";
-    return `<option value="${escapeHtml(value)}"${selected}>${escapeHtml(getAcademicTermLabel(value))}</option>`;
-  }).join("");
-
-const focusApprovedMember = (applicationId, application) => {
-  const list = document.querySelector("[data-members-list]");
-  if (!list) {
-    return;
-  }
-
-  const normalizedEmail = application?.email?.trim().toLowerCase() || "";
-  const target =
-    (applicationId
-      ? list.querySelector(`[data-member-application-id="${CSS.escape(`application-${applicationId}`)}"]`)
-      : null) ||
-    (normalizedEmail
-      ? list.querySelector(`[data-member-email="${CSS.escape(normalizedEmail)}"]`)
-      : null);
-
-  if (target instanceof HTMLElement) {
-    setMemberRowExpanded(target, true);
-    target.scrollIntoView({ behavior: "smooth", block: "start" });
-    return;
-  }
-
-  list.scrollIntoView({ behavior: "smooth", block: "start" });
-};
-
 const setMemberRowExpanded = (row, expanded) => {
   const summaryButton = row.querySelector("[data-member-toggle]");
   const detail = row.querySelector("[data-member-detail]");
@@ -3927,29 +3763,6 @@ const bindMemberEditForms = (memberList) => {
     });
   });
 };
-const getMemberIdFromApplication = (applicationId) => `application-${applicationId}`;
-
-const createMemberFromApprovedApplication = (application) => ({
-  id: getMemberIdFromApplication(application.id),
-  applicationId: application.id,
-  applicationType: application.applicationType || "club",
-  name: application.name || "",
-  email: String(application.email || "").trim().toLowerCase(),
-  studentId: application.studentId || "",
-  department: application.department || application.school || "",
-  school: application.school || application.department || "",
-  phone: application.phone || "",
-  academicYear: application.academicYear || "未設定",
-  term: application.term || "未設定",
-  source: "application-approval",
-  status: "approved",
-  submittedAt: application.submittedAt,
-  createdAt: application.submittedAt,
-  approvedAt: application.updatedAt || application.submittedAt,
-  lastLoginAt: null,
-  origin: "applications",
-});
-
 const getDashboardAdminIds = () =>
   new Set(
     [
@@ -3979,88 +3792,6 @@ const mergeMembersWithApprovedApplications = (members = []) => {
 };
 
 const getFilteredMembersForExport = (members = []) => members.filter(matchesMemberFilter);
-
-const buildMembersExportWorkbook = (members = []) => {
-  const columns = [
-    "姓名",
-    "學號",
-    "系別",
-    "電話",
-    "信箱",
-    "學年度",
-    "學期",
-    "狀態",
-    "資料來源",
-    "建立時間",
-    "最近登入",
-  ];
-  const rows = members.map((member) => [
-    member.name || "",
-    member.studentId || "",
-    member.department || member.school || "",
-    member.phone || "",
-    member.email || "",
-    getAcademicYearLabel(member.academicYear || "未設定"),
-    getAcademicTermLabel(member.term || "未設定"),
-    getMembershipStatusCopy(member).label,
-    member.origin === "applications" ? "申請通過" : "社員資料",
-    formatTimestamp(member.createdAt),
-    formatTimestamp(member.lastLoginAt),
-  ]);
-  const filterLabel = `${memberFilters.year === "all" ? "全部學年度" : getAcademicYearLabel(memberFilters.year)} / ${
-    memberFilters.term === "all" ? "全部學期" : getAcademicTermLabel(memberFilters.term)
-  }`;
-  const allRows = [
-    ["社員名單匯出"],
-    ["匯出時間", new Date().toLocaleString("zh-TW")],
-    ["目前篩選", filterLabel],
-    [""],
-    columns,
-    ...rows,
-  ];
-  const rowMarkup = allRows
-    .map((row) => {
-      const cellMarkup = row
-        .map((cell) => `<Cell><Data ss:Type="String">${escapeSpreadsheetXml(cell)}</Data></Cell>`)
-        .join("");
-      return `<Row>${cellMarkup}</Row>`;
-    })
-    .join("");
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:o="urn:schemas-microsoft-com:office:office"
- xmlns:x="urn:schemas-microsoft-com:office:excel"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
- <Worksheet ss:Name="社員名單">
-  <Table>${rowMarkup}</Table>
- </Worksheet>
-</Workbook>`;
-};
-
-const downloadMembersExcel = (members = []) => {
-  const workbook = buildMembersExportWorkbook(members);
-  const blob = new Blob([workbook], { type: "application/vnd.ms-excel;charset=utf-8;" });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  const yearLabel = memberFilters.year === "all" ? "all-years" : `year-${memberFilters.year}`;
-  const termLabel =
-    memberFilters.term === "all"
-      ? "all-terms"
-      : memberFilters.term === "上學期"
-        ? "term-1"
-        : memberFilters.term === "下學期"
-          ? "term-2"
-          : "term-unset";
-
-  link.href = url;
-  link.download = `ntust-members-${yearLabel}-${termLabel}-${formatExportTimestamp()}.xls`;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
-};
 
 const buildClassSignupWorksheetMarkup = (name, session, signups = [], membersById = {}) => {
   const columns = ["姓名", "學號", "Email", "報名狀態", "候補順位", "零打費", "備註", "報名時間"];
@@ -4941,9 +4672,6 @@ function getSignupStatusLabel(signup = {}) {
   return "待確認";
 }
 
-function getSessionSignups(sessionId) {
-  return classSignupPageState.sessionSignups.filter((signup) => String(signup.sessionId || "") === String(sessionId || ""));
-}
 function getSessionSignupCount(sessionId) {
   const stats = classSignupPageState.sessionSignups.find((entry) => String(entry.sessionId || entry.id || "") === String(sessionId || ""));
   return Math.max(0, Number(stats?.signupCount || 0));
@@ -4983,36 +4711,6 @@ function maskPublicName(value) {
 function getPublicRosterDisplayName(entry = {}) {
   return String(entry.maskedName || "").trim() || maskPublicName(entry.name);
 }
-
-function buildPublicSignupListMarkup(session, signups = []) {
-  const sessionId = getClassSessionId(session);
-  const sortedSignups = [...signups].sort((a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt));
-  const limit = getSessionSignupLimit(session);
-  const limitCopy = limit ? `人數上限：${limit} 人` : "人數上限：不限";
-
-  if (sortedSignups.length === 0) {
-    return `<div class="class-roster-list"><p class="content-copy">目前尚無報名資料。${escapeHtml(limitCopy)}</p></div>`;
-  }
-
-  return `
-    <div class="class-roster-list" aria-label="${escapeHtml(sessionId)} 報名名單">
-      <p class="content-copy">${escapeHtml(limitCopy)}，目前 ${sortedSignups.length} 人報名。</p>
-      ${sortedSignups
-        .map(
-          (signup, index) => `
-            <div class="class-roster-item">
-              <span class="class-roster-index">#${String(index + 1).padStart(2, "0")}</span>
-              <div>
-                <p class="class-roster-name">${escapeHtml(getPublicRosterDisplayName(signup))} / ${escapeHtml(signup.studentId || "未填學號")}</p>
-              </div>
-            </div>
-          `,
-        )
-        .join("")}
-    </div>
-  `;
-}
-
 
 function renderClassCalendarBoard(sessions = []) {
   const container = document.querySelector("[data-class-calendar]");
@@ -5145,64 +4843,6 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
       </div>
     </form>
   `;
-}
-
-function renderClassSessionBoard(sessions = []) {
-  const container = document.querySelector("[data-class-session-board]");
-  if (!container) {
-    return;
-  }
-
-  const sortedSessions = [...sessions].sort((a, b) => getClassSessionSortMs(a) - getClassSessionSortMs(b));
-  const ownedBySession = Object.fromEntries(classSignupPageState.ownSignups.map((signup) => [signup.sessionId, signup]));
-  const approvalData = classSignupPageState.approval;
-  const canSignup = Boolean(currentUser);
-
-  if (sortedSessions.length === 0) {
-    container.innerHTML = `
-      <article class="content-card is-tight">
-        <h3 class="content-title">目前還沒有設定社課日期</h3>
-        <p class="content-copy">管理員可以先到後台設定行事曆，之後這裡就會自動顯示可報名的社課。</p>
-      </article>
-    `;
-    return;
-  }
-
-  container.innerHTML = sortedSessions
-    .map((session) => {
-      const sessionId = getClassSessionId(session);
-      const ownSignup = ownedBySession[sessionId] || null;
-      const isSignupSession = Boolean(session.signupRequired);
-      const openForSignup = isSignupSession && isClassSignupWindowOpen(session);
-      const statusLabel = isSignupSession
-        ? openForSignup ? "報名中" : isClassSignupWindowClosed(session) ? "報名已截止" : isNonMemberPriorityWindow(session) ? "社員優先報名中" : "尚未開放"
-        : "固定社課";
-      const liveSignupMarkup = isSignupSession ? `<div class="class-capacity-summary"><strong>${escapeHtml(getRemainingCapacityMarkup(session))}</strong></div>` : "";
-
-      return `
-        <article class="content-card class-session-card" id="session-${escapeHtml(sessionId)}">
-          <div class="class-session-header">
-            <div>
-              <p class="section-kicker">${escapeHtml(getWeekdayLabel(session.weekday) || "社課")}</p>
-              <h3 class="content-title">${escapeHtml(session.title || "社課")}</h3>
-              <p class="content-copy">${escapeHtml([getClassSessionDateLabel(session), getClassSessionTimeLabel(session)].filter(Boolean).join(" ・ "))}</p>
-            </div>
-            <span class="member-row-status">${escapeHtml(statusLabel)}</span>
-          </div>
-          <p class="content-copy">${escapeHtml(session.description || session.reminder || "請依照行事曆確認社課日期。")}</p>
-          ${session.reminder ? `<p class="class-session-reminder">提醒：${escapeHtml(session.reminder)}</p>` : ""}
-          ${
-            isSignupSession
-              ? buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup, openForSignup)
-              : `<div class="class-session-note"><p class="content-copy">此場次不需要報名，請直接依行事曆出席即可。</p></div>`
-          }
-          ${liveSignupMarkup}
-        </article>
-      `;
-    })
-    .join("");
-
-  bindClassSignupBoardEvents();
 }
 
 function renderClassRosterBoard(sessions = []) {
@@ -5359,57 +4999,6 @@ function bindClassSignupModalEvents() {
   }
 }
 
-async function upsertClassSessionSignupDirect(session, { note = "", name = "", studentId = "" } = {}) {
-  await ensureAuthReady();
-  if (!db || !runTransaction || !currentUser?.uid) {
-    throw new Error("Firestore 目前無法使用，請稍後再試。");
-  }
-
-  const sessionId = getClassSessionId(session);
-  const sessionRef = getClassSessionDocRef(sessionId);
-  const signupRef = getClassSignupDocRef(sessionId, currentUser.uid);
-  const statsRef = doc(db, CLASS_SESSION_STATS_COLLECTION, sessionId);
-
-  await runTransaction(db, async (transaction) => {
-    const sessionSnapshot = await transaction.get(sessionRef);
-    const signupSnapshot = await transaction.get(signupRef);
-    const statsSnapshot = await transaction.get(statsRef);
-    if (!sessionSnapshot.exists()) throw new Error("找不到這場社課。");
-
-    const currentSession = sessionSnapshot.data();
-    if (currentSession.signupRequired !== true) throw new Error("這場社課不需要報名。");
-    if (!isClassSignupWindowOpen(currentSession)) throw new Error("目前不在報名期間內。");
-
-    if (signupSnapshot.exists()) {
-      transaction.update(signupRef, { note: note.slice(0, 500), updatedAt: serverTimestamp() });
-      return;
-    }
-
-    const signupCount = statsSnapshot.exists() ? Math.max(0, Number(statsSnapshot.data().signupCount || 0)) : 0;
-    const signupLimit = getSessionSignupLimit(currentSession);
-    if (signupLimit && signupCount >= signupLimit) throw new Error("這場社課已額滿。");
-    const isFormalMember = hasFormalMemberAccess(classSignupPageState.approval);
-    transaction.set(signupRef, {
-      sessionId,
-      userId: currentUser.uid,
-      email: currentUser.email || "",
-      name: name || currentMemberProfile?.name || currentUser.displayName || "",
-      studentId: studentId || currentMemberProfile?.studentId || "",
-      note: note.slice(0, 500),
-      membershipStatusAtSignup: isFormalMember ? "formal_member" : String(currentMemberProfile?.membershipStatus || "non_member"),
-      isFormalMemberAtSignup: isFormalMember,
-      dropInPaymentStatus: isFormalMember ? "not_required" : "unpaid",
-      sessionDate: currentSession.date || "",
-      sessionWeekday: currentSession.weekday || "",
-      sessionTitle: currentSession.title || "",
-      sessionTimeLabel: currentSession.timeLabel || "",
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    transaction.set(statsRef, { sessionId, signupCount: signupCount + 1, updatedAt: serverTimestamp() }, { merge: true });
-  });
-}
-
 async function upsertClassSessionSignup(session, values) {
   if (!functionsClient || !httpsCallable) throw new Error("報名服務目前無法使用，請稍後再試。");
   const result = await httpsCallable(functionsClient, "upsertClassSessionSignup")({
@@ -5417,25 +5006,6 @@ async function upsertClassSessionSignup(session, values) {
     note: values.note || "",
   });
   return result.data || { ok: true, signupStatus: "accepted" };
-}
-
-async function deleteClassSessionSignupDirect(sessionId) {
-  await ensureAuthReady();
-  if (!db || !runTransaction || !currentUser?.uid) {
-    throw new Error("Firestore 目前無法使用，請稍後再試。");
-  }
-  const signupRef = getClassSignupDocRef(sessionId, currentUser.uid);
-  const statsRef = doc(db, CLASS_SESSION_STATS_COLLECTION, sessionId);
-  await runTransaction(db, async (transaction) => {
-    const signupSnapshot = await transaction.get(signupRef);
-    const statsSnapshot = await transaction.get(statsRef);
-    if (!signupSnapshot.exists()) return;
-    transaction.delete(signupRef);
-    if (statsSnapshot.exists()) {
-      const signupCount = Math.max(0, Number(statsSnapshot.data().signupCount || 0) - 1);
-      transaction.set(statsRef, { sessionId, signupCount, updatedAt: serverTimestamp() }, { merge: true });
-    }
-  });
 }
 
 async function deleteClassSessionSignup(sessionId) {
@@ -6271,57 +5841,6 @@ function bindAdminFaqActions() {
       }
     });
   });
-}
-
-async function handleClassSessionFormSubmit(event) {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const submitButton = form.querySelector("[data-class-session-submit]");
-  const date = String(form.querySelector("[name='date']")?.value || "").trim();
-  const weekday = getWeekdayKeyFromDateValue(date);
-  const title = String(form.querySelector("[name='title']")?.value || "").trim();
-  const timeLabel = String(form.querySelector("[name='timeLabel']")?.value || "").trim();
-  const description = String(form.querySelector("[name='description']")?.value || "").trim();
-  const reminder = String(form.querySelector("[name='reminder']")?.value || "").trim();
-  const signupRequired = Boolean(form.querySelector("[name='signupRequired']")?.checked);
-
-  if (!date || !weekday || !title || !timeLabel) {
-    window.alert("請先填寫日期、星期、標題與時間。");
-    return;
-  }
-
-  const sessionId = getClassSessionId({ date, weekday });
-  const sessionRef = getClassSessionDocRef(sessionId);
-  submitButton.disabled = true;
-
-  try {
-    const existing = await getDoc(sessionRef);
-    await setDoc(
-      sessionRef,
-      {
-        date,
-        weekday,
-        title,
-        timeLabel,
-        description,
-        reminder,
-        signupRequired,
-        rosterPublished: existing.exists() ? Boolean(existing.data()?.rosterPublished) : false,
-        publishedRoster: existing.exists() ? existing.data()?.publishedRoster || [] : [],
-        createdAt: existing.exists() ? existing.data()?.createdAt || serverTimestamp() : serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
-
-    form.reset();
-    await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
-  } catch (error) {
-    console.error("Save class session failed:", error);
-    window.alert(`儲存社課失敗：${error?.message || "請稍後再試一次。"}`);
-  } finally {
-    submitButton.disabled = false;
-  }
 }
 
 async function handleAnnouncementFormSubmit(event) {

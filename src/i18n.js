@@ -702,5 +702,3 @@ export const applyPageLanguage = (language) => {
     observer.observe(document.body, { childList: true, characterData: true, subtree: true });
   }
 };
-
-export const translateUiText = (value) => activeLanguage === "en" ? translateValue(value) || value : value;

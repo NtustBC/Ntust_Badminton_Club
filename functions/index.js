@@ -9,8 +9,6 @@ admin.initializeApp();
 const REGION = "asia-east1";
 const CALLABLE_OPTIONS = { region: REGION, enforceAppCheck: true };
 const CLASS_SIGNUP_CALLABLE_OPTIONS = { region: REGION, enforceAppCheck: false };
-const PASSWORD_RESET_WINDOW_MS = 60 * 60 * 1000;
-const PASSWORD_RESET_MAX_ATTEMPTS = 5;
 const LEGACY_NON_MEMBER_SIGNUP_DELAY_MS = 2 * 24 * 60 * 60 * 1000;
 const CURRENT_TERM_SETTINGS_DOC = "currentTerm";
 
@@ -21,18 +19,6 @@ function normalizedEmail(value) {
 function hasFormalMembership(member = {}, approvalExists = false) {
   const status = String(member.membershipStatus || member.status || "").trim().toLowerCase();
   return approvalExists || member.paymentStatus === "paid" || ["formal_member", "formal", "approved", "member"].includes(status);
-}
-
-function normalizeIdentityText(value) {
-  return String(value || "").trim().replace(/\s+/g, "").toLowerCase();
-}
-
-function normalizeStudentId(value) {
-  return String(value || "").trim().replace(/[\s-]+/g, "").toUpperCase();
-}
-
-function normalizePhone(value) {
-  return String(value || "").replace(/\D/g, "");
 }
 
 function parseClubDateTime(value) {
@@ -87,34 +73,6 @@ async function releaseMembershipRegistrationSlot(firestore, member = {}) {
       count: Math.max(0, Number(snapshot.data().count || 0) - 1),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
-  });
-}
-
-async function consumePasswordResetAttempt(email) {
-  const key = crypto.createHash("sha256").update(email).digest("hex");
-  const ref = admin.firestore().collection("passwordResetRateLimits").doc(key);
-  const now = Date.now();
-
-  await admin.firestore().runTransaction(async (transaction) => {
-    const snapshot = await transaction.get(ref);
-    const data = snapshot.exists ? snapshot.data() : {};
-    const windowStartedAtMs = Number(data.windowStartedAtMs || 0);
-    const inCurrentWindow = now - windowStartedAtMs < PASSWORD_RESET_WINDOW_MS;
-    const attempts = inCurrentWindow ? Number(data.attempts || 0) : 0;
-
-    if (attempts >= PASSWORD_RESET_MAX_ATTEMPTS) {
-      throw new HttpsError("resource-exhausted", "嘗試次數過多，請一小時後再試。");
-    }
-
-    transaction.set(
-      ref,
-      {
-        attempts: attempts + 1,
-        windowStartedAtMs: inCurrentWindow ? windowStartedAtMs : now,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
   });
 }
 
@@ -360,11 +318,6 @@ exports.updateMembershipApplication = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, asyn
     return { ok: true, membershipIntent, membershipStatus: nextStatus, count, limit };
   });
 });
-
-async function getSessionSignupSeedCount(sessionId) {
-  const snapshot = await admin.firestore().collection("classSessionSignups").where("sessionId", "==", sessionId).get();
-  return snapshot.docs.filter((entry) => entry.data().signupStatus !== "waitlisted").length;
-}
 
 async function getSessionSignupCounts(sessionId) {
   const snapshot = await admin.firestore().collection("classSessionSignups").where("sessionId", "==", sessionId).get();
