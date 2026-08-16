@@ -8467,6 +8467,77 @@ const initMenu = () => {
   });
 };
 
+const ADMIN_PANEL_IDS = ["admin-semester-settings", "admin-member-management", "admin-calendar-management", "admin-faq-management"];
+
+const activateAdminPanel = (panelId, { updateHistory = false } = {}) => {
+  if (pageName !== "members") {
+    return;
+  }
+
+  const requestedPanelId = ADMIN_PANEL_IDS.includes(panelId) ? panelId : ADMIN_PANEL_IDS[0];
+  const tabs = Array.from(document.querySelectorAll("[data-admin-tab]"));
+  const panels = Array.from(document.querySelectorAll("[data-admin-panel]"));
+
+  tabs.forEach((tab) => {
+    const isActive = tab.getAttribute("aria-controls") === requestedPanelId;
+    tab.setAttribute("aria-selected", String(isActive));
+    tab.tabIndex = isActive ? 0 : -1;
+  });
+
+  panels.forEach((panel) => {
+    panel.hidden = panel.id !== requestedPanelId;
+  });
+
+  if (updateHistory) {
+    const nextUrl = new URL(window.location.href);
+    nextUrl.hash = requestedPanelId;
+    if (window.location.hash !== nextUrl.hash) {
+      window.history.pushState({ ...(window.history.state || {}), adminPanel: requestedPanelId }, "", nextUrl);
+    }
+  }
+};
+
+const bindAdminSectionTabs = () => {
+  if (pageName !== "members") {
+    return;
+  }
+
+  const nav = document.querySelector(".admin-section-nav");
+  const tabs = Array.from(nav?.querySelectorAll("[data-admin-tab]") || []);
+  if (!nav || tabs.length === 0) {
+    return;
+  }
+
+  const hashPanelId = window.location.hash.replace(/^#/, "");
+  activateAdminPanel(hashPanelId);
+
+  if (nav.dataset.tabsBound === "true") {
+    return;
+  }
+  nav.dataset.tabsBound = "true";
+
+  tabs.forEach((tab, index) => {
+    tab.addEventListener("click", (event) => {
+      event.preventDefault();
+      activateAdminPanel(tab.getAttribute("aria-controls"), { updateHistory: true });
+    });
+
+    tab.addEventListener("keydown", (event) => {
+      let nextIndex = null;
+      if (event.key === "ArrowRight") nextIndex = (index + 1) % tabs.length;
+      if (event.key === "ArrowLeft") nextIndex = (index - 1 + tabs.length) % tabs.length;
+      if (event.key === "Home") nextIndex = 0;
+      if (event.key === "End") nextIndex = tabs.length - 1;
+      if (nextIndex === null) return;
+
+      event.preventDefault();
+      const nextTab = tabs[nextIndex];
+      activateAdminPanel(nextTab.getAttribute("aria-controls"), { updateHistory: true });
+      nextTab.focus();
+    });
+  });
+};
+
 const initLanguageSwitcher = () => {
   if (languageSelects.length === 0) {
     return;
@@ -8708,6 +8779,7 @@ const activateCurrentPage = async () => {
   bindMembershipRegistrationSetting();
   bindMembershipPaymentSetting();
   bindClassDefaultSettings();
+  bindAdminSectionTabs();
   bindFaqQuestionForm();
   initFaqAccordion();
   initMembersAutoRefresh();
@@ -8741,6 +8813,7 @@ const navigateSpa = async (target, { replace = false } = {}) => {
 
   if (targetUrl.pathname === renderedSpaPath) {
     if (targetUrl.hash) {
+      activateAdminPanel(targetUrl.hash.replace(/^#/, ""));
       document.querySelector(targetUrl.hash)?.scrollIntoView({ behavior: "smooth" });
     } else {
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -8864,6 +8937,7 @@ const init = async () => {
   bindMembershipRegistrationSetting();
   bindMembershipPaymentSetting();
   bindClassDefaultSettings();
+  bindAdminSectionTabs();
   syncGlobalNavigationLabels();
   initMenu();
   initLanguageSwitcher();

@@ -217,6 +217,9 @@ const EN_TRANSLATIONS = {
 
   "輕鬆上場": "Get on Court with Ease",
   "目前可報名的社課日期": "Class Dates Currently Open for Registration",
+  "目前沒有開放報名的社課": "No Classes Are Currently Open for Registration",
+  "有新的報名日期時會顯示在這裡。": "New registration dates will appear here.",
+  "只顯示目前報名期間已開放的社課。": "Only classes whose registration window is currently open are shown.",
   "管理行事曆中的社課、公告與連續假期會同步顯示在這裡。": "Classes, announcements, and long holidays from the admin calendar are synchronized here.",
   "請輸入想詢問的內容": "Enter your question",
 

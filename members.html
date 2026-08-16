@@ -112,14 +112,14 @@
             <div data-members-content hidden>
               <div class="member-summary-grid" data-members-summary></div>
 
-              <nav class="admin-section-nav" aria-label="管理功能分類">
-                <a href="#admin-semester-settings">學期預設</a>
-                <a href="#admin-member-management">社員管理</a>
-                <a href="#admin-calendar-management">行事曆</a>
-                <a href="#admin-faq-management">FAQ</a>
+              <nav class="admin-section-nav" aria-label="管理功能分類" role="tablist">
+                <a id="admin-tab-semester" data-admin-tab href="#admin-semester-settings" role="tab" aria-controls="admin-semester-settings">學期預設</a>
+                <a id="admin-tab-members" data-admin-tab href="#admin-member-management" role="tab" aria-controls="admin-member-management">社員管理</a>
+                <a id="admin-tab-calendar" data-admin-tab href="#admin-calendar-management" role="tab" aria-controls="admin-calendar-management">行事曆</a>
+                <a id="admin-tab-faq" data-admin-tab href="#admin-faq-management" role="tab" aria-controls="admin-faq-management">FAQ</a>
               </nav>
 
-              <section class="admin-category" id="admin-semester-settings">
+              <section class="admin-category admin-panel" id="admin-semester-settings" data-admin-panel role="tabpanel" aria-labelledby="admin-tab-semester">
                 <div class="section-header is-compact">
                   <div class="section-kicker">Semester Defaults</div>
                   <h3 class="content-title">本學期預設資料</h3>
@@ -261,7 +261,8 @@
                 </article>
               </section>
 
-              <section class="content-card is-tight member-filter-card" id="admin-member-management">
+              <section class="admin-category admin-panel" id="admin-member-management" data-admin-panel role="tabpanel" aria-labelledby="admin-tab-members" hidden>
+              <section class="content-card is-tight member-filter-card">
                 <div class="member-filter-header">
                   <div>
                     <p class="section-kicker">Filter</p>
@@ -298,7 +299,9 @@
                 </div>
                 <div class="member-list" data-members-list></div>
               </section>
-              <section class="member-section" id="admin-calendar-management">
+              </section>
+
+              <section class="member-section admin-panel" id="admin-calendar-management" data-admin-panel role="tabpanel" aria-labelledby="admin-tab-calendar" hidden>
                 <div class="section-header is-compact">
                   <div class="section-kicker">Class Schedule</div>
                   <h3 class="content-title">社課與公告行事曆</h3>
@@ -309,7 +312,7 @@
                 </article>
               </section>
 
-              <section class="member-section" id="admin-faq-management">
+              <section class="member-section admin-panel" id="admin-faq-management" data-admin-panel role="tabpanel" aria-labelledby="admin-tab-faq" hidden>
                 <div class="section-header is-compact">
                   <div class="section-kicker">FAQ</div>
                   <h3 class="content-title">FAQ 管理</h3>
