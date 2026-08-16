@@ -5643,11 +5643,14 @@ function renderAnnouncementsBoard(announcements = []) {
     const hasAnnouncement = dayAnnouncements.length > 0;
     const hasHoliday = dayAnnouncements.some((announcement) => getNoticeEventType(announcement) === "holiday");
     const isToday = dateKey === todayKey;
+    const dayColor = hasAnnouncement
+      ? normalizeCalendarColor(dayAnnouncements[0].color || (getNoticeEventType(dayAnnouncements[0]) === "holiday" ? "orange" : "blue"))
+      : "";
 
     const dayTag = hasAnnouncement ? "button" : "article";
     const dayAttrs = hasAnnouncement ? ` type="button" data-public-announcement-day data-date-key="${escapeHtml(dateKey)}"` : "";
     cells.push(`
-      <${dayTag} class="admin-calendar-day${hasAnnouncement ? " is-session has-announcement is-clickable" : ""}${hasHoliday ? " has-holiday" : ""}${isToday ? " is-today" : ""}"${dayAttrs}>
+      <${dayTag} class="admin-calendar-day${hasAnnouncement ? " is-session has-announcement is-clickable" : ""}${dayColor ? ` calendar-day-color-${escapeHtml(dayColor)}` : ""}${hasHoliday ? " has-holiday" : ""}${isToday ? " is-today" : ""}"${dayAttrs}>
         <span class="admin-calendar-day-number">${escapeHtml(String(day))}</span>
         <span class="admin-calendar-day-events">
           ${dayAnnouncements
@@ -6740,10 +6743,11 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
     const eventCount = dayEvents.length;
     const announcementCount = dayAnnouncements.length;
     const isToday = dateKey === todayKey;
+    const dayColor = dayEvents[0]?.color || "";
 
     cells.push(`
       <button
-        class="admin-calendar-day${eventCount > 0 ? " is-session" : ""}${announcementCount > 0 ? " has-announcement" : ""}${dayHolidays.length ? " has-holiday" : ""}${isToday ? " is-today" : ""}"
+        class="admin-calendar-day${eventCount > 0 ? " is-session" : ""}${announcementCount > 0 ? " has-announcement" : ""}${dayColor ? ` calendar-day-color-${escapeHtml(dayColor)}` : ""}${dayHolidays.length ? " has-holiday" : ""}${isToday ? " is-today" : ""}"
         type="button"
         data-admin-calendar-day
         data-date-key="${escapeHtml(dateKey)}"

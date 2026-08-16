@@ -3065,6 +3065,25 @@ button.admin-calendar-day:focus-visible {
 .calendar-color-pink { --calendar-accent: #b24478; }
 .calendar-color-gray { --calendar-accent: #627080; }
 
+.calendar-day-color-blue { --calendar-day-rgb: 15, 76, 129; --calendar-day-accent: #0f4c81; }
+.calendar-day-color-green { --calendar-day-rgb: 40, 122, 75; --calendar-day-accent: #287a4b; }
+.calendar-day-color-orange { --calendar-day-rgb: 166, 95, 22; --calendar-day-accent: #a65f16; }
+.calendar-day-color-red { --calendar-day-rgb: 178, 59, 59; --calendar-day-accent: #b23b3b; }
+.calendar-day-color-purple { --calendar-day-rgb: 112, 70, 163; --calendar-day-accent: #7046a3; }
+.calendar-day-color-teal { --calendar-day-rgb: 20, 127, 130; --calendar-day-accent: #147f82; }
+.calendar-day-color-pink { --calendar-day-rgb: 178, 68, 120; --calendar-day-accent: #b24478; }
+.calendar-day-color-gray { --calendar-day-rgb: 98, 112, 128; --calendar-day-accent: #627080; }
+
+.admin-calendar-day[class*="calendar-day-color-"] {
+  background: linear-gradient(180deg, rgba(var(--calendar-day-rgb), 0.16), rgba(var(--calendar-day-rgb), 0.08));
+  border-color: rgba(var(--calendar-day-rgb), 0.34);
+}
+
+.admin-calendar-day[class*="calendar-day-color-"] .admin-calendar-day-number,
+.admin-calendar-day[class*="calendar-day-color-"] .announcement-calendar-title {
+  color: var(--calendar-day-accent);
+}
+
 .admin-calendar-day-event[class*="calendar-color-"] .admin-calendar-day-event-bullet,
 .admin-calendar-day-event[class*="calendar-color-"] .announcement-calendar-title,
 .announcement-calendar-title[class*="calendar-color-"] {
