@@ -8514,7 +8514,7 @@ const initMenu = () => {
   });
 };
 
-const ADMIN_PANEL_IDS = ["admin-semester-settings", "admin-member-management", "admin-calendar-management", "admin-faq-management"];
+const ADMIN_PANEL_IDS = ["admin-semester-settings", "admin-maintenance-settings", "admin-member-management", "admin-calendar-management", "admin-faq-management"];
 
 const activateAdminPanel = (panelId, { updateHistory = false } = {}) => {
   if (pageName !== "members") {

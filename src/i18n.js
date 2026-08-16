@@ -177,6 +177,7 @@ const EN_TRANSLATIONS = {
   "集中管理學年度、入社繳費方式與每週社課時段。": "Manage the academic year, membership payment methods, and weekly class schedule.",
   "目前學年度與學期": "Current Academic Year and Semester",
   "網站維護模式": "Maintenance Mode",
+  "維護模式": "Maintenance Mode",
   "開啟後，一般使用者只會看到維護提示；已登入的管理員仍可正常瀏覽與操作網站。": "When enabled, regular visitors see a maintenance notice while signed-in administrators retain access.",
   "啟用維護模式": "Enable Maintenance Mode",
   "儲存後立即套用至所有頁面": "Apply to all pages immediately after saving",
