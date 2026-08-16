@@ -187,7 +187,6 @@ let membershipRegistrationSettings = {
 let maintenanceSettings = { ...DEFAULT_MAINTENANCE_SETTINGS };
 let maintenanceRefreshTimer = null;
 let classScheduleDefaults = [];
-let homeClassScheduleTimer = null;
 let authMode = "signin";
 let authReadyPromise = null;
 let lastLoginTrigger = null;
@@ -1180,11 +1179,6 @@ const HOME_CLASS_SCHEDULE_FALLBACK = [
 ];
 
 const renderHomeClassSchedule = () => {
-  if (homeClassScheduleTimer) {
-    window.clearInterval(homeClassScheduleTimer);
-    homeClassScheduleTimer = null;
-  }
-
   const target = document.querySelector("[data-home-class-schedule]");
   if (!target) return;
 
@@ -1210,26 +1204,7 @@ const renderHomeClassSchedule = () => {
       : `每週${weekday} ${item.startTime}–${item.endTime}`;
   });
 
-  let currentIndex = 0;
-  target.textContent = labels[currentIndex];
-  target.setAttribute("aria-label", labels.join(isEnglish ? "; " : "、"));
-
-  if (labels.length < 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
-  homeClassScheduleTimer = window.setInterval(() => {
-    if (!target.isConnected || pageName !== "home") {
-      window.clearInterval(homeClassScheduleTimer);
-      homeClassScheduleTimer = null;
-      return;
-    }
-    target.classList.add("is-changing");
-    window.setTimeout(() => {
-      if (!target.isConnected) return;
-      currentIndex = (currentIndex + 1) % labels.length;
-      target.textContent = labels[currentIndex];
-      target.classList.remove("is-changing");
-    }, 180);
-  }, 3600);
+  target.textContent = labels.join(isEnglish ? "; " : "、");
 };
 const getClassSessionDateLabel = (session) => {
   const dateLabel = formatDateKey(session.date || session.sessionDate || "", {

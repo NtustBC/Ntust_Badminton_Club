@@ -99,9 +99,8 @@ const EN_TRANSLATIONS = {
   "如果你還沒決定是否加入，也可以先用 IG 或 Gmail 跟我們聊聊。": "Not sure yet? Talk with us first on Instagram or Gmail.",
   "報名、社課或公告相關問題，都可以從這裡聯繫。": "Contact us here with questions about membership, classes, or announcements.",
 
-  "這裡只會顯示目前開放報名的社課日期與剩餘名額；社員操作頁不會公開報名者姓名或學號。": "This page shows classes currently open for registration and their remaining capacity. Participant names and student IDs are not publicly displayed.",
+  "這裡可以知道目前有開放報名的社課日期及剩餘名額。": "See class dates currently open for registration and their remaining capacity.",
   "可報名社課日期": "Classes Open for Registration",
-  "只列出目前報名期間已開放的社課日期。": "Only classes whose registration window is currently open are listed.",
   "社課報名頁會依照 Firestore 的社課資料自動更新，讓社員與管理員看到同一份內容。": "This page updates automatically from Firestore so members and administrators see the same information.",
   "如果看不到社課資料，請先登入並確認帳號已通過審核，必要時聯絡社團幹部協助處理。": "If classes are not visible, sign in and confirm your account is approved, or contact club staff for help.",
 
@@ -110,8 +109,7 @@ const EN_TRANSLATIONS = {
   "回到首頁": "Back to Home",
   "社團訊息公告": "Club Announcements",
   "有公告的日期會顯示標題、時間與備註，可以用上個月、下個月切換查看。": "Dates with updates show titles, times, and notes. Use Previous or Next Month to navigate.",
-  "訊息公告頁會隨 Firestore 的資料自動更新，避免社員看到舊訊息。": "This page updates automatically from Firestore to keep information current.",
-  "如果訊息公告內容有誤，請聯絡社團幹部修正後台內容。": "If an announcement is incorrect, contact club staff to update it.",
+  "如果訊息公告內容有誤，請聯絡社團，謝謝。": "If an announcement is incorrect, please contact the club. Thank you.",
 
   "報名前先看， 常見問題一次整理": "Read Before Registering—Frequently Asked Questions",
   "報名前先看，": "Read Before Registering—",

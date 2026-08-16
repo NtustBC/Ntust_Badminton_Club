@@ -599,6 +599,7 @@ body.spa-navigating .page-main {
 .hero-fact-card {
   display: grid;
   gap: 10px;
+  align-content: start;
   min-height: 156px;
   padding: 20px 22px;
   border: 1px solid rgba(15, 76, 129, 0.1);
@@ -621,21 +622,6 @@ body.spa-navigating .page-main {
   font-family: var(--font-serif);
   font-size: clamp(1.04rem, 1.5vw, 1.24rem);
   line-height: 1.5;
-}
-
-.home-schedule-ticker {
-  transition: opacity 180ms ease, transform 180ms ease;
-}
-
-.home-schedule-ticker.is-changing {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .home-schedule-ticker {
-    transition: none;
-  }
 }
 
 .side-card {
@@ -1299,11 +1285,16 @@ body.spa-navigating .page-main {
 }
 
 .language-switch {
-  display: inline-flex;
+  display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 10px;
   margin-top: 26px;
+}
+
+.footer-panel > div:first-child > .language-switch {
+  width: max-content;
+  margin-left: 64px;
 }
 
 .language-label {
@@ -4066,6 +4057,10 @@ button.admin-calendar-day:focus-visible {
   .footer-brand img {
     width: 44px;
     height: 44px;
+  }
+
+  .footer-panel > div:first-child > .language-switch {
+    margin-left: 54px;
   }
 
   .footer-title {
