@@ -2914,7 +2914,7 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   }
   const eventTypeSelect = form.querySelector("[name='eventType']");
   if (eventTypeSelect instanceof HTMLSelectElement) {
-    eventTypeSelect.disabled = Boolean(eventId);
+    eventTypeSelect.disabled = false;
   }
   const signupToggle = form.querySelector(".admin-calendar-signup-toggle");
   const signupSettings = form.querySelector("[data-admin-calendar-signup-settings]");
@@ -5654,11 +5654,20 @@ function renderAnnouncementsBoard(announcements = []) {
         <span class="admin-calendar-day-number">${escapeHtml(String(day))}</span>
         <span class="admin-calendar-day-events">
           ${dayAnnouncements
-            .map(
-              (announcement) => `
-                <strong class="announcement-calendar-title calendar-color-${escapeHtml(normalizeCalendarColor(announcement.color || (getNoticeEventType(announcement) === "holiday" ? "orange" : "blue")))}">${escapeHtml(announcement.title || "未命名內容")}</strong>
-              `,
-            )
+            .map((announcement) => {
+              const isHoliday = getNoticeEventType(announcement) === "holiday";
+              const color = normalizeCalendarColor(announcement.color || (isHoliday ? "orange" : "blue"));
+              const timeLabel = isHoliday ? "連續假期" : getAnnouncementTimeLabel(announcement);
+              return `
+                <span class="admin-calendar-day-event calendar-color-${escapeHtml(color)}${isHoliday ? " is-holiday" : ""}">
+                  <span class="admin-calendar-day-event-bullet" aria-hidden="true">•</span>
+                  <span class="admin-calendar-day-event-copy">
+                    <strong class="announcement-calendar-title">${escapeHtml(announcement.title || "未命名內容")}</strong>
+                    ${timeLabel ? `<small>${escapeHtml(timeLabel)}</small>` : ""}
+                  </span>
+                </span>
+              `;
+            })
             .join("")}
         </span>
       </${dayTag}>
@@ -7079,6 +7088,7 @@ async function handleAdminCalendarEventSubmit(event) {
   const form = event.currentTarget;
   const submitButton = form.querySelector("[data-admin-calendar-save]");
   const eventId = String(form.dataset.editingId || form.querySelector("[name='eventId']")?.value || "").trim();
+  const originalEventType = String(form.dataset.editingType || "").trim();
   const date = String(form.querySelector("[name='date']")?.value || "").trim();
   const eventType = String(form.querySelector("[name='eventType']")?.value || form.dataset.editingType || "class").trim();
   const title = String(form.querySelector("[name='title']")?.value || "").trim();
@@ -7143,6 +7153,23 @@ async function handleAdminCalendarEventSubmit(event) {
     return;
   }
 
+  const changesStorageCollection = Boolean(
+    eventId
+    && originalEventType
+    && originalEventType !== eventType
+    && (originalEventType === "class" || eventType === "class"),
+  );
+  if (changesStorageCollection) {
+    const confirmed = window.confirm(
+      originalEventType === "class"
+        ? "確定要把這筆社課改成公告或連續假期嗎？原社課與相關報名資料會一併移除，且無法復原。"
+        : "確定要把這筆公告或連續假期改成社課嗎？原本的公告資料會移除並建立新的社課資料。",
+    );
+    if (!confirmed) {
+      return;
+    }
+  }
+
   setButtonLoading(submitButton, true, "儲存中…");
 
   try {
@@ -7169,6 +7196,9 @@ async function handleAdminCalendarEventSubmit(event) {
         },
         { merge: true },
       );
+      if (originalEventType === "class") {
+        await adminDeleteClassSession(eventId);
+      }
       announcementPageState.loaded = false;
     } else {
       const sessionRef = eventId ? getClassSessionDocRef(eventId) : doc(collection(db, CLASS_SESSION_COLLECTION));
@@ -7212,6 +7242,9 @@ async function handleAdminCalendarEventSubmit(event) {
         },
         { merge: true },
       );
+      if (eventId && originalEventType && originalEventType !== "class") {
+        await deleteDoc(getClassAnnouncementDocRef(eventId));
+      }
       classSignupPageState.loaded = false;
     }
 
@@ -7233,7 +7266,7 @@ async function handleAdminCalendarEventSubmit(event) {
 async function handleAdminCalendarEventDelete() {
   const { form, deleteButton } = getAdminClassCalendarModalElements();
   const eventId = String(form?.querySelector("[name='eventId']")?.value || "").trim();
-  const eventType = String(form?.querySelector("[name='eventType']")?.value || "").trim();
+  const eventType = String(form?.dataset.editingType || form?.querySelector("[name='eventType']")?.value || "").trim();
   const date = String(form?.querySelector("[name='date']")?.value || "").trim();
 
   if (!eventId || !eventType) {
