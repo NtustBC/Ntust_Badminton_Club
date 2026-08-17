@@ -3689,16 +3689,31 @@ button.admin-calendar-day:focus-visible {
 .privacy-consent-option a { margin: 0 4px; color: var(--color-primary, #0f54a0); font-weight: 700; }
 .notification-preference-grid { display: grid; gap: 10px; margin-top: 12px; }
 .notification-preference-grid label { display: flex; gap: 9px; align-items: center; }
-.notification-modal-dialog { width: min(580px, calc(100vw - 28px)); }
+.notification-modal-dialog { width: min(680px, calc(100vw - 28px)); }
 .notification-modal-dialog .modal-header { padding: 24px 26px 20px; }
 .notification-modal-dialog .modal-body { padding: 20px 26px; }
 .notification-modal-dialog .modal-footer { display: flex; justify-content: flex-end; padding: 16px 26px 20px; }
 .notification-modal-dialog .modal-footer .button-secondary { min-width: 0; padding: 10px 16px; }
+.notification-toolbar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin-bottom: 14px; padding: 10px 12px; border: 1px solid rgba(15, 84, 160, 0.12); border-radius: 12px; background: #f8fafc; }
+.notification-toolbar[hidden] { display: none; }
+.notification-select-all { display: inline-flex; gap: 8px; align-items: center; font-weight: 700; cursor: pointer; }
+.notification-select-all input, .notification-select-checkbox { width: 18px; height: 18px; accent-color: #0f54a0; cursor: pointer; }
+.notification-selection-count { color: #667085; font-size: 0.86rem; }
+.notification-toolbar-actions { display: flex; gap: 8px; margin-left: auto; }
+.notification-toolbar-actions button { min-height: 36px; padding: 7px 11px; border: 1px solid rgba(15, 84, 160, 0.18); border-radius: 9px; background: #fff; color: #0f54a0; font: inherit; font-size: 0.86rem; font-weight: 750; cursor: pointer; }
+.notification-toolbar-actions button:hover, .notification-toolbar-actions button:focus-visible { border-color: rgba(15, 84, 160, 0.36); background: rgba(15, 84, 160, 0.06); outline: none; }
+.notification-toolbar-actions button.is-danger { color: #b42318; }
+.notification-toolbar-actions button.is-danger:hover, .notification-toolbar-actions button.is-danger:focus-visible { background: rgba(180, 35, 24, 0.07); }
+.notification-toolbar-actions button:disabled { cursor: not-allowed; opacity: 0.45; }
 .notification-list { display: grid; gap: 12px; }
 .notification-empty { padding: 20px 22px; border: 1px solid rgba(15, 84, 160, 0.12); border-radius: 12px; background: rgba(248, 250, 252, 0.9); }
 .notification-empty h3 { margin: 0; font-family: var(--font-serif); font-size: 1.15rem; }
 .notification-empty p { margin: 7px 0 0; color: #667085; line-height: 1.6; }
-.notification-item { position: relative; padding: 16px 48px 16px 16px; border: 1px solid rgba(15, 84, 160, 0.14); border-radius: 12px; background: #fff; }
+.notification-item { position: relative; padding: 16px 48px 16px 50px; border: 1px solid rgba(15, 84, 160, 0.14); border-radius: 12px; background: #fff; transition: border-color 160ms ease, background-color 160ms ease; }
+.notification-item.is-unread { border-color: rgba(15, 84, 160, 0.3); background: #f2f7fd; }
+.notification-item.is-unread h3 { color: #0b477f; font-weight: 800; }
+.notification-item:has(.notification-select-checkbox:checked) { border-color: #0f54a0; background: #eaf3fc; box-shadow: 0 0 0 2px rgba(15, 84, 160, 0.08); }
+.notification-select-checkbox { position: absolute; z-index: 2; top: 17px; left: 16px; margin: 0; }
 .notification-summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; cursor: pointer; list-style: none; }
 .notification-summary::-webkit-details-marker { display: none; }
 .notification-item .notification-summary h3 { margin: 0; }
@@ -3720,6 +3735,8 @@ button.admin-calendar-day:focus-visible {
   .notification-modal-dialog .modal-header { padding: 20px; }
   .notification-modal-dialog .modal-body { padding: 16px 20px; }
   .notification-modal-dialog .modal-footer { padding: 14px 20px 18px; }
+  .notification-toolbar-actions { width: 100%; margin-left: 0; }
+  .notification-toolbar-actions button { flex: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

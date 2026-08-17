@@ -416,6 +416,12 @@ const EN_TRANSLATIONS = {
   "候補已轉為正取": "Promoted from Waitlist",
   "通知中心": "Notifications",
   "目前沒有通知": "No Notifications",
+  "全選": "Select All",
+  "未選擇通知": "No notifications selected",
+  "全部標為已讀": "Mark All as Read",
+  "刪除已選通知": "Delete Selected",
+  "所有通知已標為已讀。": "All notifications marked as read.",
+  "標示已讀失敗": "Could Not Mark as Read",
   "社課資料載入中": "Loading class information",
   "公告載入中": "Loading announcements",
   "FAQ 載入中": "Loading FAQ",
@@ -553,6 +559,8 @@ const EN_TRANSLATIONS = {
 };
 
 const EN_PATTERNS = [
+  [/^已選擇 (\d+) 則通知$/, "$1 notifications selected"],
+  [/^已刪除 (\d+) 則通知。$/, "Deleted $1 notifications."],
   [/^(\d{4})年(\d{1,2})月$/, "$1/$2"],
   [/^目前已占用 (\d+) \/ 未設定 個名額。$/, "$1 membership spots are currently reserved; capacity is not set."],
   [/^目前篩選：(.+)，共 (\d+) 筆。$/, "Current filters: $1; $2 accounts."],

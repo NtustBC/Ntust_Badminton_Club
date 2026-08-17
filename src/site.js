@@ -162,6 +162,7 @@ let currentMemberStatus = "non_member";
 let currentMemberProfile = null;
 let notificationIndicatorRequestId = 0;
 let notificationRefreshTimer = null;
+let notificationCenterVisibleIds = [];
 let configuredAcademicYear = "";
 let configuredAcademicTerm = "";
 let configuredAcademicPeriodKey = "";
@@ -912,7 +913,17 @@ const notificationModalMarkup = `
         <div><h2 class="modal-title">通知中心</h2><p class="modal-subtitle">依照你在個人資料中選擇的通知類型顯示。</p></div>
         <button class="modal-close" data-close-notifications type="button" aria-label="關閉通知中心"><span aria-hidden="true">+</span></button>
       </div>
-      <div class="modal-body"><div class="notification-list" data-notification-list></div></div>
+      <div class="modal-body">
+        <div class="notification-toolbar" data-notification-toolbar hidden>
+          <label class="notification-select-all"><input data-notification-select-all type="checkbox" /> <span>全選</span></label>
+          <span class="notification-selection-count" data-notification-selection-count>未選擇通知</span>
+          <div class="notification-toolbar-actions">
+            <button data-mark-all-notifications-read type="button">全部標為已讀</button>
+            <button class="is-danger" data-delete-selected-notifications type="button" disabled>刪除已選通知</button>
+          </div>
+        </div>
+        <div class="notification-list" data-notification-list></div>
+      </div>
     </div>
   </div>
 `;
@@ -1519,32 +1530,111 @@ const syncNotificationIndicator = async ({ refreshProfile = false } = {}) => {
   }
 };
 
+const getNotificationProfileIds = (fieldName) =>
+  Array.isArray(currentMemberProfile?.[fieldName]) ? currentMemberProfile[fieldName] : [];
+
+const saveNotificationProfileIds = async (fieldName, ids) => {
+  if (!currentUser?.uid) return [];
+  const nextIds = [...new Set(ids.filter(Boolean))].slice(-200);
+  await setDoc(getMemberDocRef(currentUser.uid), { [fieldName]: nextIds }, { merge: true });
+  currentMemberProfile = { ...(currentMemberProfile || {}), [fieldName]: nextIds };
+  return nextIds;
+};
+
+const updateNotificationToolbarState = () => {
+  const modal = document.querySelector("[data-notification-modal]");
+  if (!modal) return;
+  const items = [...modal.querySelectorAll("[data-notification-item]")];
+  const checkboxes = items.map((item) => item.querySelector("[data-notification-select]")).filter(Boolean);
+  const selected = checkboxes.filter((checkbox) => checkbox.checked);
+  const selectAll = modal.querySelector("[data-notification-select-all]");
+  const count = modal.querySelector("[data-notification-selection-count]");
+  const deleteButton = modal.querySelector("[data-delete-selected-notifications]");
+  const markAllReadButton = modal.querySelector("[data-mark-all-notifications-read]");
+  const toolbar = modal.querySelector("[data-notification-toolbar]");
+
+  if (toolbar) toolbar.hidden = items.length === 0;
+  if (selectAll) {
+    selectAll.checked = checkboxes.length > 0 && selected.length === checkboxes.length;
+    selectAll.indeterminate = selected.length > 0 && selected.length < checkboxes.length;
+    selectAll.disabled = checkboxes.length === 0;
+  }
+  if (count) count.textContent = selected.length ? `已選擇 ${selected.length} 則通知` : "未選擇通知";
+  if (deleteButton) deleteButton.disabled = selected.length === 0;
+  if (markAllReadButton) markAllReadButton.disabled = !items.some((item) => item.classList.contains("is-unread"));
+};
+
+const showNotificationEmptyStateIfNeeded = () => {
+  const list = document.querySelector("[data-notification-list]");
+  if (!list || list.querySelector("[data-notification-item]")) return;
+  list.innerHTML = `<article class="notification-empty"><h3>目前沒有通知</h3><p>新公告與報名狀態會顯示在這裡。</p></article>`;
+  updateNotificationToolbarState();
+};
+
+const markNotificationIdsAsRead = async (notificationIds) => {
+  const readNotificationIds = await saveNotificationProfileIds("readNotificationIds", [
+    ...getNotificationProfileIds("readNotificationIds"),
+    ...notificationIds,
+  ]);
+  const readIdSet = new Set(readNotificationIds);
+  document.querySelectorAll("[data-notification-item]").forEach((item) => {
+    if (readIdSet.has(String(item.dataset.notificationId || ""))) item.classList.remove("is-unread");
+  });
+  updateNotificationToolbarState();
+  void syncNotificationIndicator();
+};
+
+const dismissNotificationIds = async (notificationIds) => {
+  const ids = [...new Set(notificationIds.filter(Boolean))];
+  if (!ids.length) return;
+  await saveNotificationProfileIds("dismissedNotificationIds", [
+    ...getNotificationProfileIds("dismissedNotificationIds"),
+    ...ids,
+  ]);
+  const idSet = new Set(ids);
+  notificationCenterVisibleIds = notificationCenterVisibleIds.filter((id) => !idSet.has(id));
+  document.querySelectorAll("[data-notification-item]").forEach((item) => {
+    if (idSet.has(String(item.dataset.notificationId || ""))) item.remove();
+  });
+  showNotificationEmptyStateIfNeeded();
+  updateNotificationToolbarState();
+  void syncNotificationIndicator();
+};
+
 const openNotificationCenter = async () => {
   if (!currentUser) { openLoginModal(); return; }
   const modal = ensureNotificationModal();
   const list = modal.querySelector("[data-notification-list]");
+  const toolbar = modal.querySelector("[data-notification-toolbar]");
   modal.hidden = false;
   body.classList.add("modal-open");
+  if (toolbar) toolbar.hidden = true;
   renderLoadingSkeleton(list, { rows: 3, label: "通知載入中" });
   try {
     await refreshNotificationMemberProfile();
     const dismissedIds = new Set(Array.isArray(currentMemberProfile?.dismissedNotificationIds) ? currentMemberProfile.dismissedNotificationIds : []);
+    const readIds = new Set(Array.isArray(currentMemberProfile?.readNotificationIds) ? currentMemberProfile.readNotificationIds : []);
     const items = await loadNotificationItems();
     const visibleItems = items.filter((item) => item.id && !dismissedIds.has(item.id));
+    notificationCenterVisibleIds = visibleItems.map((item) => item.id);
     list.innerHTML = visibleItems.length ? visibleItems.slice(0, 20).map((item) => {
       const copy = String(item.copy || "").trim();
       const hasCopy = copy && copy !== "無";
       const dateLabel = formatNotificationDate(item.date || item.sortMs);
+      const unreadClass = readIds.has(item.id) ? "" : " is-unread";
+      const checkbox = `<input class="notification-select-checkbox" data-notification-select type="checkbox" aria-label="選擇「${escapeHtml(item.title)}」通知" />`;
       if (!hasCopy) {
         return `
-          <article class="notification-item" data-notification-item data-notification-id="${escapeHtml(item.id)}">
+          <article class="notification-item${unreadClass}" data-notification-item data-notification-id="${escapeHtml(item.id)}">
+            ${checkbox}
             <button class="notification-delete-button" data-dismiss-notification type="button" aria-label="刪除「${escapeHtml(item.title)}」通知">×</button>
             <h3>${escapeHtml(item.title)}</h3>
             ${dateLabel ? `<small>${escapeHtml(dateLabel)}</small>` : ""}
           </article>`;
       }
       return `
-      <details class="notification-item" data-notification-item data-notification-id="${escapeHtml(item.id)}">
+      <details class="notification-item${unreadClass}" data-notification-item data-notification-id="${escapeHtml(item.id)}">
+        ${checkbox}
         <summary class="notification-summary">
           <span><h3>${escapeHtml(item.title)}</h3>${dateLabel ? `<small>${escapeHtml(dateLabel)}</small>` : ""}</span>
           <span class="notification-expand-label">查看</span>
@@ -1558,16 +1648,14 @@ const openNotificationCenter = async () => {
       item.addEventListener("toggle", () => {
         if (!item.open || !currentUser?.uid) return;
         const notificationId = String(item.dataset.notificationId || "");
-        const currentReadIds = Array.isArray(currentMemberProfile?.readNotificationIds) ? currentMemberProfile.readNotificationIds : [];
-        if (currentReadIds.includes(notificationId)) return;
-        const readNotificationIds = [...new Set([...currentReadIds, notificationId])].slice(-200);
-        currentMemberProfile = { ...(currentMemberProfile || {}), readNotificationIds };
-        setDoc(getMemberDocRef(currentUser.uid), { readNotificationIds }, { merge: true })
-          .then(() => syncNotificationIndicator())
-          .catch((error) => console.warn("Mark notification as read failed:", error));
+        if (getNotificationProfileIds("readNotificationIds").includes(notificationId)) return;
+        markNotificationIdsAsRead([notificationId]).catch((error) => console.warn("Mark notification as read failed:", error));
       });
     });
+    updateNotificationToolbarState();
   } catch (error) {
+    notificationCenterVisibleIds = [];
+    if (toolbar) toolbar.hidden = true;
     list.innerHTML = `<p class="content-copy">通知載入失敗，請稍後再試。</p>`;
   }
 };
@@ -1583,6 +1671,54 @@ const bindNotificationCenter = () => {
     });
   }
   document.addEventListener("click", async (event) => {
+    const selectAllInput = event.target.closest("[data-notification-select-all]");
+    if (selectAllInput) {
+      document.querySelectorAll("[data-notification-select]").forEach((checkbox) => {
+        checkbox.checked = selectAllInput.checked;
+      });
+      updateNotificationToolbarState();
+      return;
+    }
+
+    if (event.target.closest("[data-notification-select]")) {
+      updateNotificationToolbarState();
+      return;
+    }
+
+    const markAllReadButton = event.target.closest("[data-mark-all-notifications-read]");
+    if (markAllReadButton) {
+      markAllReadButton.disabled = true;
+      try {
+        await markNotificationIdsAsRead(notificationCenterVisibleIds);
+        showToast("所有通知已標為已讀。", { tone: "success" });
+      } catch (error) {
+        console.error("Mark all notifications as read failed:", error);
+        showToast(error?.message || "請稍後再試一次。", { tone: "error", title: "標示已讀失敗" });
+      } finally {
+        updateNotificationToolbarState();
+      }
+      return;
+    }
+
+    const deleteSelectedButton = event.target.closest("[data-delete-selected-notifications]");
+    if (deleteSelectedButton) {
+      const selectedIds = [...document.querySelectorAll("[data-notification-select]:checked")]
+        .map((checkbox) => String(checkbox.closest("[data-notification-item]")?.dataset.notificationId || "").trim())
+        .filter(Boolean);
+      if (!selectedIds.length) return;
+      deleteSelectedButton.disabled = true;
+      try {
+        await dismissNotificationIds(selectedIds);
+        showToast(`已刪除 ${selectedIds.length} 則通知。`, { tone: "success" });
+      } catch (error) {
+        console.error("Delete selected notifications failed:", error);
+        showToast(error?.message || "請稍後再試一次。", { tone: "error", title: "刪除通知失敗" });
+      } finally {
+        updateNotificationToolbarState();
+      }
+      return;
+    }
+
     const dismissButton = event.target.closest("[data-dismiss-notification]");
     if (dismissButton) {
       const item = dismissButton.closest("[data-notification-item]");
@@ -1590,18 +1726,7 @@ const bindNotificationCenter = () => {
       if (!notificationId || !currentUser?.uid) return;
       dismissButton.disabled = true;
       try {
-        const currentIds = Array.isArray(currentMemberProfile?.dismissedNotificationIds)
-          ? currentMemberProfile.dismissedNotificationIds
-          : [];
-        const dismissedNotificationIds = [...new Set([...currentIds, notificationId])].slice(-200);
-        await setDoc(getMemberDocRef(currentUser.uid), { dismissedNotificationIds }, { merge: true });
-        currentMemberProfile = { ...(currentMemberProfile || {}), dismissedNotificationIds };
-        void syncNotificationIndicator();
-        item.remove();
-        const list = document.querySelector("[data-notification-list]");
-        if (list && !list.querySelector("[data-notification-item]")) {
-          list.innerHTML = `<article class="notification-empty"><h3>目前沒有通知</h3><p>新公告與報名狀態會顯示在這裡。</p></article>`;
-        }
+        await dismissNotificationIds([notificationId]);
       } catch (error) {
         console.error("Dismiss notification failed:", error);
         dismissButton.disabled = false;
