@@ -976,6 +976,7 @@ const syncGlobalNavigationLabels = () => {
 };
 
 const getLoginButtons = () => document.querySelectorAll("[data-open-login]");
+const getSignupButtons = () => document.querySelectorAll("[data-open-signup]");
 const getApplicationButtons = () => document.querySelectorAll("[data-open-application]");
 const getApprovalDocId = (email) => email.trim().toLowerCase();
 const getApplicationDocId = (userId, applicationType = "club") =>
@@ -8257,6 +8258,15 @@ const bindOpenButtons = () => {
     }
     button.dataset.openLoginBound = "true";
     button.addEventListener("click", () => openLoginModal(button));
+  });
+
+  getSignupButtons().forEach((button) => {
+    if (button.dataset.openSignupBound === "true") return;
+    button.dataset.openSignupBound = "true";
+    button.addEventListener("click", () => {
+      setAuthMode("signup");
+      void openLoginModal(button);
+    });
   });
 
   getApplicationButtons().forEach((button) => {

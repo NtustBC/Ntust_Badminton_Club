@@ -492,6 +492,31 @@ body.spa-navigating .page-main {
   font-size: clamp(2.4rem, 5vw, 4.4rem);
 }
 
+.page-title-signup-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-decoration-thickness: 0.06em;
+  text-underline-offset: 0.1em;
+  transition: color 160ms ease, text-decoration-color 160ms ease;
+}
+
+.page-title-signup-link:hover,
+.page-title-signup-link:focus-visible {
+  color: var(--brand);
+  text-decoration-color: currentColor;
+  outline: none;
+}
+
 .hero-copy,
 .page-copy,
 .content-copy,

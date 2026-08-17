@@ -239,7 +239,10 @@ service cloud.firestore {
     }
 
     match /classPublicRosters/{rosterId} {
-      allow read, create, update: if isAdmin();
+      allow get, list: if isAdmin() || (
+        isSignedIn() && resource.data.userId == request.auth.uid
+      );
+      allow create, update: if isAdmin();
       allow delete: if isAdmin() || (
         isSignedIn() && resource.data.userId == request.auth.uid
       );
