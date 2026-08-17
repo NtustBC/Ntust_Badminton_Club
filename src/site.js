@@ -771,10 +771,6 @@ const adminClassCalendarModalMarkup = `
                 <input id="admin-calendar-event-title-zh" maxlength="100" name="titleZh" type="text" placeholder="例如：雙打練習／場地異動" required />
               </div>
               <div class="form-field">
-                <label for="admin-calendar-event-title-en">英文標題</label>
-                <input id="admin-calendar-event-title-en" maxlength="100" name="titleEn" type="text" placeholder="e.g. Doubles Practice / Venue Change" required />
-              </div>
-              <div class="form-field">
                 <label for="admin-calendar-event-color">顯示顏色</label>
                 <select id="admin-calendar-event-color" name="color">
                   <option value="blue">藍色</option>
@@ -786,6 +782,10 @@ const adminClassCalendarModalMarkup = `
                   <option value="pink">粉紅色</option>
                   <option value="gray">灰色</option>
                 </select>
+              </div>
+              <div class="form-field">
+                <label for="admin-calendar-event-title-en">英文標題</label>
+                <input id="admin-calendar-event-title-en" maxlength="100" name="titleEn" type="text" placeholder="e.g. Doubles Practice / Venue Change" required />
               </div>
             </div>
           </section>
