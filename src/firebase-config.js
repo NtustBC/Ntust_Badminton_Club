@@ -1,6 +1,6 @@
 // Set this after registering the web app in Firebase App Check.
 // Keep empty until the matching provider is configured in Firebase Console.
-export const appCheckSiteKey = "";
+export const appCheckSiteKey = "6LcRpIktAAAAAJ-wQlO2yjqsHiTjxqTNTQhx0tjz";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyDORSooTWK-51ima5-BmsWGT76-jesffnc",

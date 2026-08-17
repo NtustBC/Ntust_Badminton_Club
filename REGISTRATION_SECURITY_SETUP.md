@@ -6,7 +6,7 @@ Firestore Rules 與 Cloud Functions 必須另外部署；只更新 GitHub Pages 
 
 1. 確認 Firestore 的 `admins/{uid}` 至少已有一位真實管理員；系統不再接受任何硬編碼管理員 Email。
 2. 不需要設定 Resend、SMTP 或郵件 API Key。
-3. 在 Firebase App Check 為 Web App 註冊 reCAPTCHA v3，將 Site Key 填入 `src/firebase-config.js` 的 `appCheckSiteKey`。
+3. 在 Firebase App Check 為 Web App 註冊 reCAPTCHA Enterprise，將 Site Key 填入 `src/firebase-config.js` 的 `appCheckSiteKey`。
 4. 先觀察 App Check metrics，確認正式站請求正常後，再於 Firebase Console 啟用 Cloud Firestore、Authentication 與 Functions enforcement。
 5. 部署 Functions 與 Firestore Rules：
 

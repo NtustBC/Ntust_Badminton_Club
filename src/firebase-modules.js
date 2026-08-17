@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
 import {
   initializeAppCheck,
-  ReCaptchaV3Provider,
+  ReCaptchaEnterpriseProvider,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app-check.js";
 import {
   browserLocalPersistence,
@@ -47,7 +47,7 @@ export {
   httpsCallable,
   onAuthStateChanged,
   query,
-  ReCaptchaV3Provider,
+  ReCaptchaEnterpriseProvider,
   serverTimestamp,
   setDoc,
   setPersistence,

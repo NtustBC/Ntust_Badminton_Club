@@ -5,7 +5,7 @@ import { applyPageLanguage } from "./i18n.js";
 
 let initializeApp;
 let initializeAppCheck;
-let ReCaptchaV3Provider;
+let ReCaptchaEnterpriseProvider;
 let browserLocalPersistence;
 let createUserWithEmailAndPassword;
 let getAuth;
@@ -41,7 +41,7 @@ const ensureFirebaseModules = async () => {
       ({
         initializeApp,
         initializeAppCheck,
-        ReCaptchaV3Provider,
+        ReCaptchaEnterpriseProvider,
         browserLocalPersistence,
         createUserWithEmailAndPassword,
         getAuth,
@@ -2259,9 +2259,9 @@ const ensureAuthReady = async () => {
     try {
       await ensureFirebaseModules();
       const app = initializeApp(firebaseConfig);
-      if (appCheckSiteKey && initializeAppCheck && ReCaptchaV3Provider) {
+      if (appCheckSiteKey && initializeAppCheck && ReCaptchaEnterpriseProvider) {
         initializeAppCheck(app, {
-          provider: new ReCaptchaV3Provider(appCheckSiteKey),
+          provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
           isTokenAutoRefreshEnabled: true,
         });
       }
@@ -6350,16 +6350,23 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
     window.setTimeout(() => openAdminClassCalendarModal(formatDateInputValue(new Date())), 0);
   });
 
-  container.querySelector("[data-admin-calendar-date-jump]")?.addEventListener("change", (event) => {
-    const dateKey = String(event.target.value || "");
+  const dateJumpInput = container.querySelector("[data-admin-calendar-date-jump]");
+  const handleAdminCalendarDateJump = (event) => {
+    const dateKey = String(event.currentTarget.value || "");
     const date = parseDateKey(dateKey);
     if (!date) {
       return;
     }
     adminClassCalendarMonthOffset = getAdminCalendarMonthOffset(date);
     renderAdminClassCalendarCompact(sessions, signups);
+    const nextDateJumpInput = container.querySelector("[data-admin-calendar-date-jump]");
+    if (nextDateJumpInput instanceof HTMLInputElement) {
+      nextDateJumpInput.value = dateKey;
+    }
     window.setTimeout(() => openAdminClassCalendarModal(dateKey), 0);
-  });
+  };
+  dateJumpInput?.addEventListener("input", handleAdminCalendarDateJump);
+  dateJumpInput?.addEventListener("change", handleAdminCalendarDateJump);
 
   bindAdminClassCalendarActions();
 };
