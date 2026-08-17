@@ -495,7 +495,6 @@ body.spa-navigating .page-main {
 .hero-copy,
 .page-copy,
 .content-copy,
-.footer-copy,
 .timeline-copy,
 .privacy-copy,
 .notice-copy {
@@ -1215,11 +1214,6 @@ body.spa-navigating .page-main {
   font-family: var(--font-serif);
   font-size: 1.42rem;
   font-weight: 700;
-}
-
-.footer-copy {
-  max-width: 540px;
-  margin: 18px 0 0;
 }
 
 .language-switch {
