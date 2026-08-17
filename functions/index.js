@@ -176,6 +176,37 @@ exports.deleteOwnAccount = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (request)
   const name = String(member.displayName || member.name || "未提供姓名").trim().slice(0, 100);
 
   try {
+    await releaseMembershipRegistrationSlot(firestore, member);
+  } catch (error) {
+    // A stale or temporarily unavailable counter must not prevent a user from
+    // exercising account deletion. The member document remains the source of
+    // truth and the counter can be rebuilt by the existing registration flow.
+    logger.warn("Failed to release membership slot during own-account deletion.", {
+      uid,
+      error: error?.message || String(error),
+    });
+  }
+
+  const writer = firestore.bulkWriter();
+  writer.delete(firestore.collection("members").doc(uid));
+  writer.delete(firestore.collection("signupApprovals").doc(email));
+  writer.delete(firestore.collection("passwordResetRateLimits").doc(crypto.createHash("sha256").update(email).digest("hex")));
+  applicationsSnapshot.docs.forEach((snapshot) => writer.delete(snapshot.ref));
+  signupsSnapshot.docs.forEach((snapshot) => {
+    writer.delete(snapshot.ref);
+    writer.delete(firestore.collection("classPublicRosters").doc(snapshot.id));
+  });
+  try {
+    await writer.close();
+  } catch (error) {
+    logger.error("Failed to remove data during own-account deletion.", {
+      uid,
+      error: error?.message || String(error),
+    });
+    throw new HttpsError("internal", "帳號資料清除失敗，請稍後再試。");
+  }
+
+  try {
     await admin.auth().deleteUser(uid);
   } catch (error) {
     if (error?.code !== "auth/user-not-found") {
@@ -184,23 +215,22 @@ exports.deleteOwnAccount = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (request)
     }
   }
 
-  await releaseMembershipRegistrationSlot(firestore, member);
-  const writer = firestore.bulkWriter();
-  writer.delete(firestore.collection("members").doc(uid));
-  writer.delete(firestore.collection("signupApprovals").doc(email));
-  writer.delete(firestore.collection("passwordResetRateLimits").doc(crypto.createHash("sha256").update(email).digest("hex")));
-  applicationsSnapshot.docs.forEach((snapshot) => writer.delete(snapshot.ref));
-  signupsSnapshot.docs.forEach((snapshot) => writer.delete(snapshot.ref));
-  writer.set(firestore.collection("adminNotifications").doc(), {
-    type: "account_deleted",
-    title: "使用者已刪除帳號",
-    message: `${name}（${email}）已自行刪除網站帳號。`,
-    userId: uid,
-    email,
-    name,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-  await writer.close();
+  try {
+    await firestore.collection("adminNotifications").add({
+      type: "account_deleted",
+      title: "使用者已刪除帳號",
+      message: `${name}（${email}）已自行刪除網站帳號。`,
+      userId: uid,
+      email,
+      name,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    logger.warn("Failed to create account deletion notification.", {
+      uid,
+      error: error?.message || String(error),
+    });
+  }
 
   logger.info("Member deleted own account.", { uid, email });
   return { ok: true };
