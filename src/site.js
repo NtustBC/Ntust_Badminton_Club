@@ -8,8 +8,11 @@ let initializeAppCheck;
 let ReCaptchaEnterpriseProvider;
 let browserLocalPersistence;
 let createUserWithEmailAndPassword;
+let deleteUser;
+let EmailAuthProvider;
 let getAuth;
 let onAuthStateChanged;
+let reauthenticateWithCredential;
 let signInWithEmailAndPassword;
 let signOut;
 let collection;
@@ -44,8 +47,11 @@ const ensureFirebaseModules = async () => {
         ReCaptchaEnterpriseProvider,
         browserLocalPersistence,
         createUserWithEmailAndPassword,
+        deleteUser,
+        EmailAuthProvider,
         getAuth,
         onAuthStateChanged,
+        reauthenticateWithCredential,
         signInWithEmailAndPassword,
         signOut,
         collection,
@@ -7129,22 +7135,53 @@ const handlePersonalProfileSubmit = async (event) => {
   }
 };
 
+const deleteOwnFirestoreData = async (userId, email) => {
+  const [applicationsSnapshot, signupsSnapshot, publicRosterSnapshot, notificationsSnapshot] = await Promise.all([
+    getDocs(query(collection(db, "applications"), where("email", "==", email))),
+    getDocs(query(collection(db, CLASS_SIGNUP_COLLECTION), where("userId", "==", userId))),
+    getDocs(query(collection(db, CLASS_PUBLIC_ROSTER_COLLECTION), where("userId", "==", userId))),
+    getDocs(query(collection(db, MEMBER_NOTIFICATION_COLLECTION), where("userId", "==", userId))),
+  ]);
+  const refs = [
+    getMemberDocRef(userId),
+    getApprovalDocRef(email),
+    ...applicationsSnapshot.docs.map((snapshot) => snapshot.ref),
+    ...signupsSnapshot.docs.map((snapshot) => snapshot.ref),
+    ...publicRosterSnapshot.docs.map((snapshot) => snapshot.ref),
+    ...notificationsSnapshot.docs.map((snapshot) => snapshot.ref),
+  ];
+
+  for (let index = 0; index < refs.length; index += 400) {
+    const batch = writeBatch(db);
+    refs.slice(index, index + 400).forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
+};
+
 const handleDeleteOwnAccount = async (event) => {
   const button = event.currentTarget;
   if (!currentUser?.uid) return;
   const confirmed = window.confirm("確定要永久刪除帳號嗎？\n\n個人資料、入社申請與社課報名紀錄都會刪除，而且無法復原。");
   if (!confirmed) return;
+  const password = window.prompt("為了確認是本人操作，請輸入目前的登入密碼：");
+  if (password === null) return;
+  if (!password) {
+    showToast("請輸入目前的登入密碼。", { tone: "error", title: "無法刪除帳號" });
+    return;
+  }
 
   setButtonLoading(button, true, "刪除中…");
   try {
     await ensureAuthReady();
-    if (!functionsClient || !httpsCallable) throw new Error("帳號服務目前無法使用，請稍後再試。");
-    await httpsCallable(functionsClient, "deleteOwnAccount")({});
-    try {
-      await signOut(auth);
-    } catch (error) {
-      // The server has already removed the Authentication account.
+    const accountUser = auth?.currentUser || currentUser;
+    const email = String(accountUser?.email || "").trim().toLowerCase();
+    if (!accountUser?.uid || !email || !EmailAuthProvider || !reauthenticateWithCredential || !deleteUser) {
+      throw new Error("帳號驗證服務目前無法使用，請稍後再試。");
     }
+    const credential = EmailAuthProvider.credential(email, password);
+    await reauthenticateWithCredential(accountUser, credential);
+    await deleteOwnFirestoreData(accountUser.uid, email);
+    await deleteUser(accountUser);
     currentUser = null;
     currentUserIsAdmin = false;
     currentMemberProfile = null;
@@ -7155,7 +7192,15 @@ const handleDeleteOwnAccount = async (event) => {
     showToast("帳號與相關資料已永久刪除。", { tone: "success", title: "帳號已刪除" });
   } catch (error) {
     console.error("Delete own account failed:", error);
-    showToast(error?.message || "請稍後再試一次。", { tone: "error", title: "刪除帳號失敗" });
+    const code = String(error?.code || "");
+    const message = ["auth/invalid-credential", "auth/wrong-password"].includes(code)
+      ? "密碼錯誤，請確認後再試一次。"
+      : code === "permission-denied"
+        ? "帳號資料刪除權限尚未更新，請先部署最新 Firestore Rules。"
+        : code.startsWith("auth/")
+          ? getFriendlyAuthError(error)
+          : error?.message || "請稍後再試一次。";
+    showToast(message, { tone: "error", title: "刪除帳號失敗" });
   } finally {
     setButtonLoading(button, false);
   }
