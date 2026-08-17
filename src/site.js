@@ -482,6 +482,7 @@ const loginModalMarkup = `
                 <div class="form-field"><label for="signup-name">姓名</label><input id="signup-name" name="name" placeholder="王小明" type="text" autocomplete="name" /></div>
                 <div class="form-field"><label for="signup-student-id">學號</label><input id="signup-student-id" name="studentId" placeholder="B11303044" type="text" /></div>
                 <div class="form-field"><label for="signup-school">學校</label><select id="signup-school" name="school"><option value="">請先選擇學校</option><option value="臺科大">臺科大</option><option value="外校">外校</option></select></div>
+                <div class="form-field" data-signup-external-school-field hidden><label for="signup-external-school">學校名稱</label><input id="signup-external-school" name="externalSchoolName" maxlength="100" placeholder="請輸入學校名稱" type="text" autocomplete="organization" /></div>
                 <div class="form-field"><label for="signup-department">系別</label><input id="signup-department" name="department" list="department-options" placeholder="選擇學校後選擇或輸入系別" type="text" /></div>
                 <div class="form-field"><label for="signup-phone">聯絡電話</label><input id="signup-phone" name="phone" placeholder="09xx-xxx-xxx" type="tel" autocomplete="tel" /></div>
               </div>
@@ -2005,6 +2006,8 @@ const getLoginModalElements = () => {
     signupNameInput: loginModal.querySelector("#signup-name"),
     signupStudentIdInput: loginModal.querySelector("#signup-student-id"),
     signupSchoolInput: loginModal.querySelector("#signup-school"),
+    signupExternalSchoolField: loginModal.querySelector("[data-signup-external-school-field]"),
+    signupExternalSchoolInput: loginModal.querySelector("#signup-external-school"),
     signupDepartmentInput: loginModal.querySelector("#signup-department"),
     signupPhoneInput: loginModal.querySelector("#signup-phone"),
     privacyConsentInput: loginModal.querySelector("[name='privacyConsent']"),
@@ -3741,7 +3744,8 @@ const bindMemberEditForms = (memberList) => {
         !memberId ||
         !payload.name ||
         !payload.studentId ||
-        !["臺科大", "外校"].includes(payload.school) ||
+        !payload.school ||
+        payload.school.length > 100 ||
         !payload.department ||
         !payload.phone ||
         !isValidAcademicYearValue(payload.academicYear) ||
@@ -4221,7 +4225,10 @@ const renderMembersList = (members = []) => {
   list.innerHTML = filteredMembers
     .map((member, index) => {
       const memberStatusLabel = "社員";
-      const school = member.school === "外校" ? "外校" : "臺科大";
+      const school = String(member.school || "臺科大").trim();
+      const customSchoolOption = !["臺科大", "外校"].includes(school)
+        ? `<option value="${escapeHtml(school)}" selected>${escapeHtml(school)}</option>`
+        : "";
       return `
         <article
           class="member-row member-row-expandable"
@@ -4262,7 +4269,7 @@ const renderMembersList = (members = []) => {
               <div class="class-signup-profile">
                 <div class="form-field"><label>姓名</label><input name="name" value="${escapeHtml(member.name || "")}" required /></div>
                 <div class="form-field"><label>學號</label><input name="studentId" value="${escapeHtml(member.studentId || "")}" required /></div>
-                <div class="form-field"><label>學校</label><select name="school" required><option value="臺科大"${school === "臺科大" ? " selected" : ""}>臺科大</option><option value="外校"${school === "外校" ? " selected" : ""}>外校</option></select></div>
+                <div class="form-field"><label>學校</label><select name="school" required><option value="臺科大"${school === "臺科大" ? " selected" : ""}>臺科大</option><option value="外校"${school === "外校" ? " selected" : ""}>外校</option>${customSchoolOption}</select></div>
                 <div class="form-field"><label>系別</label><input name="department" value="${escapeHtml(member.department || "")}" required /></div>
                 <div class="form-field"><label>電話</label><input name="phone" type="tel" value="${escapeHtml(member.phone || "")}" required /></div>
                 <div class="form-field"><label>學年度</label><select name="academicYear" required>${getMemberAcademicYearOptionsMarkup(member.academicYear)}</select></div>
@@ -6936,7 +6943,16 @@ const populatePersonalProfileForm = (form) => {
   });
   const schoolInput = form.elements.namedItem("school");
   if (schoolInput instanceof HTMLSelectElement) {
-    schoolInput.value = profile.school === "外校" ? "外校" : "臺科大";
+    const school = String(profile.school || "臺科大").trim();
+    schoolInput.querySelectorAll("[data-custom-school-option]").forEach((option) => option.remove());
+    if (school && !["臺科大", "外校"].includes(school)) {
+      const option = document.createElement("option");
+      option.value = school;
+      option.textContent = school;
+      option.dataset.customSchoolOption = "true";
+      schoolInput.append(option);
+    }
+    schoolInput.value = school;
   }
   const preferences = profile.notificationPreferences || {};
   const defaults = { notificationAnnouncements: true, notificationClassReminders: true, notificationRegistrationUpdates: true };
@@ -6966,7 +6982,7 @@ const handlePersonalProfileSubmit = async (event) => {
   const school = String(values.school || "").trim();
   const department = String(values.department || "").trim();
   const phone = String(values.phone || "").trim();
-  if (!name || !studentId || !["臺科大", "外校"].includes(school) || !department || !phone) {
+  if (!name || !studentId || !school || school.length > 100 || !department || !phone) {
     setMessageTone(hint, "請依序選擇學校，並完整填寫姓名、學號、系別與聯絡電話。", "error");
     return;
   }
@@ -7023,14 +7039,16 @@ const handleDeleteOwnAccount = async (event) => {
 const handleAuthSubmit = async (event) => {
   event.preventDefault();
 
-  const { emailInput, passwordInput, confirmInput, authSubmit, signupNameInput, signupStudentIdInput, signupSchoolInput, signupDepartmentInput, signupPhoneInput, privacyConsentInput } = getLoginModalElements();
+  const { emailInput, passwordInput, confirmInput, authSubmit, signupNameInput, signupStudentIdInput, signupSchoolInput, signupExternalSchoolInput, signupDepartmentInput, signupPhoneInput, privacyConsentInput } = getLoginModalElements();
   const email = emailInput.value.trim().toLowerCase();
   const password = passwordInput.value;
   const passwordConfirm = confirmInput.value;
+  const signupSchoolType = String(signupSchoolInput?.value || "").trim();
+  const signupExternalSchoolName = String(signupExternalSchoolInput?.value || "").trim();
   const signupProfile = {
     name: String(signupNameInput?.value || "").trim(),
     studentId: String(signupStudentIdInput?.value || "").trim(),
-    school: String(signupSchoolInput?.value || "").trim(),
+    school: signupSchoolType === "外校" ? signupExternalSchoolName : signupSchoolType,
     department: String(signupDepartmentInput?.value || "").trim(),
     phone: String(signupPhoneInput?.value || "").trim(),
     ...readMembershipPaymentForm(event.currentTarget),
@@ -7056,7 +7074,12 @@ const handleAuthSubmit = async (event) => {
     return;
   }
 
-  if (authMode === "signup" && (!signupProfile.name || !signupProfile.studentId || !["臺科大", "外校"].includes(signupProfile.school) || !signupProfile.department || !signupProfile.phone)) {
+  if (authMode === "signup" && signupSchoolType === "外校" && !signupExternalSchoolName) {
+    setHint("選擇外校時，請輸入學校名稱。", "error");
+    return;
+  }
+
+  if (authMode === "signup" && (!signupProfile.name || !signupProfile.studentId || !["臺科大", "外校"].includes(signupSchoolType) || !signupProfile.school || signupProfile.school.length > 100 || !signupProfile.department || !signupProfile.phone)) {
     setHint("請先選擇學校，再完整填寫姓名、學號、系別與聯絡電話。", "error");
     return;
   }
@@ -7374,7 +7397,18 @@ const handleAccountMembershipSubmit = async (event) => {
 };
 
 const bindLoginModalEvents = () => {
-  const { loginModal, loginForm, authTabs, authSubmit, closeButtons, accountMembershipForm, editAccountMembershipButton, personalProfileForm, editPersonalProfileButton } = getLoginModalElements();
+  const { loginModal, loginForm, authTabs, authSubmit, closeButtons, accountMembershipForm, editAccountMembershipButton, personalProfileForm, editPersonalProfileButton, signupSchoolInput, signupExternalSchoolField, signupExternalSchoolInput } = getLoginModalElements();
+
+  const syncSignupExternalSchoolField = () => {
+    const isExternalSchool = signupSchoolInput?.value === "外校";
+    if (signupExternalSchoolField instanceof HTMLElement) signupExternalSchoolField.hidden = !isExternalSchool;
+    if (signupExternalSchoolInput instanceof HTMLInputElement) {
+      signupExternalSchoolInput.required = isExternalSchool;
+      if (!isExternalSchool) signupExternalSchoolInput.value = "";
+    }
+  };
+  signupSchoolInput?.addEventListener("change", syncSignupExternalSchoolField);
+  syncSignupExternalSchoolField();
 
   authTabs.forEach((tab) => {
     tab.addEventListener("click", () => setAuthMode(tab.dataset.authTab));
