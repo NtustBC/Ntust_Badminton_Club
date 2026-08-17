@@ -307,6 +307,7 @@ const memberFilters = {
   term: "all",
   query: "",
 };
+let memberFiltersInitializedFromSettings = false;
 
 const authCopy = {
   signin: {
@@ -3318,6 +3319,12 @@ const loadCurrentTermSettings = async () => {
     }
     if (DEFAULT_TERMS.slice(0, 2).includes(term)) {
       configuredAcademicTerm = term;
+    }
+    if (!memberFiltersInitializedFromSettings) {
+      memberFilters.year = getConfiguredAcademicYear();
+      memberFilters.term = getConfiguredAcademicTerm();
+      memberFiltersInitializedFromSettings = true;
+      patchMembersFilterUI();
     }
     membershipPaymentSettings = {
       ...membershipPaymentSettings,
