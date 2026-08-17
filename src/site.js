@@ -767,8 +767,12 @@ const adminClassCalendarModalMarkup = `
                 </select>
               </div>
               <div class="form-field">
-                <label for="admin-calendar-event-title">標題</label>
-                <input id="admin-calendar-event-title" name="title" type="text" placeholder="例如：雙打練習 / 場地異動" />
+                <label for="admin-calendar-event-title-zh">中文標題</label>
+                <input id="admin-calendar-event-title-zh" maxlength="100" name="titleZh" type="text" placeholder="例如：雙打練習／場地異動" required />
+              </div>
+              <div class="form-field">
+                <label for="admin-calendar-event-title-en">英文標題</label>
+                <input id="admin-calendar-event-title-en" maxlength="100" name="titleEn" type="text" placeholder="e.g. Doubles Practice / Venue Change" required />
               </div>
               <div class="form-field">
                 <label for="admin-calendar-event-color">顯示顏色</label>
@@ -1178,6 +1182,14 @@ const getWeekdayKeyFromDateValue = (value) => {
   return DATE_WEEKDAY_ORDER[date.getDay()] || "";
 };
 const getWeekdayLabel = (weekday) => CLASS_WEEKDAY_LABELS[String(weekday || "").trim().toLowerCase()] || String(weekday || "");
+const getLocalizedContentTitle = (entry = {}, fallback = "未命名內容") => {
+  const legacyTitle = String(entry.title || "").trim();
+  const chineseTitle = String(entry.titleZh || legacyTitle).trim();
+  const englishTitle = String(entry.titleEn || "").trim();
+  return body.dataset.language === "en"
+    ? englishTitle || chineseTitle || fallback
+    : chineseTitle || legacyTitle || fallback;
+};
 
 const HOME_CLASS_SCHEDULE_FALLBACK = [
   { weekday: "wed", startTime: "15:30", endTime: "18:20" },
@@ -1385,7 +1397,7 @@ const loadNotificationItems = async () => {
     announcements.sort((a, b) => getNotificationChangeMs(b) - getNotificationChangeMs(a)).slice(0, 12).forEach((entry) => {
       items.push({
         id: `announcement:${entry.id}:${getNotificationChangeMs(entry) || "legacy"}`,
-        title: entry.title || "社團公告",
+        title: getLocalizedContentTitle(entry, "社團公告"),
         copy: entry.body || entry.message || entry.reminder || entry.note || entry.description || "請查看最新公告內容。",
         date: entry.date || entry.startDate || entry.createdAt,
         sortMs: getNotificationChangeMs(entry) || getAnnouncementSortMs(entry),
@@ -1417,7 +1429,7 @@ const loadNotificationItems = async () => {
       .forEach((entry) => {
         items.push({
           id: `class:${getClassSessionId(entry)}:${getNotificationChangeMs(entry) || "legacy"}`,
-          title: entry.title || "社課提醒",
+          title: getLocalizedContentTitle(entry, "社課提醒"),
           copy: entry.description || entry.reminder || [getClassSessionTimeLabel(entry), entry.location].filter(Boolean).join(" · ") || "請查看社課日期與內容。",
           date: entry.date || entry.sessionDate || entry.createdAt,
           sortMs: getNotificationChangeMs(entry) || getClassSessionSortMs(entry),
@@ -1431,7 +1443,7 @@ const loadNotificationItems = async () => {
         items.push({
           id: `class-starting:${sessionId}:${startsAtMs}`,
           title: "社課即將開始",
-          copy: `你報名的「${session.title || "社課"}」將於 24 小時內開始${session.location ? `，地點：${session.location}` : ""}。`,
+          copy: `你報名的「${getLocalizedContentTitle(session, "社課")}」將於 24 小時內開始${session.location ? `，地點：${session.location}` : ""}。`,
           date: startsAtMs,
           sortMs: startsAtMs - upcomingWindowMs,
         });
@@ -1448,7 +1460,7 @@ const loadNotificationItems = async () => {
         items.push({
           id: `signup-opening:${sessionId}:${openAtMs}`,
           title: "社課報名即將開始",
-          copy: `「${session.title || "社課"}」將於 ${new Date(openAtMs).toLocaleString("zh-TW")} 開放報名。`,
+          copy: `「${getLocalizedContentTitle(session, "社課")}」將於 ${new Date(openAtMs).toLocaleString("zh-TW")} 開放報名。`,
           date: openAtMs,
           sortMs: openAtMs - upcomingWindowMs,
         });
@@ -1457,7 +1469,7 @@ const loadNotificationItems = async () => {
         items.push({
           id: `signup-closing:${sessionId}:${closeAtMs}`,
           title: "社課報名即將截止",
-          copy: `「${session.title || "社課"}」將於 ${new Date(closeAtMs).toLocaleString("zh-TW")} 截止報名。`,
+          copy: `「${getLocalizedContentTitle(session, "社課")}」將於 ${new Date(closeAtMs).toLocaleString("zh-TW")} 截止報名。`,
           date: closeAtMs,
           sortMs: closeAtMs - upcomingWindowMs,
         });
@@ -2627,7 +2639,7 @@ const normalizeClassSessionAsNotice = (session = {}) => ({
   id: `class-${getClassSessionId(session)}`,
   date: String(session.date || session.sessionDate || "").trim(),
   endDate: String(session.date || session.sessionDate || "").trim(),
-  title: session.title || "社課",
+  title: getLocalizedContentTitle(session, "社課"),
   body: session.description || session.reminder || "請查看社課日期與內容。",
   reminder: "社課",
   color: normalizeCalendarColor(session.color),
@@ -2685,7 +2697,7 @@ const getAdminCalendarEventsForDate = (dateKey) => {
     .map((session) => ({
       type: "class",
       id: getClassSessionId(session),
-      title: session.title || "未命名內容",
+      title: getLocalizedContentTitle(session),
       timeLabel: getClassSessionTimeLabel(session),
       location: session.location || "",
       note: session.reminder || session.description || "",
@@ -2699,7 +2711,7 @@ const getAdminCalendarEventsForDate = (dateKey) => {
     .map((announcement) => ({
       type: getNoticeEventType(announcement),
       id: getAdminCalendarAnnouncementId(announcement),
-      title: announcement.title || "未命名內容",
+      title: getLocalizedContentTitle(announcement),
       timeLabel: getNoticeEventType(announcement) === "holiday" ? "連續假期" : getAnnouncementTimeLabel(announcement),
       location: announcement.location || "",
       note: getAnnouncementNote(announcement),
@@ -2834,7 +2846,7 @@ const renderClassSignupModalContent = (sessionId) => {
       `;
 
   if (title) {
-    title.textContent = session.title || "社課報名";
+    title.textContent = getLocalizedContentTitle(session, "社課報名");
   }
   if (subtitle) {
     subtitle.textContent = [getClassSessionDateLabel(session), getClassSessionTimeLabel(session)].filter(Boolean).join(" ・ ");
@@ -2846,7 +2858,7 @@ const renderClassSignupModalContent = (sessionId) => {
         <div class="admin-calendar-modal-session-head">
           <div>
             <p class="admin-calendar-modal-session-weekday">${escapeHtml(getWeekdayLabel(session.weekday) || "社課")}</p>
-            <h3 class="admin-calendar-modal-session-title">${escapeHtml(session.title || "社課")}</h3>
+            <h3 class="admin-calendar-modal-session-title">${escapeHtml(getLocalizedContentTitle(session, "社課"))}</h3>
           </div>
           <span class="member-row-status">${escapeHtml(statusLabel)}</span>
         </div>
@@ -2988,7 +3000,8 @@ const setAdminCalendarEventForm = (event = null, dateKey = "") => {
   const sourceDate = event?.source?.date || event?.source?.sessionDate || dateKey;
   form.querySelector("[name='date']").value = sourceDate;
   form.querySelector("[name='eventType']").value = event?.type || "class";
-  form.querySelector("[name='title']").value = event?.title || "";
+  form.querySelector("[name='titleZh']").value = event?.source?.titleZh || event?.source?.title || event?.title || "";
+  form.querySelector("[name='titleEn']").value = event?.source?.titleEn || "";
   form.querySelector("[name='color']").value = normalizeCalendarColor(event?.color || event?.source?.color || (event?.type === "holiday" ? "orange" : "blue"));
   const legacyTimeParts = getLegacyTimeParts(event?.timeLabel || "");
   form.querySelector("[name='endDate']").value = event?.type && event.type !== "class" ? event?.source?.endDate || sourceDate : "";
@@ -3084,7 +3097,8 @@ function renderAdminCalendarDefaultShortcuts(form, dateKey = "") {
       form.querySelector("[name='startTime']").value = item.startTime;
       form.querySelector("[name='endTime']").value = item.endTime;
       if (item.location) form.querySelector("[name='location']").value = item.location;
-      if (item.title && !form.querySelector("[name='title']").value) form.querySelector("[name='title']").value = item.title;
+      if (item.titleZh && !form.querySelector("[name='titleZh']").value) form.querySelector("[name='titleZh']").value = item.titleZh;
+      if (item.titleEn && !form.querySelector("[name='titleEn']").value) form.querySelector("[name='titleEn']").value = item.titleEn;
       const signupRequired = form.querySelector("[name='signupRequired']");
       if (signupRequired instanceof HTMLInputElement) signupRequired.checked = item.signupRequired;
       const signupSettings = form.querySelector("[data-admin-calendar-signup-settings]");
@@ -3145,7 +3159,7 @@ const openAdminClassCalendarModal = (dateKey, trigger = null) => {
   bindAdminClassCalendarActions();
 
   window.setTimeout(() => {
-    form?.querySelector("[name='title']")?.focus();
+    form?.querySelector("[name='titleZh']")?.focus();
   }, 50);
 };
 
@@ -3170,6 +3184,14 @@ const applyLanguage = (lang) => {
 
   applyPageLanguage(normalizedLanguage);
   renderHomeClassSchedule();
+  if (announcementPageState.loaded) renderAnnouncementsBoard(announcementPageState.announcements);
+  if (classSignupPageState.loaded) {
+    renderClassCalendarBoard(classSignupPageState.sessions);
+    renderClassRosterBoard(classSignupPageState.sessions);
+  }
+  if (membersDashboardCache.loaded) {
+    renderAdminClassCalendarCompact(membersDashboardCache.classSessions, membersDashboardCache.classSessionSignups);
+  }
   window.localStorage.setItem(STORAGE_KEYS.language, normalizedLanguage);
 };
 
@@ -4888,7 +4910,7 @@ function renderClassCalendarBoard(sessions = []) {
             <div>
               <p class="section-kicker">${escapeHtml(getWeekdayLabel(session.weekday) || "可報名社課")}</p>
               <h3 class="content-title">${escapeHtml(getClassSessionDateLabel(session))}</h3>
-              <p class="content-copy">${escapeHtml([getClassSessionTimeLabel(session), session.title || "社課"].filter(Boolean).join(" ・ "))}</p>
+              <p class="content-copy">${escapeHtml([getClassSessionTimeLabel(session), getLocalizedContentTitle(session, "社課")].filter(Boolean).join(" ・ "))}</p>
               ${session.location ? `<p class="content-copy">地點：${escapeHtml(session.location)}</p>` : ""}
             </div>
             <span class="member-row-status">開放報名</span>
@@ -5025,7 +5047,7 @@ function renderClassRosterBoard(sessions = []) {
           <div class="class-session-header">
             <div>
               <p class="section-kicker">${escapeHtml(getWeekdayLabel(session.weekday) || "社課")}</p>
-              <h3 class="content-title">${escapeHtml(session.title || "社課名單")}</h3>
+              <h3 class="content-title">${escapeHtml(getLocalizedContentTitle(session, "社課名單"))}</h3>
               <p class="content-copy">${escapeHtml([getClassSessionDateLabel(session), getClassSessionTimeLabel(session)].filter(Boolean).join(" ・ "))}</p>
             </div>
             <span class="member-row-status">${escapeHtml(`${signups.length} 人報名`)}</span>
@@ -5378,7 +5400,7 @@ function renderAnnouncementsBoard(announcements = []) {
                 <span class="admin-calendar-day-event calendar-color-${escapeHtml(color)}${isHoliday ? " is-holiday" : ""}">
                   <span class="admin-calendar-day-event-bullet" aria-hidden="true">•</span>
                   <span class="admin-calendar-day-event-copy">
-                    <strong class="announcement-calendar-title">${escapeHtml(announcement.title || "未命名內容")}</strong>
+                    <strong class="announcement-calendar-title">${escapeHtml(getLocalizedContentTitle(announcement))}</strong>
                     ${timeLabel ? `<small>${escapeHtml(timeLabel)}</small>` : ""}
                   </span>
                 </span>
@@ -5443,7 +5465,7 @@ function renderAnnouncementsBoard(announcements = []) {
         .map((announcement) => ({
           type: getNoticeEventType(announcement),
           id: getAdminCalendarAnnouncementId(announcement),
-          title: announcement.title || (getNoticeEventType(announcement) === "class" ? "社課" : "公告"),
+          title: getLocalizedContentTitle(announcement, getNoticeEventType(announcement) === "class" ? "社課" : "公告"),
           timeLabel: getNoticeEventType(announcement) === "holiday" ? "連續假期" : getAnnouncementTimeLabel(announcement),
           location: announcement.location || "",
           note: getAnnouncementNote(announcement),
@@ -5753,7 +5775,7 @@ function renderAdminAnnouncements(announcements = []) {
                 ${getAnnouncementTimeLabel(announcement) ? `<span>${escapeHtml(getAnnouncementTimeLabel(announcement))}</span>` : ""}
                 <span>${escapeHtml(announcement.reminder || "公告")}</span>
               </div>
-              <h3 class="notice-title">${escapeHtml(announcement.title || "公告")}</h3>
+              <h3 class="notice-title">${escapeHtml(getLocalizedContentTitle(announcement, "公告"))}</h3>
             </div>
             <span class="class-announcement-toggle class-announcement-toggle-open">展開</span>
             <span class="class-announcement-toggle class-announcement-toggle-close">收合</span>
@@ -6277,7 +6299,7 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
             return `
               <article class="member-row">
                 <div class="member-row-top">
-                  <p class="member-row-index">${escapeHtml(session.title || "社團報名")}</p>
+                  <p class="member-row-index">${escapeHtml(getLocalizedContentTitle(session, "社團報名"))}</p>
                   <p class="member-row-status">${limit ? `上限 ${limit} 人` : "不限人數"}</p>
                 </div>
                 <p class="member-row-email">${escapeHtml([getClassSessionDateLabel(session), getClassSessionTimeLabel(session)].filter(Boolean).join(" / "))}</p>
@@ -6401,13 +6423,13 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
     const dayHolidays = dayAnnouncements.filter((announcement) => getNoticeEventType(announcement) === "holiday");
     const dayEvents = [
       ...daySessions.map((session) => ({
-        title: session.title || "未命名內容",
+        title: getLocalizedContentTitle(session),
         timeLabel: getClassSessionTimeLabel(session),
         sortMs: getClassSessionSortMs(session),
         color: normalizeCalendarColor(session.color),
       })),
       ...dayAnnouncements.map((announcement) => ({
-        title: announcement.title || "未命名內容",
+        title: getLocalizedContentTitle(announcement),
         timeLabel: getNoticeEventType(announcement) === "holiday" ? "連續假期" : getAnnouncementTimeLabel(announcement),
         sortMs: getAnnouncementSortMs(announcement),
         color: normalizeCalendarColor(announcement.color || (getNoticeEventType(announcement) === "holiday" ? "orange" : "blue")),
@@ -6763,7 +6785,9 @@ async function handleAdminCalendarEventSubmit(event) {
   const originalEventType = String(form.dataset.editingType || "").trim();
   const date = String(form.querySelector("[name='date']")?.value || "").trim();
   const eventType = String(form.querySelector("[name='eventType']")?.value || form.dataset.editingType || "class").trim();
-  const title = String(form.querySelector("[name='title']")?.value || "").trim();
+  const titleZh = String(form.querySelector("[name='titleZh']")?.value || "").trim();
+  const titleEn = String(form.querySelector("[name='titleEn']")?.value || "").trim();
+  const title = titleZh;
   const endDate = eventType !== "class" ? String(form.querySelector("[name='endDate']")?.value || date).trim() : date;
   const color = normalizeCalendarColor(form.querySelector("[name='color']")?.value);
   const startTime = String(form.querySelector("[name='startTime']")?.value || "").trim();
@@ -6784,8 +6808,8 @@ async function handleAdminCalendarEventSubmit(event) {
     return;
   }
 
-  if (!date || !title) {
-    showToast("請先填寫標題與日期。", { tone: "error", title: "資料尚未完整" });
+  if (!date || !titleZh || !titleEn) {
+    showToast("請先填寫中文標題、英文標題與日期。", { tone: "error", title: "資料尚未完整" });
     return;
   }
 
@@ -6854,6 +6878,8 @@ async function handleAdminCalendarEventSubmit(event) {
           date,
           endDate,
           title,
+          titleZh,
+          titleEn,
           eventType,
           calendarEventType: eventType,
           color,
@@ -6882,6 +6908,8 @@ async function handleAdminCalendarEventSubmit(event) {
           date,
           weekday,
           title,
+          titleZh,
+          titleEn,
           color,
           startTime,
           endTime,
@@ -8103,12 +8131,16 @@ const getClassDefaultSignupDateTime = (item, dateKey, prefix) => {
   return formatDateTimeLocalValue(date);
 };
 
-const normalizeClassScheduleDefault = (value = {}) => {
+const normalizeClassScheduleDefault = (value = {}, { requireBilingualTitles = false } = {}) => {
   const weekday = DATE_WEEKDAY_ORDER.includes(String(value.weekday || "")) ? String(value.weekday) : "";
   const startTime = String(value.startTime || "").trim();
   const endTime = String(value.endTime || "").trim();
   const signupRequired = Object.prototype.hasOwnProperty.call(value, "signupRequired") ? value.signupRequired === true : true;
   const signupLimit = Number(value.signupLimit || 0);
+  const titleZhSource = Object.prototype.hasOwnProperty.call(value, "titleZh") ? value.titleZh : value.title || "社課";
+  const titleZh = String(titleZhSource || "").trim().slice(0, 100);
+  const titleEn = String(value.titleEn || "").trim().slice(0, 100);
+  if (requireBilingualTitles && (!titleZh || !titleEn)) return null;
   if (!weekday || !/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime) || startTime >= endTime) return null;
   const signupDefaults = signupRequired
     ? {
@@ -8135,7 +8167,9 @@ const normalizeClassScheduleDefault = (value = {}) => {
     weekday,
     startTime,
     endTime,
-    title: String(value.title || "社課").trim().slice(0, 100),
+    title: titleZh,
+    titleZh,
+    titleEn,
     location: String(value.location || "").trim().slice(0, 200),
     signupRequired,
     signupLimit: signupRequired && Number.isFinite(signupLimit) && signupLimit > 0 ? Math.floor(signupLimit) : null,
@@ -8149,7 +8183,8 @@ const getClassDefaultRowMarkup = (item = {}) => `
       <div class="form-field"><label>星期</label><select name="weekday">${DATE_WEEKDAY_ORDER.map((key) => `<option value="${key}"${item.weekday === key ? " selected" : ""}>${escapeHtml(getWeekdayLabel(key))}</option>`).join("")}</select></div>
       <div class="form-field"><label>開始</label><input name="startTime" type="time" step="300" value="${escapeHtml(item.startTime || "")}" required /></div>
       <div class="form-field"><label>結束</label><input name="endTime" type="time" step="300" value="${escapeHtml(item.endTime || "")}" required /></div>
-      <div class="form-field"><label>標題</label><input name="title" type="text" value="${escapeHtml(item.title || "社課")}" /></div>
+      <div class="form-field"><label>中文標題</label><input maxlength="100" name="titleZh" type="text" value="${escapeHtml(item.titleZh || item.title || "")}" required /></div>
+      <div class="form-field"><label>英文標題</label><input maxlength="100" name="titleEn" type="text" value="${escapeHtml(item.titleEn || "")}" required /></div>
       <div class="form-field"><label>地點（選填）</label><input name="location" type="text" value="${escapeHtml(item.location || "")}" /></div>
     </div>
     <label class="class-default-signup-toggle">
@@ -8193,7 +8228,7 @@ const bindClassDefaultRow = (row) => {
 const renderClassDefaultSettings = () => {
   const list = document.querySelector("[data-class-default-list]");
   if (!list) return;
-  list.innerHTML = (classScheduleDefaults.length ? classScheduleDefaults : [{ weekday: "fri", startTime: "", endTime: "", signupLimit: "", title: "社課", location: "" }])
+  list.innerHTML = (classScheduleDefaults.length ? classScheduleDefaults : [{ weekday: "fri", startTime: "", endTime: "", signupLimit: "", titleZh: "", titleEn: "", location: "" }])
     .map(getClassDefaultRowMarkup)
     .join("");
   list.querySelectorAll("[data-class-default-row]").forEach(bindClassDefaultRow);
@@ -8207,7 +8242,7 @@ const bindClassDefaultSettings = () => {
   renderClassDefaultSettings();
   addButton?.addEventListener("click", () => {
     const list = form.querySelector("[data-class-default-list]");
-    list?.insertAdjacentHTML("beforeend", getClassDefaultRowMarkup({ weekday: "fri", title: "社課" }));
+    list?.insertAdjacentHTML("beforeend", getClassDefaultRowMarkup({ weekday: "fri", titleZh: "", titleEn: "" }));
     bindClassDefaultRow(list?.lastElementChild);
   });
   form.addEventListener("submit", async (event) => {
@@ -8218,7 +8253,8 @@ const bindClassDefaultSettings = () => {
       startTime: row.querySelector("[name='startTime']")?.value,
       endTime: row.querySelector("[name='endTime']")?.value,
       signupLimit: row.querySelector("[name='signupLimit']")?.value,
-      title: row.querySelector("[name='title']")?.value,
+      titleZh: row.querySelector("[name='titleZh']")?.value,
+      titleEn: row.querySelector("[name='titleEn']")?.value,
       location: row.querySelector("[name='location']")?.value,
       signupRequired: Boolean(row.querySelector("[name='signupRequired']")?.checked),
       memberSignupOpenDaysBefore: row.querySelector("[name='memberSignupOpenDaysBefore']")?.value,
@@ -8227,9 +8263,9 @@ const bindClassDefaultSettings = () => {
       publicSignupOpenTime: row.querySelector("[name='publicSignupOpenTime']")?.value,
       signupCloseDaysBefore: row.querySelector("[name='signupCloseDaysBefore']")?.value,
       signupCloseTime: row.querySelector("[name='signupCloseTime']")?.value,
-    }));
+    }, { requireBilingualTitles: true }));
     if (parsed.some((item) => !item)) {
-      setMessageTone(form.querySelector("[data-class-default-hint]"), "請確認社課與報名時間完整，且依序為社員開始、全面開放、報名截止。", "error");
+      setMessageTone(form.querySelector("[data-class-default-hint]"), "請填寫中英文標題，並確認社課與報名時間完整且順序正確。", "error");
       return;
     }
     const submitButton = form.querySelector("[data-class-default-save]");
