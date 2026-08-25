@@ -1453,7 +1453,7 @@ const loadNotificationItems = async () => {
     });
   }
   if (preferences.registrationUpdates !== false) {
-    const hasFormalAccess = currentUserIsAdmin || getManagedMembershipStatus(currentMemberProfile || currentMemberStatus) === "formal_member" || currentMemberProfile?.paymentStatus === "paid";
+    const hasFormalAccess = currentUserIsAdmin || hasMemberPrivileges(currentMemberProfile || currentMemberStatus) || currentMemberProfile?.paymentStatus === "paid";
     sessions.filter((session) => session.signupRequired === true).forEach((session) => {
       const sessionId = getClassSessionId(session);
       const openAtMs = hasFormalAccess ? getMemberSignupOpenMs(session) : getPublicSignupOpenMs(session);
@@ -1795,7 +1795,13 @@ const membershipStatusCopy = {
     label: "管理員",
     meaning: "目前具有管理員權限。",
     action: "",
-  },  non_member: {
+  },
+  officer: {
+    label: "幹部",
+    meaning: "目前為社團幹部，可使用正式社員功能。",
+    action: "進入社員專區",
+  },
+  non_member: {
     label: "非社員",
     meaning: "目前不是正式社員。",
     action: "",
@@ -1823,6 +1829,10 @@ const getManagedMembershipStatus = (value = "") => {
     return "admin";
   }
 
+  if (["officer", "club_officer", "staff", "cadre"].includes(explicitStatus)) {
+    return "officer";
+  }
+
   if (["formal_member", "formal", "approved", "member"].includes(explicitStatus)) {
     return "formal_member";
   }
@@ -1836,9 +1846,10 @@ const getManagedMembershipStatus = (value = "") => {
 
 const getMembershipStatusCopy = (status) => membershipStatusCopy[getManagedMembershipStatus(status)];
 const getCurrentMembershipStatus = () => (currentUserIsAdmin ? "admin" : getManagedMembershipStatus(currentMemberStatus));
+const hasMemberPrivileges = (value = "") => ["formal_member", "officer", "admin"].includes(getManagedMembershipStatus(value));
 const hasFormalMemberAccess = (approvalData = null) =>
   currentUserIsAdmin ||
-  getManagedMembershipStatus(currentMemberProfile || currentMemberStatus) === "formal_member" ||
+  hasMemberPrivileges(currentMemberProfile || currentMemberStatus) ||
   currentMemberProfile?.paymentStatus === "paid" ||
   currentMemberProfile?.signupApproved === true ||
   Boolean(approvalData);
@@ -1876,11 +1887,22 @@ const getMembershipIntentFromProfile = (profile = {}) =>
 
 const getMembershipRegistrationPeriodId = () => `${getConfiguredAcademicYear()}-${getConfiguredAcademicTerm()}`;
 
+const doesMemberOccupyMembershipSlot = (member = {}, academicYear = getConfiguredAcademicYear(), term = getConfiguredAcademicTerm()) => {
+  const status = getManagedMembershipStatus(member);
+  const memberId = String(member.uid || member.id || "").trim();
+  const isKnownAdmin = Boolean(memberId) && (
+    (currentUserIsAdmin && currentUser?.uid === memberId) ||
+    (membersDashboardCache.admins || []).some((admin) => [admin.id, admin.uid].includes(memberId))
+  );
+  return !isKnownAdmin
+    && !["officer", "admin"].includes(status)
+    && String(member.academicYear || "") === academicYear
+    && String(member.term || "") === term
+    && getMembershipIntentFromProfile(member) === "join";
+};
+
 const currentProfileOccupiesMembershipSlot = () => {
-  const profile = currentMemberProfile || {};
-  return String(profile.academicYear || "") === getConfiguredAcademicYear()
-    && String(profile.term || "") === getConfiguredAcademicTerm()
-    && getMembershipIntentFromProfile(profile) === "join";
+  return doesMemberOccupyMembershipSlot(currentMemberProfile || {});
 };
 
 const getMembershipRegistrationAvailability = () => {
@@ -2027,9 +2049,12 @@ const loadCurrentMemberStatus = async (user) => {
   ]);
   const memberData = memberDoc.exists() ? memberDoc.data() : null;
   const signupApproved = Boolean(approvalDoc?.exists?.());
+  const managedMemberStatus = normalizeMembershipStatus(memberData);
 
   currentMemberProfile = memberData ? { ...memberData, signupApproved } : null;
-  currentMemberStatus = signupApproved ? "formal_member" : normalizeMembershipStatus(memberData);
+  currentMemberStatus = ["officer", "admin"].includes(managedMemberStatus)
+    ? managedMemberStatus
+    : signupApproved ? "formal_member" : managedMemberStatus;
   return currentMemberStatus;
 };
 
@@ -3850,6 +3875,7 @@ const bindMemberActionButtons = (memberList) => {
           }
 
           await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+          showToast(isPaid ? "社費已確認，社員狀態已更新。" : "社費確認已取消。", { tone: "success" });
         } catch (error) {
           console.error("Update membership payment failed:", error);
           window.alert(`更新社費狀態失敗：${error?.message || "請稍後再試一次。"}`);
@@ -4033,6 +4059,7 @@ const getMemberStatusOptionsMarkup = (status) => {
     { value: "non_member", label: "非社員" },
     { value: "former_member", label: "前社員" },
     { value: "formal_member", label: "社員" },
+    { value: "officer", label: "幹部" },
     { value: "admin", label: "管理員" },
   ]
     .map(
@@ -4054,9 +4081,11 @@ const bindMemberStatusSelects = (container) => {
       }
 
       const isAdmin = nextStatus === "admin";
+      const isOfficer = nextStatus === "officer";
       const isFormalMember = nextStatus === "formal_member";
       const isFormerMember = nextStatus === "former_member";
       const memberUpdate = {
+        membershipIntent: isFormalMember ? "join" : "not_join",
         membershipStatus: nextStatus,
         status: nextStatus,
         membershipStatusChange: {
@@ -4065,7 +4094,7 @@ const bindMemberStatusSelects = (container) => {
           changedAt: serverTimestamp(),
           changedBy: currentUser?.uid || "",
         },
-        paymentStatus: isAdmin ? "not_required" : isFormalMember ? "paid" : "unpaid",
+        paymentStatus: isAdmin || isOfficer ? "not_required" : isFormalMember ? "paid" : "unpaid",
         paidAt: isFormalMember ? serverTimestamp() : null,
         paymentConfirmedAt: isFormalMember ? serverTimestamp() : null,
         paymentConfirmedBy: isFormalMember ? currentUser?.uid || "" : "",
@@ -4075,10 +4104,39 @@ const bindMemberStatusSelects = (container) => {
       select.disabled = true;
 
       try {
-        const batch = writeBatch(db);
-        batch.set(getMemberDocRef(memberId), memberUpdate, { merge: true });
-        if (isAdmin) {
-          batch.set(
+        const academicYear = getConfiguredAcademicYear();
+        const term = getConfiguredAcademicTerm();
+        const statsRef = doc(db, MEMBERSHIP_REGISTRATION_STATS_COLLECTION, `${academicYear}-${term}`);
+        const nextCount = await runTransaction(db, async (transaction) => {
+          const memberRef = getMemberDocRef(memberId);
+          const [memberSnapshot, statsSnapshot] = await Promise.all([
+            transaction.get(memberRef),
+            transaction.get(statsRef),
+          ]);
+          if (!memberSnapshot.exists()) throw new Error("找不到這筆社員資料。");
+
+          const beforeMember = memberSnapshot.data() || {};
+          const afterMember = { ...beforeMember, ...memberUpdate };
+          const beforeOccupies = doesMemberOccupyMembershipSlot(beforeMember, academicYear, term);
+          const afterOccupies = doesMemberOccupyMembershipSlot(afterMember, academicYear, term);
+          let count = statsSnapshot.exists() ? Math.max(0, Number(statsSnapshot.data()?.count || 0)) : 0;
+          if (beforeOccupies !== afterOccupies) {
+            count = Math.max(0, count + (afterOccupies ? 1 : -1));
+            const statsLimit = statsSnapshot.exists()
+              ? Math.max(0, Number(statsSnapshot.data()?.limit || 0))
+              : membershipRegistrationSettings.limit;
+            transaction.set(statsRef, {
+              academicYear,
+              term,
+              count,
+              limit: statsLimit,
+              updatedAt: serverTimestamp(),
+            }, { merge: true });
+          }
+
+          transaction.set(memberRef, memberUpdate, { merge: true });
+          if (isAdmin) {
+            transaction.set(
             getAdminDocRef(memberId),
             {
               uid: memberId,
@@ -4089,12 +4147,12 @@ const bindMemberStatusSelects = (container) => {
             },
             { merge: true },
           );
-        } else {
-          batch.delete(getAdminDocRef(memberId));
-        }
-        if (email) {
-          if (isFormalMember) {
-            batch.set(
+          } else {
+            transaction.delete(getAdminDocRef(memberId));
+          }
+          if (email) {
+            if (isFormalMember) {
+              transaction.set(
               getApprovalDocRef(email),
               {
                 email,
@@ -4104,11 +4162,14 @@ const bindMemberStatusSelects = (container) => {
               },
               { merge: true },
             );
-          } else {
-            batch.delete(getApprovalDocRef(email));
+            } else {
+              transaction.delete(getApprovalDocRef(email));
+            }
           }
-        }
-        await batch.commit();
+          return count;
+        });
+        membershipRegistrationSettings.count = nextCount;
+        syncMembershipRegistrationSettingForm();
         const cachedAdmins = (membersDashboardCache.admins || []).filter(
           (admin) => admin.id !== memberId && admin.uid !== memberId,
         );
@@ -4128,10 +4189,7 @@ const bindMemberStatusSelects = (container) => {
         renderMembersSummary(displayMembers);
         renderMembersExportToolbar(displayMembers);
         renderMembersList(displayMembers);
-        openActionSuccessModal({
-          title: "社員狀態已更新",
-          copy: `${email || "這筆帳號"} 已設定為「${getMembershipStatusCopy(nextStatus).label}」。`,
-        });
+        showToast(`${email || "這筆帳號"} 已設定為「${getMembershipStatusCopy(nextStatus).label}」。`, { tone: "success" });
       } catch (error) {
         console.error("Update member status failed:", error);
         select.value = previousStatus;
@@ -4248,23 +4306,28 @@ const renderMembersExportToolbar = (members = []) => {
       const managedStatus = getManagedMembershipStatus(member);
       const membershipIntent = getMembershipIntentFromProfile(member);
       const paymentMethod = member.paymentMethod || (membershipIntent === "join" ? "later" : "none");
-      const paymentConfirmed = member.paymentStatus === "paid" || managedStatus === "formal_member" || managedStatus === "admin";
+      const paymentNotRequired = ["officer", "admin"].includes(managedStatus);
+      const paymentConfirmed = member.paymentStatus === "paid" || hasMemberPrivileges(managedStatus);
       const paymentMeta = [
         paymentMethod === "cash" ? getCashPaymentSlotLabel(member.cashPaymentSlot) : "",
         paymentMethod === "transfer" && member.transferLastFive ? `末五碼 ${member.transferLastFive}` : "",
         paymentMethod === "transfer" && member.transferAt ? member.transferAt.replace("T", " ") : "",
       ].filter(Boolean);
-      const paymentTitle = paymentConfirmed
-        ? "已確認收款"
+      const paymentTitle = paymentNotRequired
+        ? "免繳社費"
+        : paymentConfirmed
+          ? "已確認收款"
         : membershipIntent === "join"
           ? getPaymentMethodLabel(paymentMethod)
           : "未申請社員";
       const paymentStateClass = paymentConfirmed ? "is-confirmed" : membershipIntent === "join" ? "is-pending" : "is-neutral";
-      const paymentMetaCopy = paymentConfirmed
-        ? `${getPaymentMethodLabel(paymentMethod)}${paymentMeta.length ? `・${paymentMeta.join("・")}` : ""}`
+      const paymentMetaCopy = paymentNotRequired
+        ? `${getMembershipStatusCopy(managedStatus).label}不計入社員名額`
+        : paymentConfirmed
+          ? `${getPaymentMethodLabel(paymentMethod)}${paymentMeta.length ? `・${paymentMeta.join("・")}` : ""}`
         : paymentMeta.join("・") || (membershipIntent === "join" ? "等待社員完成社費繳納" : "本學期未提出申請");
       const confirmPaymentButton =
-        membershipIntent === "join" && managedStatus !== "formal_member" && managedStatus !== "admin"
+        membershipIntent === "join" && !hasMemberPrivileges(managedStatus)
           ? `<button class="member-payment-confirm" data-member-action="toggle-membership-payment" data-member-id="${escapeHtml(member.id)}" data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}" data-payment-status="paid" type="button"><span aria-hidden="true">✓</span>確認已收款</button>`
           : "";
       return `
@@ -4463,7 +4526,7 @@ const renderMembersSummary = (members = []) => {
   }
 
   const filteredMembers = members.filter(matchesMemberFilter);
-  const formalMembers = filteredMembers.filter(isFormalMemberRecord);
+  const formalMembers = filteredMembers.filter((member) => getManagedMembershipStatus(member) === "formal_member");
 
   summary.innerHTML = `
     <article class="member-stat">
@@ -4816,11 +4879,11 @@ function getSessionSignupLimit(session = {}) {
 }
 
 function isFormalMemberRecord(member = {}) {
-  return getManagedMembershipStatus(member) === "formal_member";
+  return hasMemberPrivileges(member);
 }
 
 function isFormalMemberSignup(signup = {}, member = null) {
-  return isFormalMemberRecord(member || {}) || signup.isFormalMemberAtSignup === true || signup.membershipStatusAtSignup === "formal_member";
+  return isFormalMemberRecord(member || {}) || signup.isFormalMemberAtSignup === true || ["formal_member", "officer", "admin"].includes(signup.membershipStatusAtSignup);
 }
 
 function getSignupPaymentLabel(signup = {}, member = null) {
@@ -5924,6 +5987,7 @@ function bindAdminFaqQuestionActions(container) {
         batch.delete(getFaqQuestionDocRef(questionId));
         await batch.commit();
         await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+        showToast("問題回答已發布。", { tone: "success" });
       } catch (error) {
         console.error("Answer FAQ question failed:", error);
         window.alert(`回答問題失敗：${error?.message || "請稍後再試一次。"}`);
@@ -6043,6 +6107,7 @@ async function handleAnnouncementFormSubmit(event) {
     announcementPageState.loaded = false;
     form.reset();
     await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+    showToast("公告已儲存。", { tone: "success" });
   } catch (error) {
     console.error("Save announcement failed:", error);
     window.alert(`儲存公告失敗：${error?.message || "請稍後再試一次。"}`);
@@ -6076,6 +6141,7 @@ async function handleFaqFormSubmit(event) {
 
     form.reset();
     await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+    showToast("FAQ 已儲存。", { tone: "success" });
   } catch (error) {
     console.error("Save FAQ failed:", error);
     window.alert(`儲存 FAQ 失敗：${error?.message || "請稍後再試一次。"}`);
@@ -6953,10 +7019,7 @@ async function handleAdminCalendarEventSubmit(event) {
     adminClassCalendarMonthOffset = getAdminCalendarMonthOffset(parseDateKey(date) || new Date());
     await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
     closeAdminClassCalendarModal();
-    openActionSuccessModal({
-      title: "儲存完畢",
-      copy: eventId ? "內容已更新，原本的資料已同步覆蓋。" : "新內容已建立完成。",
-    });
+    showToast(eventId ? "行事曆內容已更新。" : "行事曆內容已建立。", { tone: "success" });
   } catch (error) {
     console.error("Save calendar event failed:", error);
     showToast(error?.message || "請稍後再試一次。", { tone: "error", title: "儲存失敗" });
@@ -7578,12 +7641,10 @@ const saveMembershipApplication = async (paymentData) => {
     if (!memberSnapshot.exists()) throw new Error("社員基本資料尚未建立，請重新登入後再試。");
 
     const member = memberSnapshot.data() || {};
-    if (member.paymentStatus === "paid" || [member.membershipStatus, member.status].includes("formal_member")) {
-      throw new Error("社費已確認，若需變更請聯絡幹部。");
+    if (currentUserIsAdmin || hasMemberPrivileges(member) || member.paymentStatus === "paid") {
+      throw new Error("目前已具有社員、幹部或管理員資格，若需變更請聯絡管理員。");
     }
-    const alreadyOccupiesSlot = String(member.academicYear || "") === academicYear
-      && String(member.term || "") === term
-      && getMembershipIntentFromProfile(member) === "join";
+    const alreadyOccupiesSlot = doesMemberOccupyMembershipSlot(member, academicYear, term);
     let count = statsSnapshot.exists() ? Math.max(0, Number(statsSnapshot.data()?.count || 0)) : 0;
 
     if (paymentData.membershipIntent === "join" && !alreadyOccupiesSlot) {
@@ -7950,10 +8011,7 @@ const bindAcademicYearSetting = () => {
       if (hint) {
         hint.textContent = `已設定目前學期為 ${value} 學年度 ${getAcademicTermLabel(term)}。`;
       }
-      openActionSuccessModal({
-        title: "儲存成功",
-        copy: `目前學期已設定為 ${value} 學年度 ${getAcademicTermLabel(term)}。`,
-      });
+      showToast(`目前學期已設定為 ${value} 學年度 ${getAcademicTermLabel(term)}。`, { tone: "success" });
     } catch (error) {
       console.error("Save academic year setting failed:", error);
       if (hint) {
@@ -8054,10 +8112,8 @@ const bindMembershipRegistrationSetting = () => {
       const term = getConfiguredAcademicTerm();
       const membersSnapshot = await getDocs(collection(db, "members"));
       const existingSlotCount = membersSnapshot.docs.filter((snapshot) => {
-        const member = snapshot.data() || {};
-        return String(member.academicYear || "") === academicYear
-          && String(member.term || "") === term
-          && getMembershipIntentFromProfile(member) === "join";
+        const member = { id: snapshot.id, ...(snapshot.data() || {}) };
+        return doesMemberOccupyMembershipSlot(member, academicYear, term);
       }).length;
       const statsRef = doc(db, MEMBERSHIP_REGISTRATION_STATS_COLLECTION, `${academicYear}-${term}`);
       await runTransaction(db, async (transaction) => {
@@ -8072,23 +8128,19 @@ const bindMembershipRegistrationSetting = () => {
           updatedBy: currentUser?.uid || "",
           updatedByEmail: currentUser?.email || "",
         }, { merge: true });
-        if (!statsSnapshot.exists()) {
-          transaction.set(statsRef, {
-            academicYear,
-            term,
-            count: existingSlotCount,
-            limit: nextSettings.limit,
-            updatedAt: serverTimestamp(),
-          });
-        } else if (Number(statsSnapshot.data()?.limit || 0) !== nextSettings.limit) {
-          transaction.set(statsRef, { limit: nextSettings.limit, updatedAt: serverTimestamp() }, { merge: true });
-        }
+        transaction.set(statsRef, {
+          academicYear,
+          term,
+          count: existingSlotCount,
+          limit: nextSettings.limit,
+          updatedAt: serverTimestamp(),
+        }, { merge: statsSnapshot.exists() });
       });
       membershipRegistrationSettings = { ...membershipRegistrationSettings, ...nextSettings };
       document.querySelectorAll("[data-login-form], [data-account-membership-form]").forEach(syncMembershipPaymentForm);
       syncMembershipRegistrationSettingForm();
-      setMessageTone(hint, "社員申請名額與期間已儲存。", "success");
-      openActionSuccessModal({ title: "儲存成功", copy: "社員申請已套用新的名額與開放期間。" });
+      setMessageTone(hint, "", "success");
+      showToast("社員申請名額與期間已儲存。", { tone: "success" });
     } catch (error) {
       setMessageTone(hint, `儲存失敗：${error?.message || "請稍後再試一次。"}`, "error");
     } finally {
@@ -8151,11 +8203,8 @@ const bindMaintenanceSetting = () => {
       );
       maintenanceSettings = nextSettings;
       applyMaintenanceView();
-      setMessageTone(hint, nextSettings.enabled ? "維護模式已開啟；管理員仍可正常瀏覽網站。" : "維護模式已關閉，網站已恢復公開。", "success");
-      openActionSuccessModal({
-        title: nextSettings.enabled ? "維護模式已開啟" : "網站已恢復公開",
-        copy: nextSettings.enabled ? "一般使用者現在會看到維護提示，管理員不受影響。" : "所有使用者現在都能正常瀏覽網站。",
-      });
+      setMessageTone(hint, "", "success");
+      showToast(nextSettings.enabled ? "維護模式已開啟，管理員不受影響。" : "維護模式已關閉，網站已恢復公開。", { tone: "success" });
     } catch (error) {
       console.error("Save maintenance setting failed:", error);
       setMessageTone(hint, `儲存失敗：${error?.message || "請稍後再試。"}`, "error");
@@ -8223,8 +8272,8 @@ const bindMembershipPaymentSetting = () => {
       );
       membershipPaymentSettings = nextSettings;
       document.querySelectorAll("[data-login-form], [data-account-membership-form]").forEach(syncMembershipPaymentForm);
-      setMessageTone(hint, "繳費資訊已儲存。", "success");
-      openActionSuccessModal({ title: "儲存成功", copy: "註冊與帳號資訊頁已套用最新繳費資訊。" });
+      setMessageTone(hint, "", "success");
+      showToast("繳費資訊已儲存。", { tone: "success" });
     } catch (error) {
       console.error("Save membership payment settings failed:", error);
       setMessageTone(hint, `儲存失敗：${error?.message || "請稍後再試一次。"}`, "error");
@@ -8392,7 +8441,7 @@ const bindClassDefaultSettings = () => {
       await setDoc(getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC), { classScheduleDefaults: parsed, updatedAt: serverTimestamp(), updatedBy: currentUser?.uid || "" }, { merge: true });
       classScheduleDefaults = parsed;
       renderHomeClassSchedule();
-      setMessageTone(form.querySelector("[data-class-default-hint]"), "預設社課時間已儲存。", "success");
+      setMessageTone(form.querySelector("[data-class-default-hint]"), "", "success");
       showToast("行事曆新增快捷鍵已更新。", { tone: "success" });
     } catch (error) {
       setMessageTone(form.querySelector("[data-class-default-hint]"), `儲存失敗：${error?.message || "請稍後再試。"}`, "error");

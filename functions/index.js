@@ -18,7 +18,7 @@ function normalizedEmail(value) {
 
 function hasFormalMembership(member = {}, approvalExists = false) {
   const status = String(member.membershipStatus || member.status || "").trim().toLowerCase();
-  return approvalExists || member.paymentStatus === "paid" || ["formal_member", "formal", "approved", "member"].includes(status);
+  return approvalExists || member.paymentStatus === "paid" || ["formal_member", "formal", "approved", "member", "officer", "club_officer", "staff", "cadre", "admin", "administrator"].includes(status);
 }
 
 function parseClubDateTime(value) {
@@ -34,7 +34,8 @@ function membershipPeriodId(academicYear, term) {
 function occupiesMembershipSlot(member = {}, academicYear = "", term = "") {
   const status = String(member.membershipStatus || member.status || "").trim().toLowerCase();
   const intent = String(member.membershipIntent || "").trim().toLowerCase();
-  return String(member.academicYear || "").trim() === academicYear
+  return !["officer", "club_officer", "staff", "cadre", "admin", "administrator"].includes(status)
+    && String(member.academicYear || "").trim() === academicYear
     && String(member.term || "").trim() === term
     && (intent === "join" || ["pending_payment", "formal_member", "formal", "approved", "member"].includes(status));
 }

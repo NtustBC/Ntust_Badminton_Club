@@ -3797,19 +3797,20 @@ button.admin-calendar-day:focus-visible {
   top: 1rem;
   right: 1rem;
   display: grid;
-  width: min(24rem, calc(100vw - 2rem));
+  width: min(29rem, calc(100vw - 2rem));
   gap: 0.65rem;
 }
 
 .toast {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.9rem 1rem;
+  min-height: 4.6rem;
+  padding: 1.1rem 1.2rem;
   border: 1px solid rgba(17, 24, 39, 0.14);
   border-left: 4px solid #2563eb;
-  border-radius: 0.8rem;
+  border-radius: 1rem;
   background: #fff;
   box-shadow: 0 16px 42px rgba(15, 23, 42, 0.2);
   animation: toast-in 180ms ease-out;
@@ -3819,7 +3820,7 @@ button.admin-calendar-day:focus-visible {
 .toast.is-error { border-left-color: #c62828; }
 .toast.is-leaving { opacity: 0; transform: translateY(-0.4rem); transition: 180ms ease; }
 .toast-copy { display: grid; gap: 0.2rem; line-height: 1.5; }
-.toast-close { border: 0; background: transparent; cursor: pointer; font-size: 1.25rem; }
+.toast-close { border: 0; background: transparent; cursor: pointer; font-size: 1.5rem; line-height: 1; }
 
 .loading-state { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 1rem; min-height: 8rem; padding: 1rem; }
 .loading-spinner { width: 1.7rem; height: 1.7rem; border: 3px solid rgba(25, 78, 63, 0.18); border-top-color: var(--color-primary, #194e3f); border-radius: 50%; animation: loading-spin 700ms linear infinite; }

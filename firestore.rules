@@ -20,8 +20,8 @@ service cloud.firestore {
       return isSignedIn() &&
         exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
         (
-          get(/databases/$(database)/documents/members/$(request.auth.uid)).data.membershipStatus == "formal_member" ||
-          get(/databases/$(database)/documents/members/$(request.auth.uid)).data.status == "formal_member"
+          get(/databases/$(database)/documents/members/$(request.auth.uid)).data.membershipStatus in ["formal_member", "officer", "admin"] ||
+          get(/databases/$(database)/documents/members/$(request.auth.uid)).data.status in ["formal_member", "officer", "admin"]
         );
     }
 
@@ -63,8 +63,18 @@ service cloud.firestore {
       return /databases/$(database)/documents/membershipRegistrationStats/$(year + "-" + term);
     }
 
+    function memberDataIsAdmin(member) {
+      let uid = member.get("uid", "");
+      return uid is string
+        && uid.size() > 0
+        && exists(/databases/$(database)/documents/admins/$(uid));
+    }
+
     function occupiesMembershipSlot(member, year, term) {
-      return member.get("academicYear", "") == year
+      return !memberDataIsAdmin(member)
+        && !(member.get("membershipStatus", "not_applied") in ["officer", "admin"])
+        && !(member.get("status", "not_applied") in ["officer", "admin"])
+        && member.get("academicYear", "") == year
         && member.get("term", "") == term
         && (
           member.get("membershipIntent", "not_join") == "join" ||
@@ -137,8 +147,8 @@ service cloud.firestore {
           "paymentStatus", "paymentMethod", "cashPaymentSlot", "transferAt",
           "transferLastFive", "paymentSubmittedAt", "updatedAt"
         ])
-        && resource.data.get("membershipStatus", "not_applied") != "formal_member"
-        && resource.data.get("status", "not_applied") != "formal_member"
+        && !(resource.data.get("membershipStatus", "not_applied") in ["formal_member", "officer", "admin"])
+        && !(resource.data.get("status", "not_applied") in ["formal_member", "officer", "admin"])
         && resource.data.get("paymentStatus", "unpaid") != "paid"
         && request.resource.data.academicYear == settings.academicYear
         && request.resource.data.term == settings.term
