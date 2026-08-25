@@ -473,7 +473,29 @@ service cloud.firestore {
 
     match /adminNotifications/{notificationId} {
       allow read, update, delete: if isAdmin();
-      allow create: if false;
+      // Account deletion is completed by the signed-in client on Spark plans.
+      // A user may create only one deterministic, tightly validated notice for
+      // their own account immediately before Authentication is deleted.
+      allow create: if isSignedIn()
+        && notificationId == "account-deleted-" + request.auth.uid
+        && request.auth.token.email is string
+        && request.resource.data.keys().hasOnly([
+          "type", "title", "message", "userId", "email", "name", "createdAt"
+        ])
+        && request.resource.data.type == "account_deleted"
+        && request.resource.data.title == "使用者已刪除帳號"
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 100
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() <= 300
+        && request.resource.data.createdAt == request.time;
+      allow delete: if isSignedIn()
+        && notificationId == "account-deleted-" + request.auth.uid
+        && resource.data.userId == request.auth.uid;
     }
 
     match /memberNotifications/{notificationId} {

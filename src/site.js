@@ -4127,7 +4127,9 @@ const bindMemberStatusSelects = (container) => {
           const beforeMember = memberSnapshot.data() || {};
           const afterMember = { ...beforeMember, ...memberUpdate };
           const beforeOccupies = doesMemberOccupyMembershipSlot(beforeMember, academicYear, term);
-          const afterOccupies = doesMemberOccupyMembershipSlot(afterMember, academicYear, term);
+          const afterOccupies = previousStatus === "admin" && !isAdmin
+            ? doesMembershipProfileOccupySlot(afterMember, academicYear, term)
+            : doesMemberOccupyMembershipSlot(afterMember, academicYear, term);
           let count = statsSnapshot.exists() ? Math.max(0, Number(statsSnapshot.data()?.count || 0)) : 0;
           if (beforeOccupies !== afterOccupies) {
             count = Math.max(0, count + (afterOccupies ? 1 : -1));
@@ -4418,6 +4420,70 @@ const removeOfficer = async (memberId) => {
   showToast(`${result.email || "這個帳號"} 已移出幹部名單。`, { tone: "success" });
 };
 
+const getRosterManagementRowMarkup = (member = {}, index = 0, { disableStatus = false } = {}) => {
+  const memberId = String(member.uid || member.id || "").trim();
+  const email = String(member.email || "").trim().toLowerCase();
+  const managedStatus = getManagedMembershipStatus(member);
+  const membershipIntent = getMembershipIntentFromProfile(member);
+  const paymentMethod = member.paymentMethod || (membershipIntent === "join" ? "later" : "none");
+  const paymentNotRequired = ["officer", "admin"].includes(managedStatus);
+  const paymentConfirmed = member.paymentStatus === "paid" || hasMemberPrivileges(managedStatus);
+  const paymentMeta = [
+    paymentMethod === "cash" ? getCashPaymentSlotLabel(member.cashPaymentSlot) : "",
+    paymentMethod === "transfer" && member.transferLastFive ? `末五碼 ${member.transferLastFive}` : "",
+    paymentMethod === "transfer" && member.transferAt ? member.transferAt.replace("T", " ") : "",
+  ].filter(Boolean);
+  const paymentTitle = paymentNotRequired
+    ? "免繳社費"
+    : paymentConfirmed ? "已確認收款" : membershipIntent === "join" ? getPaymentMethodLabel(paymentMethod) : "未申請社員";
+  const paymentStateClass = paymentConfirmed ? "is-confirmed" : membershipIntent === "join" ? "is-pending" : "is-neutral";
+  const paymentMetaCopy = paymentNotRequired
+    ? `${getMembershipStatusCopy(managedStatus).label}不計入社員名額`
+    : paymentConfirmed
+      ? `${getPaymentMethodLabel(paymentMethod)}${paymentMeta.length ? `・${paymentMeta.join("・")}` : ""}`
+      : paymentMeta.join("・") || (membershipIntent === "join" ? "等待社員完成社費繳納" : "本學期未提出申請");
+  const lockCurrentAdmin = managedStatus === "admin" && memberId === currentUser?.uid;
+  const controlsDisabled = disableStatus || lockCurrentAdmin || !memberId;
+
+  return `
+    <tr>
+      <td>${String(index + 1).padStart(2, "0")}</td>
+      <td>${escapeHtml(member.name || member.displayName || "未填姓名")}</td>
+      <td>${escapeHtml(member.studentId || "未填學號")}</td>
+      <td>${escapeHtml(member.department || member.school || "未填寫")}</td>
+      <td>${escapeHtml(email || "未填寫")}</td>
+      <td>${escapeHtml(member.phone || "未填寫")}</td>
+      <td>
+        <div class="member-payment-cell">
+          <div class="member-payment-state ${paymentStateClass}">
+            <span class="member-payment-state-dot" aria-hidden="true"></span>
+            <span class="member-payment-state-copy"><strong>${escapeHtml(paymentTitle)}</strong><small>${escapeHtml(paymentMetaCopy)}</small></span>
+          </div>
+        </div>
+      </td>
+      <td>
+        <select class="member-status-select" data-member-status-select data-member-id="${escapeHtml(memberId)}" data-member-email="${escapeHtml(email)}" data-current-status="${escapeHtml(managedStatus)}" aria-label="設定 ${escapeHtml(member.name || email || "帳號")} 的社員狀態"${controlsDisabled ? ' disabled title="不能變更目前登入中的管理員狀態"' : ""}>
+          ${getMemberStatusOptionsMarkup(managedStatus)}
+        </select>
+      </td>
+      <td>
+        <button class="member-delete-button" data-member-account-delete data-member-id="${escapeHtml(memberId)}" data-member-email="${escapeHtml(email)}" type="button"${controlsDisabled ? ' disabled title="不能刪除目前登入中的管理員帳號"' : ""}>刪除資料</button>
+      </td>
+    </tr>
+  `;
+};
+
+const getRosterManagementTableMarkup = (rows = "") => `
+  <div class="member-table-wrap">
+    <table class="member-table">
+      <thead>
+        <tr><th scope="col">#</th><th scope="col">姓名</th><th scope="col">學號</th><th scope="col">系級</th><th scope="col">Gmail</th><th scope="col">聯絡電話</th><th scope="col">社費資訊</th><th scope="col">社員狀態</th><th scope="col">操作</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>
+`;
+
 const renderOfficerRoster = () => {
   const form = document.querySelector("[data-officer-roster-add-form]");
   const select = document.querySelector("[data-officer-roster-member]");
@@ -4450,28 +4516,8 @@ const renderOfficerRoster = () => {
   if (officers.length === 0) {
     list.innerHTML = `<p class="content-copy member-table-empty">目前沒有幹部資料。</p>`;
   } else {
-    const rows = officers.map((member, index) => {
-      const memberId = String(member.uid || member.id || "").trim();
-      const email = String(member.email || "").trim();
-      return `
-        <tr>
-          <td>${String(index + 1).padStart(2, "0")}</td>
-          <td>${escapeHtml(member.name || member.displayName || "未填姓名")}</td>
-          <td>${escapeHtml(member.studentId || "未填學號")}</td>
-          <td>${escapeHtml(email || "未填寫")}</td>
-          <td>幹部</td>
-          <td><button class="member-delete-button" data-officer-roster-remove data-member-id="${escapeHtml(memberId)}" data-member-email="${escapeHtml(email)}" type="button">移出幹部名單</button></td>
-        </tr>
-      `;
-    }).join("");
-    list.innerHTML = `
-      <div class="member-table-wrap">
-        <table class="member-table admin-roster-table">
-          <thead><tr><th scope="col">#</th><th scope="col">姓名</th><th scope="col">學號</th><th scope="col">Gmail</th><th scope="col">狀態</th><th scope="col">操作</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    `;
+    const rows = officers.map((member, index) => getRosterManagementRowMarkup(member, index)).join("");
+    list.innerHTML = getRosterManagementTableMarkup(rows);
   }
 
   if (form.dataset.bound !== "true") {
@@ -4496,20 +4542,8 @@ const renderOfficerRoster = () => {
     });
   }
 
-  list.querySelectorAll("[data-officer-roster-remove]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const memberId = String(button.dataset.memberId || "").trim();
-      const email = String(button.dataset.memberEmail || "").trim();
-      if (!memberId || !window.confirm(`確定要將 ${email || "這個帳號"} 移出幹部名單嗎？`)) return;
-      setButtonLoading(button, true, "移除中…");
-      try {
-        await removeOfficer(memberId);
-      } catch (error) {
-        setMessageTone(hint, error?.message || "移除幹部失敗。", "error");
-        setButtonLoading(button, false);
-      }
-    });
-  });
+  bindMemberStatusSelects(list);
+  bindMemberDeleteButtons(list);
 };
 
 const getAdminRosterEntryId = (admin = {}) => String(admin.uid || admin.id || "").trim();
@@ -4728,29 +4762,18 @@ const renderAdminRoster = () => {
     const rows = admins.map((admin, index) => {
       const adminId = getAdminRosterEntryId(admin);
       const member = getAdminRosterMember(admin);
-      const email = String(member?.email || admin.email || "").trim();
-      const isCurrentAdmin = adminId === currentUser?.uid;
-      return `
-        <tr>
-          <td>${String(index + 1).padStart(2, "0")}</td>
-          <td>${escapeHtml(member?.name || member?.displayName || admin.name || "未填姓名")}</td>
-          <td>${escapeHtml(member?.studentId || "未填學號")}</td>
-          <td>${escapeHtml(email || "未填寫")}</td>
-          <td>${isCurrentAdmin ? "目前登入" : "管理員"}</td>
-          <td>
-            <button class="member-delete-button" data-admin-roster-remove data-admin-id="${escapeHtml(adminId)}" data-admin-email="${escapeHtml(email)}" type="button"${isCurrentAdmin ? ' disabled title="不能移除目前登入帳號的管理權限"' : ""}>移除管理權限</button>
-          </td>
-        </tr>
-      `;
+      return getRosterManagementRowMarkup({
+        id: adminId,
+        uid: adminId,
+        ...(member || {}),
+        email: member?.email || admin.email || "",
+        name: member?.name || member?.displayName || admin.name || "",
+        membershipStatus: "admin",
+        status: "admin",
+        paymentStatus: "not_required",
+      }, index, { disableStatus: !member });
     }).join("");
-    list.innerHTML = `
-      <div class="member-table-wrap">
-        <table class="member-table admin-roster-table">
-          <thead><tr><th scope="col">#</th><th scope="col">姓名</th><th scope="col">學號</th><th scope="col">Gmail</th><th scope="col">狀態</th><th scope="col">操作</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    `;
+    list.innerHTML = getRosterManagementTableMarkup(rows);
   }
 
   if (form.dataset.bound !== "true") {
@@ -4775,20 +4798,8 @@ const renderAdminRoster = () => {
     });
   }
 
-  list.querySelectorAll("[data-admin-roster-remove]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const adminId = String(button.dataset.adminId || "").trim();
-      const email = String(button.dataset.adminEmail || "").trim();
-      if (!adminId || !window.confirm(`確定要移除 ${email || "這個帳號"} 的管理權限嗎？\n\n登入帳號與社員資料會保留。`)) return;
-      setButtonLoading(button, true, "移除中…");
-      try {
-        await removeAdministrator(adminId);
-      } catch (error) {
-        setMessageTone(hint, error?.message || "移除管理員失敗。", "error");
-        setButtonLoading(button, false);
-      }
-    });
-  });
+  bindMemberStatusSelects(list);
+  bindMemberDeleteButtons(list);
 };
 
 const reconcileMembershipRegistrationCount = async (members = []) => {
@@ -7855,8 +7866,30 @@ const handleDeleteOwnAccount = async (event) => {
     }
     const credential = EmailAuthProvider.credential(email, password);
     await reauthenticateWithCredential(accountUser, credential);
+    const deletedAccountName = String(
+      currentMemberProfile?.name || currentMemberProfile?.displayName || accountUser.displayName || "未提供姓名",
+    ).trim().slice(0, 100) || "未提供姓名";
     await deleteOwnFirestoreData(accountUser.uid, email);
-    await deleteUser(accountUser);
+    const deletionNotificationRef = doc(db, ADMIN_NOTIFICATION_COLLECTION, `account-deleted-${accountUser.uid}`);
+    await setDoc(deletionNotificationRef, {
+      type: "account_deleted",
+      title: "使用者已刪除帳號",
+      message: `${deletedAccountName}（${email}）已自行刪除網站帳號。`,
+      userId: accountUser.uid,
+      email,
+      name: deletedAccountName,
+      createdAt: serverTimestamp(),
+    });
+    try {
+      await deleteUser(accountUser);
+    } catch (deleteError) {
+      try {
+        await deleteDoc(deletionNotificationRef);
+      } catch (rollbackError) {
+        console.warn("Rollback account deletion notification failed:", rollbackError);
+      }
+      throw deleteError;
+    }
     currentUser = null;
     currentUserIsAdmin = false;
     currentMemberProfile = null;
