@@ -4091,6 +4091,12 @@ const bindMemberStatusSelects = (container) => {
         membershipIntent: isFormalMember ? "join" : "not_join",
         membershipStatus: nextStatus,
         status: nextStatus,
+        officerPreviousMembershipStatus: isOfficer ? previousStatus : null,
+        officerPreviousMembershipIntent: isOfficer
+          ? getMembershipIntentFromProfile(
+            membersDashboardCache.members.find((member) => member.id === memberId || member.uid === memberId) || {},
+          )
+          : null,
         membershipStatusChange: {
           previousStatus,
           nextStatus,
@@ -4192,6 +4198,7 @@ const bindMemberStatusSelects = (container) => {
         renderMembersSummary(displayMembers);
         renderMembersExportToolbar(displayMembers);
         renderMembersList(displayMembers);
+        renderOfficerRoster();
         renderAdminRoster();
         showToast(`${email || "這筆帳號"} 已設定為「${getMembershipStatusCopy(nextStatus).label}」。`, { tone: "success" });
       } catch (error) {
@@ -4259,6 +4266,247 @@ const bindMemberDeleteButtons = (container) => {
         });
         button.textContent = originalLabel;
         window.alert(`刪除社員資料失敗：${error?.message || "請稍後再試一次。"}`);
+      }
+    });
+  });
+};
+
+const addOfficer = async (memberId) => {
+  const cachedMember = membersDashboardCache.members.find(
+    (member) => [member.id, member.uid].map((value) => String(value || "").trim()).includes(memberId),
+  );
+  if (!cachedMember) throw new Error("找不到這個註冊帳號。");
+
+  const academicYear = getConfiguredAcademicYear();
+  const term = getConfiguredAcademicTerm();
+  const statsRef = doc(db, MEMBERSHIP_REGISTRATION_STATS_COLLECTION, `${academicYear}-${term}`);
+  const result = await runTransaction(db, async (transaction) => {
+    const memberRef = getMemberDocRef(memberId);
+    const [memberSnapshot, statsSnapshot] = await Promise.all([
+      transaction.get(memberRef),
+      transaction.get(statsRef),
+    ]);
+    if (!memberSnapshot.exists()) throw new Error("找不到這個註冊帳號的社員資料。");
+
+    const beforeMember = { id: memberId, ...(memberSnapshot.data() || {}) };
+    const previousStatus = getManagedMembershipStatus(beforeMember);
+    if (previousStatus === "admin") throw new Error("管理員帳號不需要再設定為幹部。");
+    const email = String(beforeMember.email || cachedMember.email || "").trim().toLowerCase();
+    const beforeOccupies = doesMemberOccupyMembershipSlot(beforeMember, academicYear, term);
+    let count = statsSnapshot.exists()
+      ? Math.max(0, Number(statsSnapshot.data()?.count || 0))
+      : membershipRegistrationSettings.count;
+    if (beforeOccupies) {
+      count = Math.max(0, count - 1);
+      transaction.set(statsRef, {
+        academicYear,
+        term,
+        count,
+        limit: statsSnapshot.exists()
+          ? Math.max(0, Number(statsSnapshot.data()?.limit || membershipRegistrationSettings.limit || 0))
+          : membershipRegistrationSettings.limit,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    }
+
+    transaction.set(memberRef, {
+      membershipIntent: "not_join",
+      membershipStatus: "officer",
+      status: "officer",
+      paymentStatus: "not_required",
+      officerPreviousMembershipStatus: previousStatus,
+      officerPreviousMembershipIntent: getMembershipIntentFromProfile(beforeMember),
+      officerPreviousPaymentStatus: String(beforeMember.paymentStatus || "unpaid"),
+      membershipStatusChange: {
+        previousStatus,
+        nextStatus: "officer",
+        changedAt: serverTimestamp(),
+        changedBy: currentUser?.uid || "",
+      },
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    if (email) transaction.delete(getApprovalDocRef(email));
+    return { count, email };
+  });
+
+  membershipRegistrationSettings.count = result.count;
+  syncMembershipRegistrationSettingForm();
+  await refreshMembersDashboardSafe({ force: true });
+  showToast(`${result.email || "這個帳號"} 已新增為幹部。`, { tone: "success" });
+};
+
+const removeOfficer = async (memberId) => {
+  const academicYear = getConfiguredAcademicYear();
+  const term = getConfiguredAcademicTerm();
+  const statsRef = doc(db, MEMBERSHIP_REGISTRATION_STATS_COLLECTION, `${academicYear}-${term}`);
+  const result = await runTransaction(db, async (transaction) => {
+    const memberRef = getMemberDocRef(memberId);
+    const [memberSnapshot, statsSnapshot] = await Promise.all([
+      transaction.get(memberRef),
+      transaction.get(statsRef),
+    ]);
+    if (!memberSnapshot.exists()) throw new Error("找不到這筆幹部資料。");
+
+    const beforeMember = { id: memberId, ...(memberSnapshot.data() || {}) };
+    if (getManagedMembershipStatus(beforeMember) !== "officer") throw new Error("這個帳號目前不是幹部。");
+    const storedPreviousStatus = String(beforeMember.officerPreviousMembershipStatus || "").trim();
+    const normalizedPreviousStatus = getManagedMembershipStatus(storedPreviousStatus);
+    const nextStatus = storedPreviousStatus && !["admin", "officer"].includes(normalizedPreviousStatus)
+      ? normalizedPreviousStatus
+      : "formal_member";
+    const nextIntent = nextStatus === "formal_member" ? "join" : "not_join";
+    const nextPaymentStatus = nextStatus === "formal_member" ? "paid" : "unpaid";
+    const email = String(beforeMember.email || "").trim().toLowerCase();
+    const afterMember = {
+      ...beforeMember,
+      membershipIntent: nextIntent,
+      membershipStatus: nextStatus,
+      status: nextStatus,
+      paymentStatus: nextPaymentStatus,
+    };
+    const afterOccupies = doesMembershipProfileOccupySlot(afterMember, academicYear, term);
+    let count = statsSnapshot.exists()
+      ? Math.max(0, Number(statsSnapshot.data()?.count || 0))
+      : membershipRegistrationSettings.count;
+    if (afterOccupies) {
+      count += 1;
+      transaction.set(statsRef, {
+        academicYear,
+        term,
+        count,
+        limit: statsSnapshot.exists()
+          ? Math.max(0, Number(statsSnapshot.data()?.limit || membershipRegistrationSettings.limit || 0))
+          : membershipRegistrationSettings.limit,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    }
+
+    transaction.set(memberRef, {
+      membershipIntent: nextIntent,
+      membershipStatus: nextStatus,
+      status: nextStatus,
+      paymentStatus: nextPaymentStatus,
+      officerPreviousMembershipStatus: null,
+      officerPreviousMembershipIntent: null,
+      officerPreviousPaymentStatus: null,
+      membershipStatusChange: {
+        previousStatus: "officer",
+        nextStatus,
+        changedAt: serverTimestamp(),
+        changedBy: currentUser?.uid || "",
+      },
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    if (email) {
+      if (nextStatus === "formal_member") {
+        transaction.set(getApprovalDocRef(email), {
+          email,
+          status: "approved",
+          approvedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      } else {
+        transaction.delete(getApprovalDocRef(email));
+      }
+    }
+    return { count, email, nextStatus };
+  });
+
+  membershipRegistrationSettings.count = result.count;
+  syncMembershipRegistrationSettingForm();
+  await refreshMembersDashboardSafe({ force: true });
+  showToast(`${result.email || "這個帳號"} 已移出幹部名單。`, { tone: "success" });
+};
+
+const renderOfficerRoster = () => {
+  const form = document.querySelector("[data-officer-roster-add-form]");
+  const select = document.querySelector("[data-officer-roster-member]");
+  const list = document.querySelector("[data-officer-roster-list]");
+  const hint = document.querySelector("[data-officer-roster-hint]");
+  if (!form || !select || !list) return;
+
+  const adminIds = getDashboardAdminIds();
+  const candidates = membersDashboardCache.members
+    .filter((member) => {
+      const memberId = String(member.uid || member.id || "").trim();
+      return memberId
+        && !adminIds.has(memberId)
+        && getManagedMembershipStatus(member) !== "officer";
+    })
+    .sort((a, b) => String(a.name || a.email || "").localeCompare(String(b.name || b.email || ""), "zh-TW"));
+  select.innerHTML = candidates.length
+    ? `<option value="">請選擇帳號</option>${candidates.map((member) => {
+      const memberId = String(member.uid || member.id || "").trim();
+      const label = [member.name || member.displayName, member.studentId, member.email].filter(Boolean).join(" / ");
+      return `<option value="${escapeHtml(memberId)}">${escapeHtml(label || memberId)}</option>`;
+    }).join("")}`
+    : `<option value="">目前沒有可新增的帳號</option>`;
+  select.disabled = candidates.length === 0;
+  form.querySelector("[data-officer-roster-add]").disabled = candidates.length === 0;
+
+  const officers = membersDashboardCache.members
+    .filter((member) => getManagedMembershipStatus(member) === "officer")
+    .sort((a, b) => String(a.name || a.email || "").localeCompare(String(b.name || b.email || ""), "zh-TW"));
+  if (officers.length === 0) {
+    list.innerHTML = `<p class="content-copy member-table-empty">目前沒有幹部資料。</p>`;
+  } else {
+    const rows = officers.map((member, index) => {
+      const memberId = String(member.uid || member.id || "").trim();
+      const email = String(member.email || "").trim();
+      return `
+        <tr>
+          <td>${String(index + 1).padStart(2, "0")}</td>
+          <td>${escapeHtml(member.name || member.displayName || "未填姓名")}</td>
+          <td>${escapeHtml(member.studentId || "未填學號")}</td>
+          <td>${escapeHtml(email || "未填寫")}</td>
+          <td>幹部</td>
+          <td><button class="member-delete-button" data-officer-roster-remove data-member-id="${escapeHtml(memberId)}" data-member-email="${escapeHtml(email)}" type="button">移出幹部名單</button></td>
+        </tr>
+      `;
+    }).join("");
+    list.innerHTML = `
+      <div class="member-table-wrap">
+        <table class="member-table admin-roster-table">
+          <thead><tr><th scope="col">#</th><th scope="col">姓名</th><th scope="col">學號</th><th scope="col">Gmail</th><th scope="col">狀態</th><th scope="col">操作</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  if (form.dataset.bound !== "true") {
+    form.dataset.bound = "true";
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const memberId = String(select.value || "").trim();
+      const button = form.querySelector("[data-officer-roster-add]");
+      if (!memberId) {
+        setMessageTone(hint, "請先選擇要新增的帳號。", "error");
+        return;
+      }
+      setButtonLoading(button, true, "新增中…");
+      try {
+        await addOfficer(memberId);
+        setMessageTone(hint, "幹部名單已更新。", "success");
+      } catch (error) {
+        setMessageTone(hint, error?.message || "新增幹部失敗。", "error");
+      } finally {
+        setButtonLoading(button, false);
+      }
+    });
+  }
+
+  list.querySelectorAll("[data-officer-roster-remove]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const memberId = String(button.dataset.memberId || "").trim();
+      const email = String(button.dataset.memberEmail || "").trim();
+      if (!memberId || !window.confirm(`確定要將 ${email || "這個帳號"} 移出幹部名單嗎？`)) return;
+      setButtonLoading(button, true, "移除中…");
+      try {
+        await removeOfficer(memberId);
+      } catch (error) {
+        setMessageTone(hint, error?.message || "移除幹部失敗。", "error");
+        setButtonLoading(button, false);
       }
     });
   });
@@ -4568,7 +4816,8 @@ const renderMembersExportToolbar = (members = []) => {
     return;
   }
 
-  const filteredMembers = getFilteredMembersForExport(members);
+  const filteredMembers = getFilteredMembersForExport(members)
+    .filter((member) => getManagedMembershipStatus(member) !== "officer");
   const exportableMembers = filteredMembers.filter(isMemberRosterRecord);
   const filterLabel = `${memberFilters.year === "all" ? "全部學年度" : getAcademicYearLabel(memberFilters.year)} / ${
     memberFilters.term === "all" ? "全部學期" : getAcademicTermLabel(memberFilters.term)
@@ -4728,7 +4977,7 @@ const renderMembersExportToolbar = (members = []) => {
       headers: ["姓名", "學號", "系級", "Email", "電話", "學年度", "學期", "社費方式", "社員狀態"],
       rows,
     });
-    showToast(`已匯出 ${rows.length} 位社員與幹部。`, { tone: "success" });
+    showToast(`已匯出 ${rows.length} 位正式社員。`, { tone: "success" });
   });
 };
 const renderMembersList = (members = []) => {
@@ -4743,7 +4992,7 @@ const renderMembersList = (members = []) => {
     list.innerHTML = `
       <article class="content-card is-tight">
         <h3 class="content-title">目前沒有符合條件的社員資料</h3>
-        <p class="content-copy">正式社員與幹部會顯示在這裡；幹部不計入社員申請名額。</p>
+        <p class="content-copy">只有已繳費並設定為「社員」的正式社員會顯示在這裡。</p>
       </article>
     `;
     return;
@@ -4925,6 +5174,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
   const content = document.querySelector("[data-members-content]");
   const summary = document.querySelector("[data-members-summary]");
   const list = document.querySelector("[data-members-list]");
+  const officerList = document.querySelector("[data-officer-roster-list]");
   const adminList = document.querySelector("[data-admin-roster-list]");
 
   if (!gate || !content || !summary || !list) {
@@ -4970,6 +5220,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
   if ((force || !membersDashboardCache.loaded) && !membersDashboardLoadPromise) {
     renderLoadingSkeleton(summary, { rows: 2, label: "管理摘要載入中" });
     renderLoadingSkeleton(list, { rows: 4, label: "社員名單載入中" });
+    renderLoadingSkeleton(officerList, { rows: 3, label: "幹部名單載入中" });
     renderLoadingSkeleton(adminList, { rows: 3, label: "管理員名單載入中" });
     renderLoadingSkeleton(document.querySelector("[data-class-session-calendar]"), { rows: 3, label: "行事曆載入中" });
   }
@@ -5021,6 +5272,8 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
           renderMembersExportToolbar(earlyDisplayMembers);
           renderMembersList(earlyDisplayMembers);
           clearLoadingState(list);
+          renderOfficerRoster();
+          clearLoadingState(officerList);
           renderAdminRoster();
           clearLoadingState(adminList);
 
@@ -5060,6 +5313,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
       );
     }
     renderMembersList(displayMembers);
+    renderOfficerRoster();
     renderAdminRoster();
     renderAdminClassCalendarCompact(membersDashboardCache.classSessions, membersDashboardCache.classSessionSignups);
     renderAdminAnnouncements(membersDashboardCache.announcements);
@@ -5199,7 +5453,7 @@ function isFormalMemberRecord(member = {}) {
 }
 
 function isMemberRosterRecord(member = {}) {
-  return ["formal_member", "officer"].includes(getManagedMembershipStatus(member));
+  return getManagedMembershipStatus(member) === "formal_member";
 }
 
 function isFormalMemberSignup(signup = {}, member = null) {
@@ -8821,6 +9075,7 @@ const ADMIN_PANEL_IDS = [
   "admin-semester-settings",
   "admin-maintenance-settings",
   "admin-member-management",
+  "admin-officer-management",
   "admin-administrator-management",
   "admin-calendar-management",
   "admin-faq-management",

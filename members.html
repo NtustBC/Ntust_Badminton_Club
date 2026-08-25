@@ -115,7 +115,8 @@
               <nav class="admin-section-nav" aria-label="管理功能分類" role="tablist">
                 <a id="admin-tab-semester" data-admin-tab href="#admin-semester-settings" role="tab" aria-controls="admin-semester-settings">學期預設</a>
                 <a id="admin-tab-maintenance" data-admin-tab href="#admin-maintenance-settings" role="tab" aria-controls="admin-maintenance-settings">維護模式</a>
-                <a id="admin-tab-members" data-admin-tab href="#admin-member-management" role="tab" aria-controls="admin-member-management">社員管理</a>
+                <a id="admin-tab-members" data-admin-tab href="#admin-member-management" role="tab" aria-controls="admin-member-management">社員名單</a>
+                <a id="admin-tab-officers" data-admin-tab href="#admin-officer-management" role="tab" aria-controls="admin-officer-management">幹部名單</a>
                 <a id="admin-tab-administrators" data-admin-tab href="#admin-administrator-management" role="tab" aria-controls="admin-administrator-management">管理員名單</a>
                 <a id="admin-tab-calendar" data-admin-tab href="#admin-calendar-management" role="tab" aria-controls="admin-calendar-management">行事曆</a>
                 <a id="admin-tab-faq" data-admin-tab href="#admin-faq-management" role="tab" aria-controls="admin-faq-management">FAQ</a>
@@ -299,10 +300,29 @@
                 <div class="section-header is-compact">
                   <div class="section-kicker">Members</div>
                   <h3 class="content-title">社員名單</h3>
-                  <p class="section-description">顯示正式社員與幹部資料；幹部不計入社員申請名額。展開後可修改基本資料、學年度與學期。</p>
+                  <p class="section-description">顯示已繳費並設定為「社員」的正式社員資料；展開後可修改基本資料、學年度與學期。</p>
                 </div>
                 <div class="member-list" data-members-list></div>
               </section>
+              </section>
+
+              <section class="member-section admin-panel" id="admin-officer-management" data-admin-panel role="tabpanel" aria-labelledby="admin-tab-officers" hidden>
+                <div class="section-header is-compact">
+                  <div class="section-kicker">Club Officers</div>
+                  <h3 class="content-title">幹部名單</h3>
+                  <p class="section-description">從既有註冊帳號新增幹部，或移除幹部身分。幹部可使用社員功能，但不會計入社員申請名額。</p>
+                </div>
+                <article class="content-card is-tight admin-roster-card">
+                  <form class="admin-roster-add-form" data-officer-roster-add-form>
+                    <div class="form-field">
+                      <label for="officer-roster-member">選擇既有帳號</label>
+                      <select id="officer-roster-member" data-officer-roster-member required></select>
+                    </div>
+                    <button class="button-primary" data-officer-roster-add type="submit">新增幹部</button>
+                  </form>
+                  <p class="login-note" data-officer-roster-hint></p>
+                  <div class="admin-roster-list" data-officer-roster-list></div>
+                </article>
               </section>
 
               <section class="member-section admin-panel" id="admin-administrator-management" data-admin-panel role="tabpanel" aria-labelledby="admin-tab-administrators" hidden>
