@@ -116,6 +116,7 @@
                 <a id="admin-tab-semester" data-admin-tab href="#admin-semester-settings" role="tab" aria-controls="admin-semester-settings">學期預設</a>
                 <a id="admin-tab-maintenance" data-admin-tab href="#admin-maintenance-settings" role="tab" aria-controls="admin-maintenance-settings">維護模式</a>
                 <a id="admin-tab-members" data-admin-tab href="#admin-member-management" role="tab" aria-controls="admin-member-management">社員管理</a>
+                <a id="admin-tab-administrators" data-admin-tab href="#admin-administrator-management" role="tab" aria-controls="admin-administrator-management">管理員名單</a>
                 <a id="admin-tab-calendar" data-admin-tab href="#admin-calendar-management" role="tab" aria-controls="admin-calendar-management">行事曆</a>
                 <a id="admin-tab-faq" data-admin-tab href="#admin-faq-management" role="tab" aria-controls="admin-faq-management">FAQ</a>
               </nav>
@@ -298,10 +299,29 @@
                 <div class="section-header is-compact">
                   <div class="section-kicker">Members</div>
                   <h3 class="content-title">社員名單</h3>
-                  <p class="section-description">只顯示已繳費並設定為「社員」的正式社員資料；展開後可修改基本資料、學年度與學期。</p>
+                  <p class="section-description">顯示正式社員與幹部資料；幹部不計入社員申請名額。展開後可修改基本資料、學年度與學期。</p>
                 </div>
                 <div class="member-list" data-members-list></div>
               </section>
+              </section>
+
+              <section class="member-section admin-panel" id="admin-administrator-management" data-admin-panel role="tabpanel" aria-labelledby="admin-tab-administrators" hidden>
+                <div class="section-header is-compact">
+                  <div class="section-kicker">Administrators</div>
+                  <h3 class="content-title">管理員名單</h3>
+                  <p class="section-description">從既有註冊帳號新增管理員，或移除管理權限。管理員不會計入社員申請名額。</p>
+                </div>
+                <article class="content-card is-tight admin-roster-card">
+                  <form class="admin-roster-add-form" data-admin-roster-add-form>
+                    <div class="form-field">
+                      <label for="admin-roster-member">選擇既有帳號</label>
+                      <select id="admin-roster-member" data-admin-roster-member required></select>
+                    </div>
+                    <button class="button-primary" data-admin-roster-add type="submit">新增管理員</button>
+                  </form>
+                  <p class="login-note" data-admin-roster-hint></p>
+                  <div class="admin-roster-list" data-admin-roster-list></div>
+                </article>
               </section>
 
               <section class="member-section admin-panel" id="admin-calendar-management" data-admin-panel role="tabpanel" aria-labelledby="admin-tab-calendar" hidden>
