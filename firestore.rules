@@ -359,7 +359,15 @@ service cloud.firestore {
 
     match /applications/{applicationId} {
       allow create: if isAdmin() || validOwnClubApplicationWrite(applicationId);
-      allow get, list: if isAdmin() || (
+      // The membership transaction reads this deterministic document before
+      // creating it.  On a member's first application there is no resource
+      // data (and therefore no email) to authorize the lookup with yet.
+      allow get: if isAdmin() || (
+        isSignedIn() && applicationId == "club-" + request.auth.uid
+      ) || (
+        isSignedIn() && resource.data.email == request.auth.token.email
+      );
+      allow list: if isAdmin() || (
         isSignedIn() && resource.data.email == request.auth.token.email
       );
       allow update: if isAdmin() || (
