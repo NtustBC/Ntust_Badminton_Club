@@ -47,6 +47,175 @@ service cloud.firestore {
         && (isAdmin() || hasFormalMemberRecord() || isOfficialMember() || classSessionAllowsNonMembers(sessionId));
     }
 
+    function currentTermSettingsPath() {
+      return /databases/$(database)/documents/siteSettings/currentTerm;
+    }
+
+    function ownMemberPath() {
+      return /databases/$(database)/documents/members/$(request.auth.uid);
+    }
+
+    function ownClubApplicationPath() {
+      return /databases/$(database)/documents/applications/$("club-" + request.auth.uid);
+    }
+
+    function membershipStatsPath(year, term) {
+      return /databases/$(database)/documents/membershipRegistrationStats/$(year + "-" + term);
+    }
+
+    function occupiesMembershipSlot(member, year, term) {
+      return member.get("academicYear", "") == year
+        && member.get("term", "") == term
+        && (
+          member.get("membershipIntent", "not_join") == "join" ||
+          member.get("membershipStatus", "not_applied") in ["pending_payment", "formal_member"] ||
+          member.get("status", "not_applied") in ["pending_payment", "formal_member"]
+        );
+    }
+
+    function validMembershipPayment(member) {
+      let intent = member.get("membershipIntent", "not_join");
+      let method = member.get("paymentMethod", "none");
+      return intent in ["join", "not_join"]
+        && (intent == "not_join"
+          ? method == "none"
+            && member.get("cashPaymentSlot", "") == ""
+            && member.get("transferAt", "") == ""
+            && member.get("transferLastFive", "") == ""
+          : (
+            (method == "cash"
+              && member.get("cashPaymentSlot", "") is string
+              && member.get("cashPaymentSlot", "").size() > 0
+              && member.get("cashPaymentSlot", "").size() <= 50
+              && member.get("transferAt", "") == ""
+              && member.get("transferLastFive", "") == "") ||
+            (method == "transfer"
+              && member.get("cashPaymentSlot", "") == ""
+              && member.get("transferAt", "") is string
+              && member.get("transferAt", "").size() > 0
+              && member.get("transferAt", "").size() <= 40
+              && member.get("transferLastFive", "") is string
+              && member.get("transferLastFive", "").matches('^[0-9]{5}$')) ||
+            (method == "later"
+              && member.get("cashPaymentSlot", "") == ""
+              && member.get("transferAt", "") == ""
+              && member.get("transferLastFive", "") == "")
+          ));
+    }
+
+    function validMembershipCounterTransition(beforeMember, afterMember, settings) {
+      let year = settings.academicYear;
+      let term = settings.term;
+      let statsPath = membershipStatsPath(year, term);
+      let beforeOccupies = occupiesMembershipSlot(beforeMember, year, term);
+      let afterOccupies = occupiesMembershipSlot(afterMember, year, term);
+      let oldCount = exists(statsPath) ? get(statsPath).data.count : 0;
+      return beforeOccupies == afterOccupies ||
+        (afterOccupies
+          ? existsAfter(statsPath)
+            && getAfter(statsPath).data.count == oldCount + 1
+          : (!exists(statsPath) || (oldCount == 0
+            ? getAfter(statsPath).data.count == 0
+            : (
+            existsAfter(statsPath)
+            && getAfter(statsPath).data.count == oldCount - 1
+          ))));
+    }
+
+    function validOwnMembershipUpdate(userId) {
+      let settings = get(currentTermSettingsPath()).data;
+      let registration = settings.membershipRegistration;
+      let beforeOccupies = occupiesMembershipSlot(resource.data, settings.academicYear, settings.term);
+      let afterOccupies = occupiesMembershipSlot(request.resource.data, settings.academicYear, settings.term);
+      return isSignedIn()
+        && request.auth.uid == userId
+        && settings.academicYear is string
+        && settings.academicYear.matches('^[0-9]{2,3}$')
+        && settings.term in ["上學期", "下學期"]
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "academicYear", "term", "membershipIntent", "membershipStatus", "status",
+          "paymentStatus", "paymentMethod", "cashPaymentSlot", "transferAt",
+          "transferLastFive", "paymentSubmittedAt", "updatedAt"
+        ])
+        && resource.data.get("membershipStatus", "not_applied") != "formal_member"
+        && resource.data.get("status", "not_applied") != "formal_member"
+        && resource.data.get("paymentStatus", "unpaid") != "paid"
+        && request.resource.data.academicYear == settings.academicYear
+        && request.resource.data.term == settings.term
+        && request.resource.data.membershipStatus in ["not_applied", "pending_payment"]
+        && request.resource.data.status == request.resource.data.membershipStatus
+        && request.resource.data.paymentStatus == "unpaid"
+        && request.resource.data.membershipStatus == (request.resource.data.membershipIntent == "join" ? "pending_payment" : "not_applied")
+        && validMembershipPayment(request.resource.data)
+        && request.resource.data.updatedAt == request.time
+        && (request.resource.data.membershipIntent == "join"
+          ? request.resource.data.paymentSubmittedAt == request.time
+          : request.resource.data.paymentSubmittedAt == null)
+        && (beforeOccupies || !afterOccupies || (
+          registration.limit is int
+          && registration.limit > 0
+          && registration.openAtTimestamp is timestamp
+          && registration.closeAtTimestamp is timestamp
+          && request.time >= registration.openAtTimestamp
+          && request.time <= registration.closeAtTimestamp
+        ))
+        && validMembershipCounterTransition(resource.data, request.resource.data, settings)
+        && (afterOccupies
+          ? existsAfter(ownClubApplicationPath())
+            && getAfter(ownClubApplicationPath()).data.updatedAt == request.time
+          : !existsAfter(ownClubApplicationPath()));
+    }
+
+    function validOwnClubApplicationWrite(applicationId) {
+      let settings = get(currentTermSettingsPath()).data;
+      let member = getAfter(ownMemberPath()).data;
+      return isSignedIn()
+        && applicationId == "club-" + request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          "userId", "name", "studentId", "department", "school", "phone", "email", "note",
+          "applicationType", "academicYear", "term", "approved", "reviewStatus", "submittedAt", "updatedAt"
+        ])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.applicationType == "club"
+        && request.resource.data.academicYear == settings.academicYear
+        && request.resource.data.term == settings.term
+        && request.resource.data.approved == false
+        && request.resource.data.reviewStatus == "pending"
+        && request.resource.data.name == member.get("name", member.get("displayName", ""))
+        && request.resource.data.studentId == member.get("studentId", "")
+        && request.resource.data.department == member.get("department", "")
+        && request.resource.data.school == member.get("school", "")
+        && request.resource.data.phone == member.get("phone", "")
+        && request.resource.data.note is string && request.resource.data.note.size() <= 1000
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.submittedAt is timestamp
+        && member.membershipIntent == "join"
+        && member.membershipStatus == "pending_payment";
+    }
+
+    function validOwnMembershipStatsWrite(periodId) {
+      let settings = get(currentTermSettingsPath()).data;
+      let statsPath = membershipStatsPath(settings.academicYear, settings.term);
+      let beforeMember = get(ownMemberPath()).data;
+      let afterMember = getAfter(ownMemberPath()).data;
+      let oldCount = exists(statsPath) ? get(statsPath).data.count : 0;
+      let beforeOccupies = occupiesMembershipSlot(beforeMember, settings.academicYear, settings.term);
+      let afterOccupies = occupiesMembershipSlot(afterMember, settings.academicYear, settings.term);
+      return isSignedIn()
+        && periodId == settings.academicYear + "-" + settings.term
+        && beforeOccupies != afterOccupies
+        && request.resource.data.keys().hasOnly(["academicYear", "term", "count", "limit", "updatedAt"])
+        && request.resource.data.academicYear == settings.academicYear
+        && request.resource.data.term == settings.term
+        && request.resource.data.limit == settings.membershipRegistration.limit
+        && request.resource.data.count is int
+        && request.resource.data.count == oldCount + (afterOccupies ? 1 : -1)
+        && request.resource.data.count >= 0
+        && request.resource.data.count <= request.resource.data.limit
+        && request.resource.data.updatedAt == request.time;
+    }
+
     function validOwnSignupCreate(sessionId) {
       let session = get(/databases/$(database)/documents/classSessions/$(sessionId)).data;
       let limit = session.get("signupLimit", 0);
@@ -129,7 +298,7 @@ service cloud.firestore {
         (!request.resource.data.keys().hasAny(["updatedAt"]) || request.resource.data.updatedAt == request.time) &&
         (!request.resource.data.keys().hasAny(["lastLoginAt"]) || request.resource.data.lastLoginAt == request.time)
       );
-      allow update: if isAdmin() || (
+      allow update: if isAdmin() || validOwnMembershipUpdate(userId) || (
         isSignedIn() &&
         request.auth.uid == userId &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -179,11 +348,14 @@ service cloud.firestore {
     }
 
     match /applications/{applicationId} {
-      allow create: if false;
+      allow create: if isAdmin() || validOwnClubApplicationWrite(applicationId);
       allow get, list: if isAdmin() || (
         isSignedIn() && resource.data.email == request.auth.token.email
       );
-      allow update: if isAdmin();
+      allow update: if isAdmin() || (
+        validOwnClubApplicationWrite(applicationId) &&
+        request.resource.data.submittedAt == resource.data.submittedAt
+      );
       allow delete: if isAdmin() || (
         isSignedIn() && resource.data.email == request.auth.token.email
       );
@@ -202,7 +374,8 @@ service cloud.firestore {
 
     match /membershipRegistrationStats/{periodId} {
       allow read: if true;
-      allow create, update, delete: if isAdmin();
+      allow create, update: if isAdmin() || validOwnMembershipStatsWrite(periodId);
+      allow delete: if isAdmin();
     }
 
     match /classSessions/{sessionId} {

@@ -1,6 +1,19 @@
 # Firebase 安全功能部署
 
-Firestore Rules 與 Cloud Functions 必須另外部署；只更新 GitHub Pages 靜態檔案不會套用後端權限修正。目前所有系統寄信皆已停用。
+Firestore Rules 必須另外部署；只更新 GitHub Pages 靜態檔案不會套用後端權限修正。目前社員申請改用 Firestore Transaction，不依賴 Cloud Functions，可在 Firebase Spark 免費方案運作。目前所有系統寄信皆已停用。
+
+## Spark 方案部署步驟
+
+1. 部署 Firestore Rules（不要加上 `functions`）：
+
+   ```powershell
+   firebase deploy --only firestore:rules
+   ```
+
+2. 重新建置並發佈 GitHub Pages 靜態網站。
+3. 管理員登入「社員管理」，在「社員申請名額與期間」重新按一次儲存。這會寫入 Rules 驗證開放時間所需的 Firestore Timestamp。
+
+完成後，「儲存申請資料」會在同一筆 Firestore Transaction 中同步更新 `members`、`applications` 與 `membershipRegistrationStats`，並由 Rules 限制登入者只能修改自己、不可突破名額或自行變更為正式社員。
 
 ## 部署前設定
 
@@ -8,7 +21,7 @@ Firestore Rules 與 Cloud Functions 必須另外部署；只更新 GitHub Pages 
 2. 不需要設定 Resend、SMTP 或郵件 API Key。
 3. 在 Firebase App Check 為 Web App 註冊 reCAPTCHA Enterprise，將 Site Key 填入 `src/firebase-config.js` 的 `appCheckSiteKey`。
 4. 先觀察 App Check metrics，確認正式站請求正常後，再於 Firebase Console 啟用 Cloud Firestore、Authentication 與 Functions enforcement。
-5. 部署 Functions 與 Firestore Rules：
+5. 若專案升級為 Blaze 且要啟用其他 Cloud Functions，才部署 Functions 與 Firestore Rules：
 
    ```powershell
    firebase deploy --only functions,firestore

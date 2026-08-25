@@ -24,6 +24,7 @@ let getFirestore;
 let getFunctions;
 let httpsCallable;
 let query;
+let runTransaction;
 let serverTimestamp;
 let setDoc;
 let setPersistence;
@@ -63,6 +64,7 @@ const ensureFirebaseModules = async () => {
         getFunctions,
         httpsCallable,
         query,
+        runTransaction,
         serverTimestamp,
         setDoc,
         setPersistence,
@@ -7546,21 +7548,107 @@ const bindMembershipPaymentFormControls = (form) => {
 };
 
 const saveMembershipApplication = async (paymentData) => {
-  if (!functionsClient || !httpsCallable) {
-    throw new Error("社員申請服務目前無法使用，請稍後再試。");
+  if (!db || !runTransaction || !currentUser?.uid) {
+    throw new Error("請先登入後再申請社員資格。");
   }
-  const result = await httpsCallable(functionsClient, "updateMembershipApplication")({
-    membershipIntent: paymentData.membershipIntent,
-    paymentMethod: paymentData.paymentMethod,
-    cashPaymentSlot: paymentData.cashPaymentSlot,
-    transferAt: paymentData.transferAt,
-    transferLastFive: paymentData.transferLastFive,
+
+  const uid = currentUser.uid;
+  const settingsRef = getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC);
+  const memberRef = getMemberDocRef(uid);
+  const applicationRef = doc(db, "applications", `club-${uid}`);
+  const result = await runTransaction(db, async (transaction) => {
+    const settingsSnapshot = await transaction.get(settingsRef);
+    if (!settingsSnapshot.exists()) throw new Error("管理員尚未設定目前學期。");
+
+    const settings = settingsSnapshot.data() || {};
+    const academicYear = String(settings.academicYear || "").trim();
+    const term = String(settings.term || "").trim();
+    const registration = settings.membershipRegistration || {};
+    const limit = Math.max(0, Math.floor(Number(registration.limit || 0)));
+    if (!/^\d{2,3}$/.test(academicYear) || !["上學期", "下學期"].includes(term)) {
+      throw new Error("管理員尚未設定目前學期。");
+    }
+
+    const statsRef = doc(db, MEMBERSHIP_REGISTRATION_STATS_COLLECTION, `${academicYear}-${term}`);
+    const [memberSnapshot, applicationSnapshot, statsSnapshot] = await Promise.all([
+      transaction.get(memberRef),
+      transaction.get(applicationRef),
+      transaction.get(statsRef),
+    ]);
+    if (!memberSnapshot.exists()) throw new Error("社員基本資料尚未建立，請重新登入後再試。");
+
+    const member = memberSnapshot.data() || {};
+    if (member.paymentStatus === "paid" || [member.membershipStatus, member.status].includes("formal_member")) {
+      throw new Error("社費已確認，若需變更請聯絡幹部。");
+    }
+    const alreadyOccupiesSlot = String(member.academicYear || "") === academicYear
+      && String(member.term || "") === term
+      && getMembershipIntentFromProfile(member) === "join";
+    let count = statsSnapshot.exists() ? Math.max(0, Number(statsSnapshot.data()?.count || 0)) : 0;
+
+    if (paymentData.membershipIntent === "join" && !alreadyOccupiesSlot) {
+      const openAt = getDateTimeLocalMs(registration.openAt);
+      const closeAt = getDateTimeLocalMs(registration.closeAt);
+      const now = Date.now();
+      if (!openAt || !closeAt || openAt >= closeAt || limit <= 0) throw new Error("社員申請尚未開放。");
+      if (now < openAt) throw new Error(`社員申請將於 ${new Date(openAt).toLocaleString("zh-TW")} 開放。`);
+      if (now > closeAt) throw new Error("本學期社員申請已截止。");
+      if (count >= limit) throw new Error(`本學期社員名額已滿（${count}/${limit}）。`);
+      count += 1;
+      transaction.set(statsRef, { academicYear, term, count, limit, updatedAt: serverTimestamp() }, { merge: true });
+    } else if (paymentData.membershipIntent === "not_join" && alreadyOccupiesSlot) {
+      const previousCount = count;
+      count = Math.max(0, count - 1);
+      if (statsSnapshot.exists() && previousCount > 0) {
+        transaction.set(statsRef, { academicYear, term, count, limit, updatedAt: serverTimestamp() }, { merge: true });
+      }
+    }
+
+    const joining = paymentData.membershipIntent === "join";
+    const membershipStatus = joining ? "pending_payment" : "not_applied";
+    transaction.update(memberRef, {
+      membershipIntent: joining ? "join" : "not_join",
+      membershipStatus,
+      status: membershipStatus,
+      paymentStatus: "unpaid",
+      paymentMethod: joining ? paymentData.paymentMethod : "none",
+      cashPaymentSlot: joining && paymentData.paymentMethod === "cash" ? paymentData.cashPaymentSlot : "",
+      transferAt: joining && paymentData.paymentMethod === "transfer" ? paymentData.transferAt : "",
+      transferLastFive: joining && paymentData.paymentMethod === "transfer" ? paymentData.transferLastFive : "",
+      academicYear,
+      term,
+      paymentSubmittedAt: joining ? serverTimestamp() : null,
+      updatedAt: serverTimestamp(),
+    });
+
+    if (joining) {
+      transaction.set(applicationRef, {
+        userId: uid,
+        name: String(member.name || member.displayName || "").slice(0, 100),
+        studentId: String(member.studentId || "").slice(0, 30),
+        department: String(member.department || "").slice(0, 100),
+        school: String(member.school || "").slice(0, 100),
+        phone: String(member.phone || "").slice(0, 30),
+        email: String(currentUser.email || member.email || "").trim().toLowerCase(),
+        note: String(applicationSnapshot.data()?.note || "").slice(0, 1000),
+        applicationType: "club",
+        academicYear,
+        term,
+        approved: false,
+        reviewStatus: "pending",
+        submittedAt: applicationSnapshot.data()?.submittedAt || serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    } else if (applicationSnapshot.exists()) {
+      transaction.delete(applicationRef);
+    }
+
+    return { ok: true, membershipIntent: paymentData.membershipIntent, membershipStatus, count, limit };
   });
-  if (result.data) {
-    membershipRegistrationSettings.count = Math.max(0, Number(result.data.count || 0));
-    if (Number(result.data.limit || 0) > 0) membershipRegistrationSettings.limit = Number(result.data.limit);
-  }
-  return result.data || { ok: true };
+
+  membershipRegistrationSettings.count = result.count;
+  if (result.limit > 0) membershipRegistrationSettings.limit = result.limit;
+  return result;
 };
 
 const handleAccountMembershipSubmit = async (event) => {
@@ -7960,12 +8048,42 @@ const bindMembershipRegistrationSetting = () => {
     }
     submitButton.disabled = true;
     try {
-      await setDoc(getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC), {
-        membershipRegistration: nextSettings,
-        updatedAt: serverTimestamp(),
-        updatedBy: currentUser?.uid || "",
-        updatedByEmail: currentUser?.email || "",
-      }, { merge: true });
+      const openAtMs = getDateTimeLocalMs(nextSettings.openAt);
+      const closeAtMs = getDateTimeLocalMs(nextSettings.closeAt);
+      const academicYear = getConfiguredAcademicYear();
+      const term = getConfiguredAcademicTerm();
+      const membersSnapshot = await getDocs(collection(db, "members"));
+      const existingSlotCount = membersSnapshot.docs.filter((snapshot) => {
+        const member = snapshot.data() || {};
+        return String(member.academicYear || "") === academicYear
+          && String(member.term || "") === term
+          && getMembershipIntentFromProfile(member) === "join";
+      }).length;
+      const statsRef = doc(db, MEMBERSHIP_REGISTRATION_STATS_COLLECTION, `${academicYear}-${term}`);
+      await runTransaction(db, async (transaction) => {
+        const statsSnapshot = await transaction.get(statsRef);
+        transaction.set(getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC), {
+          membershipRegistration: {
+            ...nextSettings,
+            openAtTimestamp: new Date(openAtMs),
+            closeAtTimestamp: new Date(closeAtMs),
+          },
+          updatedAt: serverTimestamp(),
+          updatedBy: currentUser?.uid || "",
+          updatedByEmail: currentUser?.email || "",
+        }, { merge: true });
+        if (!statsSnapshot.exists()) {
+          transaction.set(statsRef, {
+            academicYear,
+            term,
+            count: existingSlotCount,
+            limit: nextSettings.limit,
+            updatedAt: serverTimestamp(),
+          });
+        } else if (Number(statsSnapshot.data()?.limit || 0) !== nextSettings.limit) {
+          transaction.set(statsRef, { limit: nextSettings.limit, updatedAt: serverTimestamp() }, { merge: true });
+        }
+      });
       membershipRegistrationSettings = { ...membershipRegistrationSettings, ...nextSettings };
       document.querySelectorAll("[data-login-form], [data-account-membership-form]").forEach(syncMembershipPaymentForm);
       syncMembershipRegistrationSettingForm();
