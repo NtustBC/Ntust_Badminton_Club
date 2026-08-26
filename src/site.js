@@ -309,6 +309,7 @@ const primeAuthStateFromSnapshot = () => {
 const memberFilters = {
   year: "all",
   term: "all",
+  category: "all",
   query: "",
 };
 let memberFiltersInitializedFromSettings = false;
@@ -3667,6 +3668,13 @@ const matchesMemberFilter = (entry) => {
 
   const yearMatch = memberFilters.year === "all" || yearValue === memberFilters.year;
   const termMatch = memberFilters.term === "all" || termValue === memberFilters.term;
+  const status = getManagedMembershipStatus(entry);
+  const category = status === "formal_member"
+    ? "member"
+    : getMembershipIntentFromProfile(entry) === "join"
+      ? "applicant"
+      : "non_member";
+  const categoryMatch = memberFilters.category === "all" || category === memberFilters.category;
   const queryValue = memberFilters.query.trim().toLocaleLowerCase("zh-TW");
   const queryMatch =
     !queryValue ||
@@ -3675,7 +3683,7 @@ const matchesMemberFilter = (entry) => {
       .join(" ")
       .toLocaleLowerCase("zh-TW")
       .includes(queryValue);
-  return yearMatch && termMatch && queryMatch;
+  return yearMatch && termMatch && categoryMatch && queryMatch;
 };
 
 const renderFilteredMemberViews = () => {
@@ -3693,6 +3701,7 @@ const renderFilteredMemberViews = () => {
 const initMembersFilters = () => {
   const yearSelect = document.querySelector("[data-filter-year]");
   const termSelect = document.querySelector("[data-filter-term]");
+  const categorySelect = document.querySelector("[data-filter-category]");
   const queryInput = document.querySelector("[data-filter-query]");
 
   if (!yearSelect || !termSelect || yearSelect.dataset.initialized === "true") {
@@ -3709,6 +3718,11 @@ const initMembersFilters = () => {
     renderFilteredMemberViews();
   });
 
+  categorySelect?.addEventListener("change", () => {
+    memberFilters.category = categorySelect.value;
+    renderFilteredMemberViews();
+  });
+
   queryInput?.addEventListener("input", () => {
     memberFilters.query = queryInput.value;
     renderFilteredMemberViews();
@@ -3720,6 +3734,7 @@ const initMembersFilters = () => {
 const patchMembersFilterUI = () => {
   const yearSelect = document.querySelector("[data-filter-year]");
   const termSelect = document.querySelector("[data-filter-term]");
+  const categorySelect = document.querySelector("[data-filter-category]");
   const queryInput = document.querySelector("[data-filter-query]");
 
   if (queryInput instanceof HTMLInputElement && queryInput.value !== memberFilters.query) {
@@ -3743,6 +3758,18 @@ const patchMembersFilterUI = () => {
         const selected = value === memberFilters.term ? " selected" : "";
         return `<option value="${escapeHtml(value)}"${selected}>${escapeHtml(label)}</option>`;
       })
+      .join("");
+  }
+
+  if (categorySelect) {
+    const options = [
+      { value: "all", label: "全部身分" },
+      { value: "member", label: "社員" },
+      { value: "applicant", label: "申請成為社員" },
+      { value: "non_member", label: "非社員" },
+    ];
+    categorySelect.innerHTML = options
+      .map(({ value, label }) => `<option value="${value}"${value === memberFilters.category ? " selected" : ""}>${label}</option>`)
       .join("");
   }
 };
@@ -4112,6 +4139,12 @@ const mergeMembersWithApprovedApplications = (members = []) => {
 };
 
 const getFilteredMembersForExport = (members = []) => members.filter(matchesMemberFilter);
+const getMemberFilterCategoryLabel = () => ({
+  all: "全部身分",
+  member: "社員",
+  applicant: "申請成為社員",
+  non_member: "非社員",
+})[memberFilters.category] || "全部身分";
 
 const buildClassSignupWorksheetMarkup = (name, session, signups = [], membersById = {}) => {
   const columns = ["姓名", "學號", "Email", "報名狀態", "候補順位", "零打費", "備註", "報名時間"];
@@ -4988,7 +5021,7 @@ const renderMembersExportToolbar = (members = []) => {
   const exportableMembers = filteredMembers.filter(isMemberRosterRecord);
   const filterLabel = `${memberFilters.year === "all" ? "全部學年度" : getAcademicYearLabel(memberFilters.year)} / ${
     memberFilters.term === "all" ? "全部學期" : getAcademicTermLabel(memberFilters.term)
-  }`;
+  } / ${getMemberFilterCategoryLabel()}`;
   let tableCard = content.querySelector("[data-members-table-card]");
   if (!tableCard) {
     filterCard.insertAdjacentHTML(
@@ -5262,10 +5295,17 @@ const renderMembersList = (members = []) => {
       </div>
     </section>
   `;
-  list.innerHTML = [
-    getGroupMarkup("已申請成為社員", "包含選擇現金或轉帳的申請者，以及待繳費、正式社員與社員候補。", appliedMembers, "目前沒有符合條件的社員申請。"),
-    getGroupMarkup("有帳號但未申請社員", "已建立網站帳號，但本學期尚未提出社員申請。", accountsWithoutApplication, "目前沒有符合條件的未申請帳號。"),
-  ].join("");
+  const filteredCategoryMarkup = {
+    member: () => getGroupMarkup("社員", "已完成社費確認的正式社員。", filteredMembers, "目前沒有符合條件的社員。"),
+    applicant: () => getGroupMarkup("申請成為社員", "包含現金、轉帳、待繳費與社員候補。", appliedMembers, "目前沒有符合條件的社員申請。"),
+    non_member: () => getGroupMarkup("非社員", "已有帳號但目前不是社員，且未提出社員申請。", accountsWithoutApplication, "目前沒有符合條件的非社員帳號。"),
+  }[memberFilters.category];
+  list.innerHTML = filteredCategoryMarkup
+    ? filteredCategoryMarkup()
+    : [
+        getGroupMarkup("已申請成為社員", "包含選擇現金或轉帳的申請者，以及待繳費、正式社員與社員候補。", appliedMembers, "目前沒有符合條件的社員申請。"),
+        getGroupMarkup("有帳號但未申請社員", "已建立網站帳號，但本學期尚未提出社員申請。", accountsWithoutApplication, "目前沒有符合條件的未申請帳號。"),
+      ].join("");
 
   bindMemberToggleButtons(list);
   bindMemberEditForms(list);
@@ -5304,7 +5344,7 @@ const renderMembersSummary = (members = []) => {
       <p class="member-stat-label">目前篩選</p>
       <p class="member-stat-value member-stat-value-small">${escapeHtml(
         memberFilters.year === "all" ? "全部學年度" : getAcademicYearLabel(memberFilters.year),
-      )}<br />${escapeHtml(memberFilters.term === "all" ? "全部學期" : getAcademicTermLabel(memberFilters.term))}</p>
+      )}<br />${escapeHtml(memberFilters.term === "all" ? "全部學期" : getAcademicTermLabel(memberFilters.term))}<br />${escapeHtml(getMemberFilterCategoryLabel())}</p>
     </article>
   `;
 };

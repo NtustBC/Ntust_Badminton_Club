@@ -271,8 +271,8 @@
                 <div class="member-filter-header">
                   <div>
                     <p class="section-kicker">Filter</p>
-                    <h3 class="content-title">學年度與學期</h3>
-                    <p class="content-copy">先選擇你要查看的區間，下方會直接以表格顯示名單與狀態。</p>
+                    <h3 class="content-title">社員名單篩選</h3>
+                    <p class="content-copy">依學年度、學期與身分類別篩選，下方名單及統計會同步更新。</p>
                   </div>
                 </div>
                 <div class="member-filter-grid">
@@ -291,6 +291,15 @@
                       <option value="上學期">上學期</option>
                       <option value="下學期">下學期</option>
                       <option value="未設定">未設定</option>
+                    </select>
+                  </div>
+                  <div class="form-field">
+                    <label for="member-category">身分類別</label>
+                    <select id="member-category" data-filter-category>
+                      <option value="all">全部身分</option>
+                      <option value="member">社員</option>
+                      <option value="applicant">申請成為社員</option>
+                      <option value="non_member">非社員</option>
                     </select>
                   </div>
                 </div>

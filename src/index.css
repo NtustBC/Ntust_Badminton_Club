@@ -3271,10 +3271,6 @@ button.admin-calendar-day:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .member-filter-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .class-signup-profile {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -3298,6 +3294,10 @@ button.admin-calendar-day:focus-visible {
 }
 
 @media (min-width: 980px) {
+  .member-filter-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .site-nav {
     display: flex;
   }
