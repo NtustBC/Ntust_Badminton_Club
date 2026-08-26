@@ -35,6 +35,7 @@ function occupiesMembershipSlot(member = {}, academicYear = "", term = "") {
   const status = String(member.membershipStatus || member.status || "").trim().toLowerCase();
   const intent = String(member.membershipIntent || "").trim().toLowerCase();
   return !["officer", "club_officer", "staff", "cadre", "admin", "administrator"].includes(status)
+    && status !== "membership_waitlisted"
     && String(member.academicYear || "").trim() === academicYear
     && String(member.term || "").trim() === term
     && (intent === "join" || ["pending_payment", "formal_member", "formal", "approved", "member"].includes(status));
@@ -44,8 +45,8 @@ function normalizeMembershipPayment(data = {}, membershipIntent = "not_join") {
   if (membershipIntent !== "join") {
     return { paymentMethod: "none", cashPaymentSlot: "", transferAt: "", transferLastFive: "" };
   }
-  const paymentMethod = String(data.paymentMethod || "later").trim();
-  if (!["cash", "transfer", "later"].includes(paymentMethod)) {
+  const paymentMethod = String(data.paymentMethod || "none").trim();
+  if (!["cash", "transfer", "later", "none"].includes(paymentMethod)) {
     throw new HttpsError("invalid-argument", "請選擇有效的社費繳費方式。");
   }
   const cashPaymentSlot = paymentMethod === "cash" ? String(data.cashPaymentSlot || "").trim().slice(0, 50) : "";
@@ -58,6 +59,42 @@ function normalizeMembershipPayment(data = {}, membershipIntent = "not_join") {
     throw new HttpsError("invalid-argument", "請填寫轉帳時間與轉出帳號末五碼。");
   }
   return { paymentMethod, cashPaymentSlot, transferAt, transferLastFive };
+}
+
+function membershipWaitlistLabel(position) {
+  const labels = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+  const value = Math.max(1, Math.floor(Number(position || 1)));
+  if (value <= 10) return labels[value];
+  if (value < 20) return `十${labels[value - 10]}`;
+  if (value < 100) return `${labels[Math.floor(value / 10)]}十${value % 10 ? labels[value % 10] : ""}`;
+  return String(value);
+}
+
+function membershipTimestampMs(member = {}) {
+  const value = member.paymentSubmittedAt || member.submittedAt || member.createdAt;
+  if (value && typeof value.toMillis === "function") return value.toMillis();
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function assignMembershipRegistrationPositions(entries = [], academicYear = "", term = "") {
+  const eligible = entries
+    .filter((entry) => occupiesMembershipSlot(entry.data || {}, academicYear, term))
+    .sort((a, b) => membershipTimestampMs(a.data) - membershipTimestampMs(b.data));
+  const used = new Set(eligible
+    .map((entry) => Math.floor(Number(entry.data.membershipRegistrationPosition || 0)))
+    .filter((value) => value > 0));
+  let nextPosition = 1;
+  return eligible.map((entry) => {
+    let position = Math.floor(Number(entry.data.membershipRegistrationPosition || 0));
+    if (position <= 0) {
+      while (used.has(nextPosition)) nextPosition += 1;
+      position = nextPosition;
+      used.add(position);
+      nextPosition += 1;
+    }
+    return { ...entry, position };
+  });
 }
 
 async function releaseMembershipRegistrationSlot(firestore, member = {}) {
@@ -245,7 +282,7 @@ exports.updateMembershipApplication = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, asyn
   if (!["join", "not_join"].includes(membershipIntent)) {
     throw new HttpsError("invalid-argument", "社員申請選項不正確。");
   }
-  const payment = normalizeMembershipPayment(request.data, membershipIntent);
+  const requestedPayment = normalizeMembershipPayment(request.data, membershipIntent);
   const firestore = admin.firestore();
   const settingsRef = firestore.collection("siteSettings").doc(CURRENT_TERM_SETTINGS_DOC);
   const memberRef = firestore.collection("members").doc(uid);
@@ -273,18 +310,39 @@ exports.updateMembershipApplication = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, asyn
     const periodId = membershipPeriodId(academicYear, term);
     const statsRef = firestore.collection("membershipRegistrationStats").doc(periodId);
     const statsSnapshot = await transaction.get(statsRef);
-    let memberSnapshots = null;
-    if (!statsSnapshot.exists) {
-      memberSnapshots = await transaction.get(firestore.collection("members"));
-    }
+    const memberSnapshots = await transaction.get(firestore.collection("members"));
 
     const member = memberSnapshot.data();
+    if (hasFormalMembership(member)) {
+      throw new HttpsError("failed-precondition", "目前已具有社員或幹部資格，若需變更請聯絡管理員。");
+    }
     const alreadyOccupiesSlot = occupiesMembershipSlot(member, academicYear, term);
     let count = statsSnapshot.exists
       ? Math.max(0, Number(statsSnapshot.data().count || 0))
       : memberSnapshots.docs.filter((snapshot) => occupiesMembershipSlot(snapshot.data(), academicYear, term)).length;
+    const wasWaitlisted = String(member.membershipStatus || member.status || "").trim().toLowerCase() === "membership_waitlisted";
+    const activeWaitlist = memberSnapshots.docs
+      .filter((snapshot) => snapshot.id !== uid)
+      .map((snapshot) => snapshot.data() || {})
+      .filter((entry) => String(entry.academicYear || "") === academicYear
+        && String(entry.term || "") === term
+        && String(entry.membershipStatus || entry.status || "").trim().toLowerCase() === "membership_waitlisted");
+    const highestWaitlistPosition = activeWaitlist.reduce(
+      (highest, entry) => Math.max(highest, Math.floor(Number(entry.membershipWaitlistPosition || 0))),
+      0,
+    );
+    const highestRegistrationPosition = memberSnapshots.docs
+      .map((snapshot) => snapshot.data() || {})
+      .filter((entry) => String(entry.academicYear || "") === academicYear && String(entry.term || "") === term)
+      .reduce((highest, entry) => Math.max(highest, Math.floor(Number(entry.membershipRegistrationPosition || 0))), 0);
+    let waitlistPosition = wasWaitlisted ? Math.max(1, Number(member.membershipWaitlistPosition || 1)) : null;
+    let registrationPosition = alreadyOccupiesSlot ? Math.max(1, Number(member.membershipRegistrationPosition || count)) : null;
+    let nextStatus = "not_applied";
+    let payment = { paymentMethod: "none", cashPaymentSlot: "", transferAt: "", transferLastFive: "" };
 
-    if (membershipIntent === "join" && !alreadyOccupiesSlot) {
+    if (membershipIntent === "join" && wasWaitlisted) {
+      nextStatus = "membership_waitlisted";
+    } else if (membershipIntent === "join" && !alreadyOccupiesSlot) {
       const now = Date.now();
       if (!Number.isFinite(openAt) || !Number.isFinite(closeAt) || openAt >= closeAt) {
         throw new HttpsError("failed-precondition", "管理員尚未設定社員申請期間。");
@@ -299,26 +357,43 @@ exports.updateMembershipApplication = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, asyn
         throw new HttpsError("failed-precondition", "管理員尚未設定社員名額。");
       }
       if (count >= limit) {
-        throw new HttpsError("resource-exhausted", "本學期社員名額已滿。");
+        nextStatus = "membership_waitlisted";
+        waitlistPosition = Math.max(activeWaitlist.length + 1, highestWaitlistPosition + 1);
+      } else {
+        if (requestedPayment.paymentMethod === "none") {
+          throw new HttpsError("invalid-argument", "請選擇社費繳費方式。");
+        }
+        count += 1;
+        registrationPosition = Math.max(count, highestRegistrationPosition + 1);
+        nextStatus = "pending_payment";
+        payment = requestedPayment;
       }
-      count += 1;
+    } else if (membershipIntent === "join" && alreadyOccupiesSlot) {
+      nextStatus = "pending_payment";
+      payment = requestedPayment.paymentMethod === "none"
+        ? normalizeMembershipPayment(member, "join")
+        : requestedPayment;
     } else if (membershipIntent === "not_join" && alreadyOccupiesSlot) {
       count = Math.max(0, count - 1);
     }
 
-    const nextStatus = membershipIntent === "join" ? "pending_payment" : "not_applied";
     transaction.set(memberRef, {
       membershipIntent,
       membershipStatus: nextStatus,
       status: nextStatus,
       paymentStatus: "unpaid",
       ...payment,
+      membershipRegistrationPosition: nextStatus === "pending_payment" ? registrationPosition : null,
+      membershipWaitlistPosition: nextStatus === "membership_waitlisted" ? waitlistPosition : null,
       academicYear,
       term,
-      paymentSubmittedAt: membershipIntent === "join" ? admin.firestore.FieldValue.serverTimestamp() : null,
+      paymentSubmittedAt: nextStatus === "pending_payment" ? admin.firestore.FieldValue.serverTimestamp() : null,
+      membershipWaitlistedAt: nextStatus === "membership_waitlisted" && !wasWaitlisted
+        ? admin.firestore.FieldValue.serverTimestamp()
+        : member.membershipWaitlistedAt || null,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
-    if (membershipIntent === "join") {
+    if (nextStatus === "pending_payment") {
       transaction.set(applicationRef, {
         name: String(member.name || member.displayName || "").slice(0, 100),
         studentId: String(member.studentId || "").slice(0, 30),
@@ -346,8 +421,51 @@ exports.updateMembershipApplication = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, asyn
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
 
-    return { ok: true, membershipIntent, membershipStatus: nextStatus, count, limit };
+    if (nextStatus === "pending_payment" && !alreadyOccupiesSlot) {
+      setMemberNotification(transaction, firestore, {
+        userId: uid,
+        type: "membership_application_accepted",
+        title: `社員申請第 ${registrationPosition} 位`,
+        message: `你是本學期第 ${registrationPosition} 位申請社員的人，名額已保留。請依選擇的方式完成社費繳納。`,
+      });
+    } else if (nextStatus === "membership_waitlisted" && !wasWaitlisted) {
+      setMemberNotification(transaction, firestore, {
+        userId: uid,
+        type: "membership_waitlisted",
+        title: `社員候補${membershipWaitlistLabel(waitlistPosition)}`,
+        message: `本學期社員名額已滿，你目前是候補第 ${waitlistPosition} 位。候補期間不需進行社費付款。`,
+      });
+    }
+
+    return { ok: true, membershipIntent, membershipStatus: nextStatus, count, limit, registrationPosition, waitlistPosition };
   });
+});
+
+exports.getMembershipApplicationPosition = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "請先登入後再查看社員申請順位。");
+  const firestore = admin.firestore();
+  const memberRef = firestore.collection("members").doc(uid);
+  const [memberSnapshot, membersSnapshot] = await Promise.all([
+    memberRef.get(),
+    firestore.collection("members").get(),
+  ]);
+  if (!memberSnapshot.exists) throw new HttpsError("not-found", "找不到社員申請資料。");
+  const member = memberSnapshot.data() || {};
+  const academicYear = String(member.academicYear || "").trim();
+  const term = String(member.term || "").trim();
+  if (!occupiesMembershipSlot(member, academicYear, term)) return { position: null };
+
+  const entries = membersSnapshot.docs.map((snapshot) => ({ id: snapshot.id, data: snapshot.data() || {} }));
+  const position = assignMembershipRegistrationPositions(entries, academicYear, term)
+    .find((entry) => entry.id === uid)?.position || null;
+  if (position && Math.floor(Number(member.membershipRegistrationPosition || 0)) !== position) {
+    await memberRef.set({
+      membershipRegistrationPosition: position,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
+  return { position };
 });
 
 async function getSessionSignupCounts(sessionId) {

@@ -1493,7 +1493,16 @@ const loadNotificationItems = async () => {
   });
   if (preferences.registrationUpdates !== false && currentMemberProfile?.membershipStatus === "pending_payment") {
     const pendingDate = currentMemberProfile.paymentSubmittedAt || currentMemberProfile.updatedAt || currentMemberProfile.createdAt || new Date();
-    items.unshift({ id: `membership:pending-payment:${getTimestampMs(pendingDate) || "current"}`, title: "社員申請處理中", copy: "幹部確認社費後，系統會更新社員資格。", date: pendingDate, sortMs: getTimestampMs(pendingDate) });
+    const position = getMembershipRegistrationPosition(currentMemberProfile);
+    items.unshift({
+      id: `membership:pending-payment:${getTimestampMs(pendingDate) || "current"}`,
+      title: position ? `社員申請第 ${position} 位` : "社員申請處理中",
+      copy: position
+        ? `你是本學期第 ${position} 位申請社員的人；幹部確認社費後，系統會更新社員資格。`
+        : "幹部確認社費後，系統會更新社員資格。",
+      date: pendingDate,
+      sortMs: getTimestampMs(pendingDate),
+    });
   }
   if (preferences.registrationUpdates !== false && currentMemberProfile?.membershipStatusChange) {
     const change = currentMemberProfile.membershipStatusChange;
@@ -1816,6 +1825,16 @@ const membershipStatusCopy = {
     meaning: "已完成繳費，正式社員功能已開放。",
     action: "進入社員專區",
   },
+  pending_payment: {
+    label: "待繳社費",
+    meaning: "社員名額已保留，完成社費繳納並由幹部確認後會成為正式社員。",
+    action: "",
+  },
+  membership_waitlisted: {
+    label: "社員候補",
+    meaning: "目前在社員候補名單中，遞補前不需進行社費付款。",
+    action: "",
+  },
 };
 
 const getManagedMembershipStatus = (value = "") => {
@@ -1837,8 +1856,16 @@ const getManagedMembershipStatus = (value = "") => {
     return "formal_member";
   }
 
+  if (explicitStatus === "pending_payment") {
+    return "pending_payment";
+  }
+
   if (["former_member", "former", "expired", "qualification_expired"].includes(explicitStatus)) {
     return "former_member";
+  }
+
+  if (["membership_waitlisted", "waitlisted"].includes(explicitStatus)) {
+    return "membership_waitlisted";
   }
 
   return "non_member";
@@ -1881,15 +1908,30 @@ const getCashPaymentSlotLabel = (value) => {
 };
 
 const getMembershipIntentFromProfile = (profile = {}) =>
-  profile.membershipIntent === "join" || ["pending_payment", "formal_member"].includes(String(profile.membershipStatus || profile.status || ""))
+  profile.membershipIntent === "join" || ["pending_payment", "formal_member", "membership_waitlisted"].includes(String(profile.membershipStatus || profile.status || ""))
     ? "join"
     : "not_join";
 
 const getMembershipRegistrationPeriodId = () => `${getConfiguredAcademicYear()}-${getConfiguredAcademicTerm()}`;
 
+const getMembershipRegistrationPosition = (member = {}) => {
+  const value = Math.floor(Number(member.membershipRegistrationPosition || 0));
+  return value > 0 ? value : 0;
+};
+
+const getMembershipApplicationPositionLabel = (member = {}) => {
+  if (getManagedMembershipStatus(member) === "membership_waitlisted") {
+    const waitlistPosition = Math.floor(Number(member.membershipWaitlistPosition || 0));
+    return waitlistPosition > 0 ? `候補第 ${waitlistPosition} 位` : "社員候補";
+  }
+  const position = getMembershipRegistrationPosition(member);
+  return getMembershipIntentFromProfile(member) === "join" && position > 0 ? `社員申請第 ${position} 位` : "";
+};
+
 const doesMembershipProfileOccupySlot = (member = {}, academicYear = getConfiguredAcademicYear(), term = getConfiguredAcademicTerm()) => {
   const status = getManagedMembershipStatus(member);
   return !["officer", "admin"].includes(status)
+    && status !== "membership_waitlisted"
     && String(member.academicYear || "") === academicYear
     && String(member.term || "") === term
     && getMembershipIntentFromProfile(member) === "join";
@@ -1912,6 +1954,10 @@ const getMembershipRegistrationAvailability = () => {
   if (currentProfileOccupiesMembershipSlot()) {
     return { available: true, message: "你已保留本學期社員名額，可繼續修改繳費資料。" };
   }
+  if (getManagedMembershipStatus(currentMemberProfile || {}) === "membership_waitlisted") {
+    const position = Math.max(1, Number(currentMemberProfile?.membershipWaitlistPosition || 1));
+    return { available: true, waitlisted: true, message: `你目前是社員候補第 ${position} 位；遞補前不需進行社費付款。` };
+  }
   const openAt = getDateTimeLocalMs(membershipRegistrationSettings.openAt);
   const closeAt = getDateTimeLocalMs(membershipRegistrationSettings.closeAt);
   const limit = Math.max(0, Number(membershipRegistrationSettings.limit || 0));
@@ -1927,7 +1973,7 @@ const getMembershipRegistrationAvailability = () => {
     return { available: false, message: "本學期社員申請已截止。" };
   }
   if (count >= limit) {
-    return { available: false, message: `本學期社員名額已滿（${count}/${limit}）。` };
+    return { available: true, waitlisted: true, message: `本學期社員名額已滿（${count}/${limit}），現在申請將加入候補名單。` };
   }
   return { available: true, message: `社員申請開放中，剩餘 ${Math.max(0, limit - count)} 名；截止時間為 ${new Date(closeAt).toLocaleString("zh-TW")}。` };
 };
@@ -1960,17 +2006,18 @@ const syncMembershipPaymentForm = (form) => {
     setMessageTone(element, availability.message, availability.available ? "success" : "error");
   });
   const method = form.querySelector("[name='paymentMethod']:checked")?.value || "";
+  const paymentRequired = intent === "join" && !availability.waitlisted;
   const paymentFields = form.querySelector("[data-membership-payment-fields]");
   const cashPanel = form.querySelector("[data-cash-payment-panel]");
   const transferPanel = form.querySelector("[data-transfer-payment-panel]");
   if (paymentFields) {
-    paymentFields.hidden = intent !== "join";
+    paymentFields.hidden = !paymentRequired;
   }
   if (cashPanel) {
-    cashPanel.hidden = intent !== "join" || method !== "cash";
+    cashPanel.hidden = !paymentRequired || method !== "cash";
   }
   if (transferPanel) {
-    transferPanel.hidden = intent !== "join" || method !== "transfer";
+    transferPanel.hidden = !paymentRequired || method !== "transfer";
   }
   form.querySelectorAll("[data-transfer-account-card]").forEach((card) => {
     card.innerHTML = buildTransferAccountMarkup();
@@ -1990,7 +2037,8 @@ const syncMembershipPaymentForm = (form) => {
 
 const readMembershipPaymentForm = (form) => {
   const membershipIntent = String(form.querySelector("[name='membershipIntent']:checked")?.value || "not_join");
-  const paymentMethod = membershipIntent === "join" ? String(form.querySelector("[name='paymentMethod']:checked")?.value || "") : "none";
+  const waitlisted = membershipIntent === "join" && getMembershipRegistrationAvailability().waitlisted;
+  const paymentMethod = membershipIntent === "join" && !waitlisted ? String(form.querySelector("[name='paymentMethod']:checked")?.value || "") : "none";
   return {
     membershipIntent,
     paymentMethod,
@@ -2001,7 +2049,7 @@ const readMembershipPaymentForm = (form) => {
 };
 
 const validateMembershipPaymentData = (data) => {
-  if (data.membershipIntent !== "join") {
+  if (data.membershipIntent !== "join" || getMembershipRegistrationAvailability().waitlisted) {
     return "";
   }
   if (!data.paymentMethod) {
@@ -2050,7 +2098,23 @@ const loadCurrentMemberStatus = async (user) => {
     getDoc(getMemberDocRef(user.uid)),
     user.email ? getDoc(getApprovalDocRef(user.email)) : Promise.resolve(null),
   ]);
-  const memberData = memberDoc.exists() ? memberDoc.data() : null;
+  let memberData = memberDoc.exists() ? memberDoc.data() : null;
+  if (
+    memberData &&
+    getMembershipIntentFromProfile(memberData) === "join" &&
+    getManagedMembershipStatus(memberData) !== "membership_waitlisted" &&
+    !getMembershipRegistrationPosition(memberData) &&
+    functionsClient &&
+    httpsCallable
+  ) {
+    try {
+      const result = await httpsCallable(functionsClient, "getMembershipApplicationPosition")();
+      const position = Math.floor(Number(result.data?.position || 0));
+      if (position > 0) memberData = { ...memberData, membershipRegistrationPosition: position };
+    } catch (error) {
+      console.warn("Load membership application position failed:", error);
+    }
+  }
   const signupApproved = Boolean(approvalDoc?.exists?.());
   const managedMemberStatus = normalizeMembershipStatus(memberData);
 
@@ -2321,9 +2385,22 @@ const renderAccountMembershipSummary = (container) => {
 
   const profile = currentMemberProfile || {};
   const intent = getMembershipIntentFromProfile(profile);
+  const waitlisted = getManagedMembershipStatus(profile) === "membership_waitlisted";
+  if (waitlisted) {
+    const position = Math.max(1, Number(profile.membershipWaitlistPosition || 1));
+    container.innerHTML = [
+      "<span>申請：本學期社員候補</span>",
+      `<span>候補順位：第 ${position} 位</span>`,
+      "<span>社費狀態：候補期間不需付款</span>",
+    ].join("");
+    return;
+  }
   const method = profile.paymentMethod || (intent === "join" ? "later" : "none");
   const details = [
     `<span>申請：${intent === "join" ? "本學期申請社員" : "本學期不申請社員"}</span>`,
+    intent === "join" && getMembershipRegistrationPosition(profile)
+      ? `<span>申請順位：第 ${getMembershipRegistrationPosition(profile)} 位</span>`
+      : "",
     intent === "join" ? `<span>社費方式：${escapeHtml(getPaymentMethodLabel(method))}</span>` : "",
     method === "cash" ? `<span>預計場合：${escapeHtml(getCashPaymentSlotLabel(profile.cashPaymentSlot))}</span>` : "",
     method === "transfer" && profile.transferLastFive ? `<span>轉出帳號末五碼：${escapeHtml(profile.transferLastFive)}</span>` : "",
@@ -3971,7 +4048,7 @@ const getDashboardAdminIds = () =>
 
 const mergeMembersWithApprovedApplications = (members = []) => {
   const adminIds = getDashboardAdminIds();
-  return members
+  const normalizedMembers = members
     .filter(
       (member) =>
         ![member.id, member.uid]
@@ -3979,8 +4056,32 @@ const mergeMembersWithApprovedApplications = (members = []) => {
           .filter(Boolean)
           .some((value) => adminIds.has(value)),
     )
-    .map((member) => ({ ...member, origin: "members" }))
-    .sort(
+    .map((member) => ({ ...member, origin: "members" }));
+
+  const groups = new Map();
+  normalizedMembers.forEach((member) => {
+    const status = getManagedMembershipStatus(member);
+    if (getMembershipIntentFromProfile(member) !== "join" || ["officer", "admin", "membership_waitlisted"].includes(status)) return;
+    const key = `${member.academicYear || "未設定"}:${member.term || "未設定"}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(member);
+  });
+  groups.forEach((group) => {
+    group.sort((a, b) =>
+      getTimestampMs(a.paymentSubmittedAt || a.submittedAt || a.createdAt) -
+      getTimestampMs(b.paymentSubmittedAt || b.submittedAt || b.createdAt));
+    const usedPositions = new Set(group.map(getMembershipRegistrationPosition).filter(Boolean));
+    let nextPosition = 1;
+    group.forEach((member) => {
+      if (getMembershipRegistrationPosition(member)) return;
+      while (usedPositions.has(nextPosition)) nextPosition += 1;
+      member.membershipRegistrationPosition = nextPosition;
+      usedPositions.add(nextPosition);
+      nextPosition += 1;
+    });
+  });
+
+  return normalizedMembers.sort(
       (a, b) =>
         getTimestampMs(a.submittedAt || a.createdAt || a.approvedAt) -
         getTimestampMs(b.submittedAt || b.createdAt || b.approvedAt),
@@ -4058,13 +4159,20 @@ const downloadClassSignupExcel = (session, signups = []) => {
 
 const getMemberStatusOptionsMarkup = (status) => {
   const selectedStatus = getManagedMembershipStatus(status);
-  return [
+  const options = [
     { value: "non_member", label: "非社員" },
     { value: "former_member", label: "前社員" },
     { value: "formal_member", label: "社員" },
     { value: "officer", label: "幹部" },
     { value: "admin", label: "管理員" },
-  ]
+  ];
+  if (["pending_payment", "membership_waitlisted"].includes(selectedStatus)) {
+    options.unshift({
+      value: selectedStatus,
+      label: selectedStatus === "pending_payment" ? "待繳社費" : "社員候補",
+    });
+  }
+  return options
     .map(
       (option) =>
         `<option value="${option.value}"${option.value === selectedStatus ? " selected" : ""}>${option.label}</option>`,
@@ -4429,12 +4537,14 @@ const getRosterManagementRowMarkup = (member = {}, index = 0, { disableStatus = 
   const paymentNotRequired = ["officer", "admin"].includes(managedStatus);
   const paymentConfirmed = member.paymentStatus === "paid" || hasMemberPrivileges(managedStatus);
   const paymentMeta = [
+    getMembershipApplicationPositionLabel(member),
     paymentMethod === "cash" ? getCashPaymentSlotLabel(member.cashPaymentSlot) : "",
     paymentMethod === "transfer" && member.transferLastFive ? `末五碼 ${member.transferLastFive}` : "",
     paymentMethod === "transfer" && member.transferAt ? member.transferAt.replace("T", " ") : "",
   ].filter(Boolean);
   const paymentTitle = paymentNotRequired
     ? "免繳社費"
+    : managedStatus === "membership_waitlisted" ? "社員候補"
     : paymentConfirmed ? "已確認收款" : membershipIntent === "join" ? getPaymentMethodLabel(paymentMethod) : "未申請社員";
   const paymentStateClass = paymentConfirmed ? "is-confirmed" : membershipIntent === "join" ? "is-pending" : "is-neutral";
   const paymentMetaCopy = paymentNotRequired
@@ -4870,12 +4980,15 @@ const renderMembersExportToolbar = (members = []) => {
       const paymentNotRequired = ["officer", "admin"].includes(managedStatus);
       const paymentConfirmed = member.paymentStatus === "paid" || hasMemberPrivileges(managedStatus);
       const paymentMeta = [
+        getMembershipApplicationPositionLabel(member),
         paymentMethod === "cash" ? getCashPaymentSlotLabel(member.cashPaymentSlot) : "",
         paymentMethod === "transfer" && member.transferLastFive ? `末五碼 ${member.transferLastFive}` : "",
         paymentMethod === "transfer" && member.transferAt ? member.transferAt.replace("T", " ") : "",
       ].filter(Boolean);
       const paymentTitle = paymentNotRequired
         ? "免繳社費"
+        : managedStatus === "membership_waitlisted"
+          ? "社員候補"
         : paymentConfirmed
           ? "已確認收款"
         : membershipIntent === "join"
@@ -4888,7 +5001,7 @@ const renderMembersExportToolbar = (members = []) => {
           ? `${getPaymentMethodLabel(paymentMethod)}${paymentMeta.length ? `・${paymentMeta.join("・")}` : ""}`
         : paymentMeta.join("・") || (membershipIntent === "join" ? "等待社員完成社費繳納" : "本學期未提出申請");
       const confirmPaymentButton =
-        membershipIntent === "join" && !hasMemberPrivileges(managedStatus)
+        membershipIntent === "join" && managedStatus !== "membership_waitlisted" && !hasMemberPrivileges(managedStatus)
           ? `<button class="member-payment-confirm" data-member-action="toggle-membership-payment" data-member-id="${escapeHtml(member.id)}" data-member-email="${escapeHtml((member.email || "").trim().toLowerCase())}" data-payment-status="paid" type="button"><span aria-hidden="true">✓</span>確認已收款</button>`
           : "";
       return `
@@ -4899,6 +5012,7 @@ const renderMembersExportToolbar = (members = []) => {
           <td>${escapeHtml(member.department || member.school || "未填寫")}</td>
           <td>${escapeHtml(member.email || "未填寫")}</td>
           <td>${escapeHtml(member.phone || "未填寫")}</td>
+          <td>${escapeHtml(getMembershipApplicationPositionLabel(member) || "—")}</td>
           <td>
             <div class="member-payment-cell">
               <div class="member-payment-state ${paymentStateClass}">
@@ -4957,6 +5071,7 @@ const renderMembersExportToolbar = (members = []) => {
             <th scope="col">系級</th>
             <th scope="col">Gmail</th>
             <th scope="col">聯絡電話</th>
+            <th scope="col">申請順位</th>
             <th scope="col">社費資訊</th>
             <th scope="col">社員狀態</th>
             <th scope="col">操作</th>
@@ -4979,13 +5094,14 @@ const renderMembersExportToolbar = (members = []) => {
       member.phone || "",
       getAcademicYearLabel(member.academicYear),
       getAcademicTermLabel(member.term),
+      getMembershipApplicationPositionLabel(member),
       getPaymentMethodLabel(member.paymentMethod || "none"),
       getMembershipStatusCopy(member).label,
     ]);
     const period = `${memberFilters.year === "all" ? "全部學年度" : memberFilters.year}-${memberFilters.term === "all" ? "全部學期" : memberFilters.term}`;
     downloadCsv({
       filename: `臺科大羽球社-社員名單-${period}-${formatDateInputValue(new Date())}.csv`,
-      headers: ["姓名", "學號", "系級", "Email", "電話", "學年度", "學期", "社費方式", "社員狀態"],
+      headers: ["姓名", "學號", "系級", "Email", "電話", "學年度", "學期", "社員申請順位", "社費方式", "社員狀態"],
       rows,
     });
     showToast(`已匯出 ${rows.length} 位正式社員。`, { tone: "success" });
@@ -4997,21 +5113,25 @@ const renderMembersList = (members = []) => {
     return;
   }
 
-  const filteredMembers = members.filter((member) => matchesMemberFilter(member) && isMemberRosterRecord(member));
+  const filteredMembers = members.filter((member) => {
+    const status = getManagedMembershipStatus(member);
+    return matchesMemberFilter(member) && !["officer", "admin"].includes(status);
+  });
 
   if (filteredMembers.length === 0) {
     list.innerHTML = `
       <article class="content-card is-tight">
-        <h3 class="content-title">目前沒有符合條件的社員資料</h3>
-        <p class="content-copy">只有已繳費並設定為「社員」的正式社員會顯示在這裡。</p>
+        <h3 class="content-title">目前沒有符合條件的帳號資料</h3>
+        <p class="content-copy">這個篩選範圍內目前沒有已註冊帳號。</p>
       </article>
     `;
     return;
   }
 
-  list.innerHTML = filteredMembers
+  const getRowsMarkup = (group) => group
     .map((member, index) => {
       const memberStatusLabel = getMembershipStatusCopy(member).label;
+      const applicationPositionLabel = getMembershipApplicationPositionLabel(member);
       const school = String(member.school || "臺科大").trim();
       const customSchoolOption = !["臺科大", "外校"].includes(school)
         ? `<option value="${escapeHtml(school)}" selected>${escapeHtml(school)}</option>`
@@ -5037,7 +5157,7 @@ const renderMembersList = (members = []) => {
                 <span class="member-row-email">${escapeHtml(member.name || "未填姓名")} / ${escapeHtml(member.studentId || "未填學號")}</span>
               </span>
               <span class="member-row-summary-side">
-                <span class="member-row-status">${escapeHtml(memberStatusLabel)}</span>
+                <span class="member-row-status">${escapeHtml([memberStatusLabel, applicationPositionLabel].filter(Boolean).join("・"))}</span>
                 <span class="member-row-toggle">展開</span>
               </span>
             </span>
@@ -5046,6 +5166,7 @@ const renderMembersList = (members = []) => {
             <div class="member-row-meta">
               <span>學年度：${escapeHtml(getAcademicYearLabel(member.academicYear || "未設定"))}</span>
               <span>學期：${escapeHtml(getAcademicTermLabel(member.term || "未設定"))}</span>
+              ${applicationPositionLabel ? `<span>${escapeHtml(applicationPositionLabel)}</span>` : ""}
               <span>系別：${escapeHtml(member.department || member.school || "未填寫")}</span>
               <span>電話：${escapeHtml(member.phone || "未填寫")}</span>
               <span>信箱：${escapeHtml(member.email || "未填寫")}</span>
@@ -5074,6 +5195,24 @@ const renderMembersList = (members = []) => {
       `;
     })
     .join("");
+
+  const appliedMembers = filteredMembers.filter((member) => getMembershipIntentFromProfile(member) === "join");
+  const accountsWithoutApplication = filteredMembers.filter((member) => getMembershipIntentFromProfile(member) !== "join");
+  const getGroupMarkup = (title, copy, group, emptyCopy) => `
+    <section class="member-roster-group">
+      <div class="section-header is-compact">
+        <h4 class="content-title">${escapeHtml(title)}（${group.length}）</h4>
+        <p class="section-description">${escapeHtml(copy)}</p>
+      </div>
+      <div class="member-list">
+        ${group.length ? getRowsMarkup(group) : `<article class="content-card is-tight"><p class="content-copy">${escapeHtml(emptyCopy)}</p></article>`}
+      </div>
+    </section>
+  `;
+  list.innerHTML = [
+    getGroupMarkup("已申請成為社員", "包含待繳費、正式社員與社員候補。", appliedMembers, "目前沒有符合條件的社員申請。"),
+    getGroupMarkup("有帳號但未申請社員", "已建立網站帳號，但本學期尚未提出社員申請。", accountsWithoutApplication, "目前沒有符合條件的未申請帳號。"),
+  ].join("");
 
   bindMemberToggleButtons(list);
   bindMemberEditForms(list);
@@ -7995,6 +8134,7 @@ const handleAuthSubmit = async (event) => {
       : await signInWithEmailAndPassword(readyAuth, email, password);
 
     let membershipApplicationError = null;
+    let membershipApplicationResult = null;
     if (authMode === "signup") {
       await setDoc(getMemberDocRef(credential.user.uid), {
         uid: credential.user.uid,
@@ -8024,7 +8164,7 @@ const handleAuthSubmit = async (event) => {
       });
       if (signupProfile.membershipIntent === "join") {
         try {
-          await saveMembershipApplication(signupProfile);
+          membershipApplicationResult = await saveMembershipApplication(signupProfile);
         } catch (error) {
           membershipApplicationError = error;
           console.error("Membership application after signup failed:", error);
@@ -8067,7 +8207,9 @@ const handleAuthSubmit = async (event) => {
         ? "登入成功，但社員資料暫時無法同步；你仍可保持登入並稍後再試。"
         : authMode === "signup"
           ? signupProfile.membershipIntent === "join"
-            ? "帳號註冊完成，社員申請已送出；幹部確認社費後才會取得社員資格。"
+            ? membershipApplicationResult?.membershipStatus === "membership_waitlisted"
+              ? `帳號註冊完成，你目前是社員候補第 ${membershipApplicationResult.waitlistPosition} 位；候補期間不需付款。`
+              : `帳號註冊完成，你是本學期第 ${membershipApplicationResult?.registrationPosition || "—"} 位申請者；請依選擇完成社費繳納。`
             : "帳號註冊完成，已自動登入；目前狀態為非社員。"
           : "登入成功，已更新社員狀態。",
       membershipApplicationError || profileSyncFailed ? "error" : "success",
@@ -8114,6 +8256,7 @@ const handleApplicationSubmit = async (event) => {
   submitButton.disabled = true;
 
   try {
+    let membershipApplicationResult = null;
     await ensureAuthReady();
 
     if (!currentUser?.uid || currentUser.email?.trim().toLowerCase() !== email) {
@@ -8131,7 +8274,7 @@ const handleApplicationSubmit = async (event) => {
         phone,
         updatedAt: serverTimestamp(),
       }, { merge: true });
-      await saveMembershipApplication({
+      membershipApplicationResult = await saveMembershipApplication({
         membershipIntent: "join",
         paymentMethod: "later",
         cashPaymentSlot: "",
@@ -8180,8 +8323,35 @@ const handleApplicationSubmit = async (event) => {
     rememberApplicationSubmit(email, applicationType);
     applicationForm.reset();
     closeApplicationModal();
+    const successModal = getApplicationSuccessModalElements().successModal;
+    const successTitle = successModal.querySelector(".modal-title");
+    const successCopy = successModal.querySelector(".success-modal-copy");
+    if (applicationType === "club" && membershipApplicationResult?.membershipStatus === "membership_waitlisted") {
+      successTitle.textContent = `社員候補第 ${membershipApplicationResult.waitlistPosition} 位`;
+      successCopy.innerHTML = `
+        <p>社員名額目前已滿，你是候補第 ${escapeHtml(membershipApplicationResult.waitlistPosition)} 位。</p>
+        <p>候補期間不需進行社費付款；名額釋出時請依最新通知操作。</p>
+      `;
+    } else if (applicationType === "club") {
+      successTitle.textContent = "申請已送出！";
+      successCopy.innerHTML = `
+        <p>感謝你申請加入臺科大羽球社！我們已收到你的資料。</p>
+        <p>請依通知完成社費繳納，幹部確認後會更新正式社員資格。</p>
+      `;
+    } else {
+      successTitle.textContent = "申請已送出！";
+      successCopy.innerHTML = `
+        <p>感謝你送出申請！我們已收到你的資料。</p>
+        <p>管理員審核後會再通知你最新結果。</p>
+      `;
+    }
     openApplicationSuccessModal();
-    setApplicationHint("申請已送出。請依通知完成一次性社費繳納，幹部確認後才會成為正式社員。", "success");
+    setApplicationHint(
+      membershipApplicationResult?.membershipStatus === "membership_waitlisted"
+        ? `已加入社員候補第 ${membershipApplicationResult.waitlistPosition} 位，候補期間不需付款。`
+        : "申請已送出。請依通知完成一次性社費繳納，幹部確認後才會成為正式社員。",
+      "success",
+    );
   } catch (error) {
     console.error("Application submit failed:", error);
     setMessageTone(applicationHint, getFriendlyApplicationError(error), "error");
@@ -8218,101 +8388,11 @@ const bindMembershipPaymentFormControls = (form) => {
 };
 
 const saveMembershipApplication = async (paymentData) => {
-  if (!db || !runTransaction || !currentUser?.uid) {
+  if (!functionsClient || !httpsCallable || !currentUser?.uid) {
     throw new Error("請先登入後再申請社員資格。");
   }
-
-  const uid = currentUser.uid;
-  const settingsRef = getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC);
-  const memberRef = getMemberDocRef(uid);
-  const applicationRef = doc(db, "applications", `club-${uid}`);
-  const result = await runTransaction(db, async (transaction) => {
-    const settingsSnapshot = await transaction.get(settingsRef);
-    if (!settingsSnapshot.exists()) throw new Error("管理員尚未設定目前學期。");
-
-    const settings = settingsSnapshot.data() || {};
-    const academicYear = String(settings.academicYear || "").trim();
-    const term = String(settings.term || "").trim();
-    const registration = settings.membershipRegistration || {};
-    const limit = Math.max(0, Math.floor(Number(registration.limit || 0)));
-    if (!/^\d{2,3}$/.test(academicYear) || !["上學期", "下學期"].includes(term)) {
-      throw new Error("管理員尚未設定目前學期。");
-    }
-
-    const statsRef = doc(db, MEMBERSHIP_REGISTRATION_STATS_COLLECTION, `${academicYear}-${term}`);
-    const [memberSnapshot, applicationSnapshot, statsSnapshot] = await Promise.all([
-      transaction.get(memberRef),
-      transaction.get(applicationRef),
-      transaction.get(statsRef),
-    ]);
-    if (!memberSnapshot.exists()) throw new Error("社員基本資料尚未建立，請重新登入後再試。");
-
-    const member = memberSnapshot.data() || {};
-    if (currentUserIsAdmin || hasMemberPrivileges(member) || member.paymentStatus === "paid") {
-      throw new Error("目前已具有社員、幹部或管理員資格，若需變更請聯絡管理員。");
-    }
-    const alreadyOccupiesSlot = doesMemberOccupyMembershipSlot(member, academicYear, term);
-    let count = statsSnapshot.exists() ? Math.max(0, Number(statsSnapshot.data()?.count || 0)) : 0;
-
-    if (paymentData.membershipIntent === "join" && !alreadyOccupiesSlot) {
-      const openAt = getDateTimeLocalMs(registration.openAt);
-      const closeAt = getDateTimeLocalMs(registration.closeAt);
-      const now = Date.now();
-      if (!openAt || !closeAt || openAt >= closeAt || limit <= 0) throw new Error("社員申請尚未開放。");
-      if (now < openAt) throw new Error(`社員申請將於 ${new Date(openAt).toLocaleString("zh-TW")} 開放。`);
-      if (now > closeAt) throw new Error("本學期社員申請已截止。");
-      if (count >= limit) throw new Error(`本學期社員名額已滿（${count}/${limit}）。`);
-      count += 1;
-      transaction.set(statsRef, { academicYear, term, count, limit, updatedAt: serverTimestamp() }, { merge: true });
-    } else if (paymentData.membershipIntent === "not_join" && alreadyOccupiesSlot) {
-      const previousCount = count;
-      count = Math.max(0, count - 1);
-      if (statsSnapshot.exists() && previousCount > 0) {
-        transaction.set(statsRef, { academicYear, term, count, limit, updatedAt: serverTimestamp() }, { merge: true });
-      }
-    }
-
-    const joining = paymentData.membershipIntent === "join";
-    const membershipStatus = joining ? "pending_payment" : "not_applied";
-    transaction.update(memberRef, {
-      membershipIntent: joining ? "join" : "not_join",
-      membershipStatus,
-      status: membershipStatus,
-      paymentStatus: "unpaid",
-      paymentMethod: joining ? paymentData.paymentMethod : "none",
-      cashPaymentSlot: joining && paymentData.paymentMethod === "cash" ? paymentData.cashPaymentSlot : "",
-      transferAt: joining && paymentData.paymentMethod === "transfer" ? paymentData.transferAt : "",
-      transferLastFive: joining && paymentData.paymentMethod === "transfer" ? paymentData.transferLastFive : "",
-      academicYear,
-      term,
-      paymentSubmittedAt: joining ? serverTimestamp() : null,
-      updatedAt: serverTimestamp(),
-    });
-
-    if (joining) {
-      transaction.set(applicationRef, {
-        userId: uid,
-        name: String(member.name || member.displayName || "").slice(0, 100),
-        studentId: String(member.studentId || "").slice(0, 30),
-        department: String(member.department || "").slice(0, 100),
-        school: String(member.school || "").slice(0, 100),
-        phone: String(member.phone || "").slice(0, 30),
-        email: String(currentUser.email || member.email || "").trim().toLowerCase(),
-        note: String(applicationSnapshot.data()?.note || "").slice(0, 1000),
-        applicationType: "club",
-        academicYear,
-        term,
-        approved: false,
-        reviewStatus: "pending",
-        submittedAt: applicationSnapshot.data()?.submittedAt || serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
-    } else if (applicationSnapshot.exists()) {
-      transaction.delete(applicationRef);
-    }
-
-    return { ok: true, membershipIntent: paymentData.membershipIntent, membershipStatus, count, limit };
-  });
+  const response = await httpsCallable(functionsClient, "updateMembershipApplication")(paymentData);
+  const result = response.data || {};
 
   membershipRegistrationSettings.count = result.count;
   if (result.limit > 0) membershipRegistrationSettings.limit = result.limit;
@@ -8337,7 +8417,7 @@ const handleAccountMembershipSubmit = async (event) => {
 
   submitButton.disabled = true;
   try {
-    await saveMembershipApplication(paymentData);
+    const result = await saveMembershipApplication(paymentData);
     await loadCurrentMemberStatus(currentUser);
     updateLoginButtons();
     const personalProfileForm = getLoginModalElements().personalProfileForm;
@@ -8345,10 +8425,25 @@ const handleAccountMembershipSubmit = async (event) => {
       form.hidden = true;
       populatePersonalProfileForm(personalProfileForm);
       personalProfileForm.hidden = false;
-      showToast("社員申請資料已更新。", { tone: "success" });
+      showToast(
+        result.membershipStatus === "membership_waitlisted"
+          ? `已加入社員候補第 ${result.waitlistPosition} 位；候補期間不需付款。`
+          : result.membershipStatus === "pending_payment"
+            ? `社員名額已保留（第 ${result.registrationPosition} 位），請依選擇完成社費繳納。`
+            : "社員申請資料已更新。",
+        { tone: "success" },
+      );
     } else {
       updateAuthView();
-      setMessageTone(hint, "社員申請資料已更新。", "success");
+      setMessageTone(
+        hint,
+        result.membershipStatus === "membership_waitlisted"
+          ? `已加入社員候補第 ${result.waitlistPosition} 位；候補期間不需付款。`
+          : result.membershipStatus === "pending_payment"
+            ? `社員名額已保留（第 ${result.registrationPosition} 位），請依選擇完成社費繳納。`
+            : "社員申請資料已更新。",
+        "success",
+      );
     }
   } catch (error) {
     console.error("Update membership application failed:", error);

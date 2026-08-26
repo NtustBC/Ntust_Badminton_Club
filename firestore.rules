@@ -74,6 +74,8 @@ service cloud.firestore {
       return !memberDataIsAdmin(member)
         && !(member.get("membershipStatus", "not_applied") in ["officer", "admin"])
         && !(member.get("status", "not_applied") in ["officer", "admin"])
+        && member.get("membershipStatus", "not_applied") != "membership_waitlisted"
+        && member.get("status", "not_applied") != "membership_waitlisted"
         && member.get("academicYear", "") == year
         && member.get("term", "") == term
         && (
