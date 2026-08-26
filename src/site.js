@@ -1919,7 +1919,9 @@ const getCashPaymentSlotLabel = (value) => {
 };
 
 const getMembershipIntentFromProfile = (profile = {}) =>
-  profile.membershipIntent === "join" || ["pending_payment", "formal_member", "membership_waitlisted"].includes(String(profile.membershipStatus || profile.status || ""))
+  profile.membershipIntent === "join" ||
+  ["cash", "transfer"].includes(String(profile.paymentMethod || "")) ||
+  ["pending_payment", "formal_member", "membership_waitlisted"].includes(String(profile.membershipStatus || profile.status || ""))
     ? "join"
     : "not_join";
 
@@ -5214,7 +5216,7 @@ const renderMembersList = (members = []) => {
     </section>
   `;
   list.innerHTML = [
-    getGroupMarkup("已申請成為社員", "包含待繳費、正式社員與社員候補。", appliedMembers, "目前沒有符合條件的社員申請。"),
+    getGroupMarkup("已申請成為社員", "包含選擇現金或轉帳的申請者，以及待繳費、正式社員與社員候補。", appliedMembers, "目前沒有符合條件的社員申請。"),
     getGroupMarkup("有帳號但未申請社員", "已建立網站帳號，但本學期尚未提出社員申請。", accountsWithoutApplication, "目前沒有符合條件的未申請帳號。"),
   ].join("");
 
