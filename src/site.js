@@ -190,6 +190,8 @@ let membershipRegistrationSettings = {
   closeAt: "",
   limit: 0,
   count: 0,
+  registrationSequence: 0,
+  waitlistSequence: 0,
 };
 let maintenanceSettings = { ...DEFAULT_MAINTENANCE_SETTINGS };
 let maintenanceRefreshTimer = null;
@@ -3476,12 +3478,16 @@ const loadCurrentTermSettings = async () => {
       closeAt: formatDateTimeLocalValue(membershipRegistration.closeAt),
       limit: Math.max(0, Math.floor(Number(membershipRegistration.limit || 0))),
       count: 0,
+      registrationSequence: 0,
+      waitlistSequence: 0,
     };
     if (isValidAcademicYearValue(configuredAcademicYear) && DEFAULT_TERMS.slice(0, 2).includes(configuredAcademicTerm)) {
       const statsSnapshot = await getDoc(doc(db, MEMBERSHIP_REGISTRATION_STATS_COLLECTION, getMembershipRegistrationPeriodId()));
-      membershipRegistrationSettings.count = statsSnapshot.exists()
-        ? Math.max(0, Number(statsSnapshot.data()?.count || 0))
-        : 0;
+      if (statsSnapshot.exists()) {
+        membershipRegistrationSettings.count = Math.max(0, Number(statsSnapshot.data()?.count || 0));
+        membershipRegistrationSettings.registrationSequence = Math.max(0, Number(statsSnapshot.data()?.registrationSequence || 0));
+        membershipRegistrationSettings.waitlistSequence = Math.max(0, Number(statsSnapshot.data()?.waitlistSequence || 0));
+      }
     }
     classScheduleDefaults = Array.isArray(settingsData?.classScheduleDefaults)
       ? settingsData.classScheduleDefaults.map(normalizeClassScheduleDefault).filter(Boolean)
@@ -4052,6 +4058,38 @@ const getDashboardAdminIds = () =>
       .filter(Boolean),
   );
 
+const compactMembershipApplicationPositions = (members = []) => {
+  const updates = [];
+  const periodKeys = new Set(members.map((member) => `${member.academicYear || "未設定"}:${member.term || "未設定"}`));
+  periodKeys.forEach((key) => {
+    const [academicYear, term] = key.split(":");
+    const inPeriod = (member) => String(member.academicYear || "未設定") === academicYear && String(member.term || "未設定") === term;
+    const accepted = members
+      .filter((member) => inPeriod(member)
+        && getMembershipIntentFromProfile(member) === "join"
+        && !["officer", "admin", "membership_waitlisted"].includes(getManagedMembershipStatus(member)))
+      .sort((a, b) => getTimestampMs(a.paymentSubmittedAt || a.submittedAt || a.createdAt) - getTimestampMs(b.paymentSubmittedAt || b.submittedAt || b.createdAt));
+    const waitlisted = members
+      .filter((member) => inPeriod(member) && getManagedMembershipStatus(member) === "membership_waitlisted")
+      .sort((a, b) => getTimestampMs(a.membershipWaitlistedAt || a.updatedAt || a.createdAt) - getTimestampMs(b.membershipWaitlistedAt || b.updatedAt || b.createdAt));
+    accepted.forEach((member, index) => {
+      const position = index + 1;
+      if (getMembershipRegistrationPosition(member) !== position) {
+        member.membershipRegistrationPosition = position;
+        updates.push({ member, field: "membershipRegistrationPosition", position });
+      }
+    });
+    waitlisted.forEach((member, index) => {
+      const position = index + 1;
+      if (Math.floor(Number(member.membershipWaitlistPosition || 0)) !== position) {
+        member.membershipWaitlistPosition = position;
+        updates.push({ member, field: "membershipWaitlistPosition", position });
+      }
+    });
+  });
+  return updates;
+};
+
 const mergeMembersWithApprovedApplications = (members = []) => {
   const adminIds = getDashboardAdminIds();
   const normalizedMembers = members
@@ -4064,28 +4102,7 @@ const mergeMembersWithApprovedApplications = (members = []) => {
     )
     .map((member) => ({ ...member, origin: "members" }));
 
-  const groups = new Map();
-  normalizedMembers.forEach((member) => {
-    const status = getManagedMembershipStatus(member);
-    if (getMembershipIntentFromProfile(member) !== "join" || ["officer", "admin", "membership_waitlisted"].includes(status)) return;
-    const key = `${member.academicYear || "未設定"}:${member.term || "未設定"}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(member);
-  });
-  groups.forEach((group) => {
-    group.sort((a, b) =>
-      getTimestampMs(a.paymentSubmittedAt || a.submittedAt || a.createdAt) -
-      getTimestampMs(b.paymentSubmittedAt || b.submittedAt || b.createdAt));
-    const usedPositions = new Set(group.map(getMembershipRegistrationPosition).filter(Boolean));
-    let nextPosition = 1;
-    group.forEach((member) => {
-      if (getMembershipRegistrationPosition(member)) return;
-      while (usedPositions.has(nextPosition)) nextPosition += 1;
-      member.membershipRegistrationPosition = nextPosition;
-      usedPositions.add(nextPosition);
-      nextPosition += 1;
-    });
-  });
+  compactMembershipApplicationPositions(normalizedMembers);
 
   return normalizedMembers.sort(
       (a, b) =>
@@ -4922,17 +4939,40 @@ const reconcileMembershipRegistrationCount = async (members = []) => {
   if (!db || !currentUserIsAdmin) return;
   const academicYear = getConfiguredAcademicYear();
   const term = getConfiguredAcademicTerm();
+  const positionUpdates = compactMembershipApplicationPositions(members)
+    .filter(({ member }) => String(member.academicYear || "") === academicYear && String(member.term || "") === term);
+  for (let index = 0; index < positionUpdates.length; index += 200) {
+    const batch = writeBatch(db);
+    positionUpdates.slice(index, index + 200).forEach(({ member, field, position }) => {
+      const memberId = String(member.uid || member.id || "").trim();
+      if (memberId) batch.set(getMemberDocRef(memberId), { [field]: position, updatedAt: serverTimestamp() }, { merge: true });
+    });
+    await batch.commit();
+  }
   const expectedCount = members.filter((member) => doesMemberOccupyMembershipSlot(member, academicYear, term)).length;
-  if (expectedCount === membershipRegistrationSettings.count) return;
+  const expectedWaitlistCount = members.filter((member) =>
+    String(member.academicYear || "") === academicYear &&
+    String(member.term || "") === term &&
+    getManagedMembershipStatus(member) === "membership_waitlisted").length;
+  if (
+    expectedCount === membershipRegistrationSettings.count &&
+    expectedCount === Number(membershipRegistrationSettings.registrationSequence || 0) &&
+    expectedWaitlistCount === Number(membershipRegistrationSettings.waitlistSequence || 0) &&
+    positionUpdates.length === 0
+  ) return;
 
   await setDoc(doc(db, MEMBERSHIP_REGISTRATION_STATS_COLLECTION, `${academicYear}-${term}`), {
     academicYear,
     term,
     count: expectedCount,
     limit: membershipRegistrationSettings.limit,
+    registrationSequence: expectedCount,
+    waitlistSequence: expectedWaitlistCount,
     updatedAt: serverTimestamp(),
   }, { merge: true });
   membershipRegistrationSettings.count = expectedCount;
+  membershipRegistrationSettings.registrationSequence = expectedCount;
+  membershipRegistrationSettings.waitlistSequence = expectedWaitlistCount;
   syncMembershipRegistrationSettingForm();
 };
 
@@ -5012,7 +5052,6 @@ const renderMembersExportToolbar = (members = []) => {
           : "";
       return `
         <tr>
-          <td>${String(index + 1).padStart(2, "0")}</td>
           <td>${escapeHtml(member.name || "未填姓名")}</td>
           <td>${escapeHtml(member.studentId || "未填學號")}</td>
           <td>${escapeHtml(member.department || member.school || "未填寫")}</td>
@@ -5071,7 +5110,6 @@ const renderMembersExportToolbar = (members = []) => {
       <table class="member-table">
         <thead>
           <tr>
-            <th scope="col">#</th>
             <th scope="col">姓名</th>
             <th scope="col">學號</th>
             <th scope="col">系級</th>
@@ -5202,7 +5240,16 @@ const renderMembersList = (members = []) => {
     })
     .join("");
 
-  const appliedMembers = filteredMembers.filter((member) => getMembershipIntentFromProfile(member) === "join");
+  const appliedMembers = filteredMembers
+    .filter((member) => getMembershipIntentFromProfile(member) === "join")
+    .sort((a, b) => {
+      const aWaitlisted = getManagedMembershipStatus(a) === "membership_waitlisted";
+      const bWaitlisted = getManagedMembershipStatus(b) === "membership_waitlisted";
+      if (aWaitlisted !== bWaitlisted) return aWaitlisted ? 1 : -1;
+      return aWaitlisted
+        ? Number(a.membershipWaitlistPosition || 0) - Number(b.membershipWaitlistPosition || 0)
+        : getMembershipRegistrationPosition(a) - getMembershipRegistrationPosition(b);
+    });
   const accountsWithoutApplication = filteredMembers.filter((member) => getMembershipIntentFromProfile(member) !== "join");
   const getGroupMarkup = (title, copy, group, emptyCopy) => `
     <section class="member-roster-group">
@@ -5232,10 +5279,15 @@ const renderMembersSummary = (members = []) => {
   }
 
   const filteredMembers = members.filter(matchesMemberFilter);
+  const appliedMembers = filteredMembers.filter((member) => getMembershipIntentFromProfile(member) === "join");
   const formalMembers = filteredMembers.filter((member) => getManagedMembershipStatus(member) === "formal_member");
   const officers = filteredMembers.filter((member) => getManagedMembershipStatus(member) === "officer");
 
   summary.innerHTML = `
+    <article class="member-stat">
+      <p class="member-stat-label">社員申請數</p>
+      <p class="member-stat-value">${appliedMembers.length}</p>
+    </article>
     <article class="member-stat">
       <p class="member-stat-label">正式社員數</p>
       <p class="member-stat-value">${formalMembers.length}</p>
