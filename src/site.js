@@ -1504,6 +1504,17 @@ const loadNotificationItems = async () => {
       sortMs: getTimestampMs(pendingDate),
     });
   }
+  if (preferences.registrationUpdates !== false && currentMemberProfile?.membershipStatus === "membership_waitlisted") {
+    const waitlistedDate = currentMemberProfile.membershipWaitlistedAt || currentMemberProfile.updatedAt || currentMemberProfile.createdAt || new Date();
+    const position = Math.max(1, Number(currentMemberProfile.membershipWaitlistPosition || 1));
+    items.unshift({
+      id: `membership:waitlisted:${position}:${getTimestampMs(waitlistedDate) || "current"}`,
+      title: `社員候補${getChinesePositionLabel(position)}`,
+      copy: `本學期社員名額已滿，你目前是候補第 ${position} 位。候補期間不需進行社費付款。`,
+      date: waitlistedDate,
+      sortMs: getTimestampMs(waitlistedDate),
+    });
+  }
   if (preferences.registrationUpdates !== false && currentMemberProfile?.membershipStatusChange) {
     const change = currentMemberProfile.membershipStatusChange;
     const previousStatus = getManagedMembershipStatus(change.previousStatus || "non_member");
@@ -1919,6 +1930,15 @@ const getMembershipRegistrationPosition = (member = {}) => {
   return value > 0 ? value : 0;
 };
 
+const getChinesePositionLabel = (position) => {
+  const labels = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+  const value = Math.max(1, Math.floor(Number(position || 1)));
+  if (value <= 10) return labels[value];
+  if (value < 20) return `十${labels[value - 10]}`;
+  if (value < 100) return `${labels[Math.floor(value / 10)]}十${value % 10 ? labels[value % 10] : ""}`;
+  return String(value);
+};
+
 const getMembershipApplicationPositionLabel = (member = {}) => {
   if (getManagedMembershipStatus(member) === "membership_waitlisted") {
     const waitlistPosition = Math.floor(Number(member.membershipWaitlistPosition || 0));
@@ -2099,22 +2119,6 @@ const loadCurrentMemberStatus = async (user) => {
     user.email ? getDoc(getApprovalDocRef(user.email)) : Promise.resolve(null),
   ]);
   let memberData = memberDoc.exists() ? memberDoc.data() : null;
-  if (
-    memberData &&
-    getMembershipIntentFromProfile(memberData) === "join" &&
-    getManagedMembershipStatus(memberData) !== "membership_waitlisted" &&
-    !getMembershipRegistrationPosition(memberData) &&
-    functionsClient &&
-    httpsCallable
-  ) {
-    try {
-      const result = await httpsCallable(functionsClient, "getMembershipApplicationPosition")();
-      const position = Math.floor(Number(result.data?.position || 0));
-      if (position > 0) memberData = { ...memberData, membershipRegistrationPosition: position };
-    } catch (error) {
-      console.warn("Load membership application position failed:", error);
-    }
-  }
   const signupApproved = Boolean(approvalDoc?.exists?.());
   const managedMemberStatus = normalizeMembershipStatus(memberData);
 
@@ -8388,11 +8392,138 @@ const bindMembershipPaymentFormControls = (form) => {
 };
 
 const saveMembershipApplication = async (paymentData) => {
-  if (!functionsClient || !httpsCallable || !currentUser?.uid) {
+  if (!db || !runTransaction || !currentUser?.uid) {
     throw new Error("請先登入後再申請社員資格。");
   }
-  const response = await httpsCallable(functionsClient, "updateMembershipApplication")(paymentData);
-  const result = response.data || {};
+  const uid = currentUser.uid;
+  const memberRef = getMemberDocRef(uid);
+  const applicationRef = doc(db, "applications", `club-${uid}`);
+  const settingsRef = getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC);
+  const result = await runTransaction(db, async (transaction) => {
+    const settingsSnapshot = await transaction.get(settingsRef);
+    if (!settingsSnapshot.exists()) throw new Error("管理員尚未設定目前學期。");
+    const settings = settingsSnapshot.data() || {};
+    const academicYear = String(settings.academicYear || "").trim();
+    const term = String(settings.term || "").trim();
+    const registration = settings.membershipRegistration || {};
+    const limit = Math.max(0, Math.floor(Number(registration.limit || 0)));
+    const statsRef = doc(db, MEMBERSHIP_REGISTRATION_STATS_COLLECTION, `${academicYear}-${term}`);
+    const [memberSnapshot, applicationSnapshot, statsSnapshot] = await Promise.all([
+      transaction.get(memberRef),
+      transaction.get(applicationRef),
+      transaction.get(statsRef),
+    ]);
+    if (!memberSnapshot.exists()) throw new Error("社員基本資料尚未建立，請重新登入後再試。");
+
+    const member = memberSnapshot.data() || {};
+    const previousStatus = String(member.membershipStatus || member.status || "").trim().toLowerCase();
+    const alreadyOccupiesSlot = doesMemberOccupyMembershipSlot(member, academicYear, term);
+    const wasWaitlisted = previousStatus === "membership_waitlisted";
+    let count = statsSnapshot.exists() ? Math.max(0, Number(statsSnapshot.data()?.count || 0)) : 0;
+    let registrationSequence = statsSnapshot.exists()
+      ? Math.max(count, Number(statsSnapshot.data()?.registrationSequence || 0))
+      : count;
+    let waitlistSequence = statsSnapshot.exists() ? Math.max(0, Number(statsSnapshot.data()?.waitlistSequence || 0)) : 0;
+    let membershipStatus = "not_applied";
+    let registrationPosition = null;
+    let waitlistPosition = null;
+    let statsChanged = false;
+    let normalizedPayment = { paymentMethod: "none", cashPaymentSlot: "", transferAt: "", transferLastFive: "" };
+
+    if (paymentData.membershipIntent === "join") {
+      if (!alreadyOccupiesSlot && !wasWaitlisted) {
+        const openAt = getDateTimeLocalMs(registration.openAt);
+        const closeAt = getDateTimeLocalMs(registration.closeAt);
+        const now = Date.now();
+        if (!openAt || !closeAt || openAt >= closeAt || limit <= 0) throw new Error("社員申請尚未開放。");
+        if (now < openAt) throw new Error(`社員申請將於 ${new Date(openAt).toLocaleString("zh-TW")} 開放。`);
+        if (now > closeAt) throw new Error("本學期社員申請已截止。");
+      }
+      if (wasWaitlisted) {
+        membershipStatus = "membership_waitlisted";
+        waitlistPosition = Math.max(1, Number(member.membershipWaitlistPosition || 1));
+      } else if (alreadyOccupiesSlot) {
+        membershipStatus = "pending_payment";
+        registrationPosition = Math.max(1, Number(member.membershipRegistrationPosition || count));
+        normalizedPayment = paymentData.paymentMethod === "none"
+          ? {
+              paymentMethod: member.paymentMethod || "later",
+              cashPaymentSlot: member.cashPaymentSlot || "",
+              transferAt: member.transferAt || "",
+              transferLastFive: member.transferLastFive || "",
+            }
+          : paymentData;
+      } else if (count >= limit) {
+        membershipStatus = "membership_waitlisted";
+        waitlistSequence += 1;
+        waitlistPosition = waitlistSequence;
+        statsChanged = true;
+      } else {
+        if (!paymentData.paymentMethod || paymentData.paymentMethod === "none") throw new Error("請選擇社費繳費方式。");
+        count += 1;
+        registrationSequence += 1;
+        registrationPosition = Math.max(count, registrationSequence);
+        registrationSequence = registrationPosition;
+        membershipStatus = "pending_payment";
+        normalizedPayment = paymentData;
+        statsChanged = true;
+      }
+    } else if (alreadyOccupiesSlot) {
+      count = Math.max(0, count - 1);
+      statsChanged = true;
+    }
+
+    if (statsChanged) {
+      transaction.set(statsRef, {
+        academicYear,
+        term,
+        count,
+        limit,
+        registrationSequence,
+        waitlistSequence,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    }
+    transaction.set(memberRef, {
+      membershipIntent: paymentData.membershipIntent,
+      membershipStatus,
+      status: membershipStatus,
+      paymentStatus: "unpaid",
+      ...normalizedPayment,
+      membershipRegistrationPosition: registrationPosition,
+      membershipWaitlistPosition: waitlistPosition,
+      membershipWaitlistedAt: membershipStatus === "membership_waitlisted"
+        ? member.membershipWaitlistedAt || serverTimestamp()
+        : null,
+      academicYear,
+      term,
+      paymentSubmittedAt: membershipStatus === "pending_payment" ? serverTimestamp() : null,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
+    if (membershipStatus === "pending_payment") {
+      transaction.set(applicationRef, {
+        userId: uid,
+        name: String(member.name || member.displayName || "").slice(0, 100),
+        studentId: String(member.studentId || "").slice(0, 30),
+        department: String(member.department || "").slice(0, 100),
+        school: String(member.school || "").slice(0, 100),
+        phone: String(member.phone || "").slice(0, 30),
+        email: String(currentUser.email || member.email || "").trim().toLowerCase(),
+        note: String(applicationSnapshot.data()?.note || "").slice(0, 1000),
+        applicationType: "club",
+        academicYear,
+        term,
+        approved: false,
+        reviewStatus: "pending",
+        submittedAt: applicationSnapshot.data()?.submittedAt || serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    } else if (applicationSnapshot.exists()) {
+      transaction.delete(applicationRef);
+    }
+    return { membershipStatus, count, limit, registrationPosition, waitlistPosition };
+  });
 
   membershipRegistrationSettings.count = result.count;
   if (result.limit > 0) membershipRegistrationSettings.limit = result.limit;

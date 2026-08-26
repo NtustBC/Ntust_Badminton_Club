@@ -89,7 +89,13 @@ service cloud.firestore {
       let intent = member.get("membershipIntent", "not_join");
       let method = member.get("paymentMethod", "none");
       return intent in ["join", "not_join"]
-        && (intent == "not_join"
+        && (member.get("membershipStatus", "not_applied") == "membership_waitlisted"
+          ? intent == "join"
+            && method == "none"
+            && member.get("cashPaymentSlot", "") == ""
+            && member.get("transferAt", "") == ""
+            && member.get("transferLastFive", "") == ""
+          : intent == "not_join"
           ? method == "none"
             && member.get("cashPaymentSlot", "") == ""
             && member.get("transferAt", "") == ""
@@ -147,20 +153,23 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           "academicYear", "term", "membershipIntent", "membershipStatus", "status",
           "paymentStatus", "paymentMethod", "cashPaymentSlot", "transferAt",
-          "transferLastFive", "paymentSubmittedAt", "updatedAt"
+          "transferLastFive", "paymentSubmittedAt", "membershipRegistrationPosition",
+          "membershipWaitlistPosition", "membershipWaitlistedAt", "updatedAt"
         ])
         && !(resource.data.get("membershipStatus", "not_applied") in ["formal_member", "officer", "admin"])
         && !(resource.data.get("status", "not_applied") in ["formal_member", "officer", "admin"])
         && resource.data.get("paymentStatus", "unpaid") != "paid"
         && request.resource.data.academicYear == settings.academicYear
         && request.resource.data.term == settings.term
-        && request.resource.data.membershipStatus in ["not_applied", "pending_payment"]
+        && request.resource.data.membershipStatus in ["not_applied", "pending_payment", "membership_waitlisted"]
         && request.resource.data.status == request.resource.data.membershipStatus
         && request.resource.data.paymentStatus == "unpaid"
-        && request.resource.data.membershipStatus == (request.resource.data.membershipIntent == "join" ? "pending_payment" : "not_applied")
+        && request.resource.data.membershipStatus == (request.resource.data.membershipIntent == "join"
+          ? (request.resource.data.membershipStatus == "membership_waitlisted" ? "membership_waitlisted" : "pending_payment")
+          : "not_applied")
         && validMembershipPayment(request.resource.data)
         && request.resource.data.updatedAt == request.time
-        && (request.resource.data.membershipIntent == "join"
+        && (request.resource.data.membershipStatus == "pending_payment"
           ? request.resource.data.paymentSubmittedAt == request.time
           : request.resource.data.paymentSubmittedAt == null)
         && (beforeOccupies || !afterOccupies || (
@@ -212,19 +221,31 @@ service cloud.firestore {
       let beforeMember = get(ownMemberPath()).data;
       let afterMember = getAfter(ownMemberPath()).data;
       let oldCount = exists(statsPath) ? get(statsPath).data.count : 0;
+      let oldRegistrationSequence = exists(statsPath) ? get(statsPath).data.get("registrationSequence", oldCount) : 0;
+      let oldWaitlistSequence = exists(statsPath) ? get(statsPath).data.get("waitlistSequence", 0) : 0;
       let beforeOccupies = occupiesMembershipSlot(beforeMember, settings.academicYear, settings.term);
       let afterOccupies = occupiesMembershipSlot(afterMember, settings.academicYear, settings.term);
+      let joinsWaitlist = beforeMember.get("membershipStatus", "not_applied") != "membership_waitlisted"
+        && afterMember.get("membershipStatus", "not_applied") == "membership_waitlisted";
       return isSignedIn()
         && periodId == settings.academicYear + "-" + settings.term
-        && beforeOccupies != afterOccupies
-        && request.resource.data.keys().hasOnly(["academicYear", "term", "count", "limit", "updatedAt"])
+        && (beforeOccupies != afterOccupies || joinsWaitlist)
+        && request.resource.data.keys().hasOnly(["academicYear", "term", "count", "limit", "registrationSequence", "waitlistSequence", "updatedAt"])
         && request.resource.data.academicYear == settings.academicYear
         && request.resource.data.term == settings.term
         && request.resource.data.limit == settings.membershipRegistration.limit
         && request.resource.data.count is int
-        && request.resource.data.count == oldCount + (afterOccupies ? 1 : -1)
+        && request.resource.data.count == oldCount + (beforeOccupies == afterOccupies ? 0 : (afterOccupies ? 1 : -1))
         && request.resource.data.count >= 0
         && request.resource.data.count <= request.resource.data.limit
+        && request.resource.data.registrationSequence == oldRegistrationSequence + (afterOccupies && !beforeOccupies ? 1 : 0)
+        && request.resource.data.waitlistSequence == oldWaitlistSequence + (joinsWaitlist ? 1 : 0)
+        && (afterOccupies && !beforeOccupies
+          ? afterMember.get("membershipRegistrationPosition", 0) == request.resource.data.registrationSequence
+          : true)
+        && (joinsWaitlist
+          ? afterMember.get("membershipWaitlistPosition", 0) == request.resource.data.waitlistSequence
+          : true)
         && request.resource.data.updatedAt == request.time;
     }
 
