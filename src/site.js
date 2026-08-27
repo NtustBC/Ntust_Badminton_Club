@@ -312,6 +312,11 @@ const memberFilters = {
   category: "all",
   query: "",
 };
+const officerFilters = {
+  year: "all",
+  term: "all",
+  query: "",
+};
 let memberFiltersInitializedFromSettings = false;
 
 const authCopy = {
@@ -4650,12 +4655,72 @@ const getRosterManagementTableMarkup = (rows = "") => `
   </div>
 `;
 
+const matchesOfficerFilter = (member = {}) => {
+  const yearValue = member.academicYear || "未設定";
+  const termValue = member.term || "未設定";
+  const queryValue = officerFilters.query.trim().toLocaleLowerCase("zh-TW");
+  const queryMatch = !queryValue || [
+    member.name,
+    member.displayName,
+    member.studentId,
+    member.department,
+    member.school,
+    member.email,
+    member.gmail,
+    member.phone,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase("zh-TW")
+    .includes(queryValue);
+  return (officerFilters.year === "all" || yearValue === officerFilters.year)
+    && (officerFilters.term === "all" || termValue === officerFilters.term)
+    && queryMatch;
+};
+
+const syncOfficerFilterUI = () => {
+  const queryInput = document.querySelector("[data-officer-filter-query]");
+  const yearSelect = document.querySelector("[data-officer-filter-year]");
+  const termSelect = document.querySelector("[data-officer-filter-term]");
+  if (!queryInput || !yearSelect || !termSelect) return;
+
+  if (queryInput.value !== officerFilters.query) queryInput.value = officerFilters.query;
+  yearSelect.innerHTML = buildAdminAcademicYearOptions()
+    .map((value) => {
+      const label = value === "all" ? "全部學年度" : getAcademicYearLabel(value);
+      return `<option value="${escapeHtml(value)}"${value === officerFilters.year ? " selected" : ""}>${escapeHtml(label)}</option>`;
+    })
+    .join("");
+  termSelect.innerHTML = ["all", ...DEFAULT_TERMS]
+    .map((value) => {
+      const label = value === "all" ? "全部學期" : getAcademicTermLabel(value);
+      return `<option value="${escapeHtml(value)}"${value === officerFilters.term ? " selected" : ""}>${escapeHtml(label)}</option>`;
+    })
+    .join("");
+
+  if (queryInput.dataset.initialized === "true") return;
+  queryInput.dataset.initialized = "true";
+  queryInput.addEventListener("input", () => {
+    officerFilters.query = queryInput.value;
+    renderOfficerRoster();
+  });
+  yearSelect.addEventListener("change", () => {
+    officerFilters.year = yearSelect.value;
+    renderOfficerRoster();
+  });
+  termSelect.addEventListener("change", () => {
+    officerFilters.term = termSelect.value;
+    renderOfficerRoster();
+  });
+};
+
 const renderOfficerRoster = () => {
   const form = document.querySelector("[data-officer-roster-add-form]");
   const select = document.querySelector("[data-officer-roster-member]");
   const list = document.querySelector("[data-officer-roster-list]");
   const hint = document.querySelector("[data-officer-roster-hint]");
   if (!form || !select || !list) return;
+  syncOfficerFilterUI();
 
   const adminIds = getDashboardAdminIds();
   const candidates = membersDashboardCache.members
@@ -4676,11 +4741,16 @@ const renderOfficerRoster = () => {
   select.disabled = candidates.length === 0;
   form.querySelector("[data-officer-roster-add]").disabled = candidates.length === 0;
 
-  const officers = membersDashboardCache.members
+  const allOfficers = membersDashboardCache.members
     .filter((member) => getManagedMembershipStatus(member) === "officer")
     .sort((a, b) => String(a.name || a.email || "").localeCompare(String(b.name || b.email || ""), "zh-TW"));
+  const officers = allOfficers.filter(matchesOfficerFilter);
+  const filterSummary = document.querySelector("[data-officer-filter-summary]");
+  if (filterSummary) {
+    filterSummary.textContent = `目前顯示 ${officers.length} 位，共 ${allOfficers.length} 位幹部。`;
+  }
   if (officers.length === 0) {
-    list.innerHTML = `<p class="content-copy member-table-empty">目前沒有幹部資料。</p>`;
+    list.innerHTML = `<p class="content-copy member-table-empty">目前沒有符合篩選條件的幹部資料。</p>`;
   } else {
     const rows = officers.map((member, index) => getRosterManagementRowMarkup(member, index)).join("");
     list.innerHTML = getRosterManagementTableMarkup(rows);

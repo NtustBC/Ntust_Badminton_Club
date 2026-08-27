@@ -323,6 +323,29 @@
                   <h3 class="content-title">幹部名單</h3>
                   <p class="section-description">從既有註冊帳號新增幹部，或移除幹部身分。幹部可使用社員功能，但不會計入社員申請名額。</p>
                 </div>
+                <article class="content-card is-tight officer-filter-card">
+                  <div class="member-filter-header">
+                    <div>
+                      <p class="section-kicker">Filter</p>
+                      <h3 class="content-title">篩選幹部</h3>
+                      <p class="content-copy" data-officer-filter-summary>可依姓名、學號、Email、學年度或學期篩選。</p>
+                    </div>
+                  </div>
+                  <div class="officer-filter-grid">
+                    <div class="form-field">
+                      <label for="officer-filter-query">搜尋幹部</label>
+                      <input id="officer-filter-query" data-officer-filter-query type="search" placeholder="姓名、學號、系級或 Email" />
+                    </div>
+                    <div class="form-field">
+                      <label for="officer-filter-year">學年度</label>
+                      <select id="officer-filter-year" data-officer-filter-year></select>
+                    </div>
+                    <div class="form-field">
+                      <label for="officer-filter-term">學期</label>
+                      <select id="officer-filter-term" data-officer-filter-term></select>
+                    </div>
+                  </div>
+                </article>
                 <article class="content-card is-tight admin-roster-card">
                   <form class="admin-roster-add-form" data-officer-roster-add-form>
                     <div class="form-field">
