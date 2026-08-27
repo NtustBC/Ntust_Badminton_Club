@@ -3967,6 +3967,75 @@ button.admin-calendar-day:focus-visible {
 .class-default-shortcut.is-matching-day { border-color: #194e3f; background: rgba(25, 78, 63, 0.1); font-weight: 700; }
 .signup-alert.is-waitlisted { border-color: #c77b12; background: #fff8e8; }
 
+.maintenance-setting-card {
+  display: grid;
+  gap: 28px;
+}
+.maintenance-setting-card > .member-filter-header {
+  align-items: flex-start;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--admin-border);
+}
+.maintenance-setting-card > .member-filter-header .content-copy {
+  max-width: 760px;
+  margin-top: 10px;
+}
+.maintenance-setting-card [data-maintenance-setting-form] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+  width: 100%;
+  max-width: 1080px;
+}
+.maintenance-setting-card .maintenance-toggle {
+  grid-column: 1 / -1;
+  width: min(100%, 560px);
+  min-height: 92px;
+  gap: 16px;
+  padding: 20px 22px;
+  border-color: var(--admin-border);
+  background: rgba(248, 251, 255, 0.94);
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+.maintenance-setting-card .maintenance-toggle:hover,
+.maintenance-setting-card .maintenance-toggle:focus-within {
+  border-color: rgba(15, 76, 129, 0.34);
+  box-shadow: 0 8px 24px rgba(15, 76, 129, 0.08);
+}
+.maintenance-setting-card .maintenance-toggle:has(input:checked) {
+  border-color: rgba(15, 76, 129, 0.34);
+  background: rgba(15, 76, 129, 0.07);
+}
+.maintenance-setting-card .maintenance-toggle input {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.maintenance-setting-card .maintenance-toggle strong {
+  font-size: 1.02rem;
+  line-height: 1.4;
+}
+.maintenance-setting-card .maintenance-toggle small {
+  line-height: 1.55;
+}
+.maintenance-message-field,
+.maintenance-setting-footer {
+  grid-column: 1 / -1;
+}
+.maintenance-setting-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 2px;
+}
+.maintenance-setting-footer .login-note {
+  margin: 0;
+}
+.maintenance-setting-footer .button-primary {
+  flex: 0 0 auto;
+  min-width: 168px;
+}
+
 @media (max-width: 760px) {
   .menu-button { position: relative; width: 2.8rem; height: 2.8rem; padding: 0; font-size: 0; }
   .menu-button::before, .menu-button::after { content: ""; position: absolute; left: 0.72rem; right: 0.72rem; height: 2px; background: currentColor; box-shadow: 0 0.42rem 0 currentColor; transition: 180ms ease; }
@@ -3989,4 +4058,10 @@ button.admin-calendar-day:focus-visible {
   .admin-calendar-limit-field::after { margin-top: -2px; }
   .admin-section-nav { justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; }
   .admin-section-nav a { flex: 0 0 auto; }
+  .maintenance-setting-card { gap: 22px; }
+  .maintenance-setting-card > .member-filter-header { padding-bottom: 18px; }
+  .maintenance-setting-card [data-maintenance-setting-form] { grid-template-columns: 1fr; gap: 18px; }
+  .maintenance-setting-card .maintenance-toggle { width: 100%; min-height: 84px; padding: 18px; }
+  .maintenance-setting-footer { align-items: stretch; flex-direction: column; gap: 12px; }
+  .maintenance-setting-footer .button-primary { width: 100%; }
 }

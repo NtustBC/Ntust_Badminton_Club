@@ -252,7 +252,7 @@
                       <label for="maintenance-title">提示標題</label>
                       <input id="maintenance-title" maxlength="80" name="title" placeholder="網站維護中" type="text" />
                     </div>
-                    <div class="form-field">
+                    <div class="form-field maintenance-message-field">
                       <label for="maintenance-message">提示說明</label>
                       <textarea id="maintenance-message" maxlength="500" name="message" placeholder="我們正在進行系統維護，請稍後再回來。" rows="3"></textarea>
                     </div>
@@ -260,8 +260,10 @@
                       <label for="maintenance-resume-at">預計恢復時間（選填）</label>
                       <input id="maintenance-resume-at" name="estimatedResumeAt" type="datetime-local" />
                     </div>
-                    <p class="login-note" data-maintenance-setting-hint></p>
-                    <button class="button-primary" type="submit">儲存維護設定</button>
+                    <div class="maintenance-setting-footer">
+                      <p class="login-note" data-maintenance-setting-hint></p>
+                      <button class="button-primary" type="submit">儲存維護設定</button>
+                    </div>
                   </form>
                 </article>
               </section>
