@@ -2055,12 +2055,15 @@ body.spa-navigating .page-main {
 
 .member-table-card {
   margin-top: 24px;
+  overflow: hidden;
 }
 
 .member-table-wrap {
   width: 100%;
   margin-top: 20px;
   overflow-x: auto;
+  max-height: min(68vh, 760px);
+  overflow-y: auto;
   border: 1px solid rgba(15, 76, 129, 0.1);
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.96);
@@ -2068,7 +2071,7 @@ body.spa-navigating .page-main {
 
 .member-table {
   width: 100%;
-  min-width: 1020px;
+  min-width: 1320px;
   border-collapse: collapse;
   color: var(--ink);
   font-size: 0.94rem;
@@ -2084,6 +2087,9 @@ body.spa-navigating .page-main {
 }
 
 .member-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   background: rgba(15, 76, 129, 0.06);
   color: var(--brand);
   font-size: 0.78rem;
@@ -2096,9 +2102,14 @@ body.spa-navigating .page-main {
   border-bottom: 0;
 }
 
-.member-table td:nth-child(5) {
+.member-table td:nth-child(4) {
   white-space: normal;
-  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.member-table td:nth-child(5) {
+  min-width: 118px;
+  white-space: normal;
 }
 
 .member-status-select {
@@ -3298,6 +3309,10 @@ button.admin-calendar-day:focus-visible {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
+  body[data-page="members"] .page-main > .container {
+    width: min(1580px, calc(100% - 48px));
+  }
+
   .site-nav {
     display: flex;
   }
@@ -3349,6 +3364,17 @@ button.admin-calendar-day:focus-visible {
   }
 }
 
+@media (min-width: 1200px) {
+  .member-roster-group > .member-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .member-roster-group > .member-list > .member-row[data-expanded="true"] {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 979px) {
   :root {
     --page-scale: 1;
@@ -3364,6 +3390,45 @@ button.admin-calendar-day:focus-visible {
 
   .login-button.header-login {
     display: none;
+  }
+
+  .member-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .member-filter-grid .form-field:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .member-table-card {
+    padding: 18px;
+  }
+
+  .member-table-card .member-table-wrap {
+    display: none;
+  }
+
+  .member-table-card .member-filter-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .member-table-card [data-export-members-csv] {
+    width: 100%;
+  }
+
+  .member-roster-group .section-header {
+    margin-bottom: 10px;
+  }
+
+  .member-roster-group .member-list {
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .member-row {
+    padding: 16px;
   }
 }
 
