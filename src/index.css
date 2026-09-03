@@ -836,6 +836,33 @@ body.spa-navigating .page-main {
   line-height: 1.85;
 }
 
+.membership-comparison {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+  color: var(--muted);
+}
+
+.membership-comparison section {
+  display: grid;
+  gap: 8px;
+}
+
+.membership-comparison h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.membership-comparison ol {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 1.35rem;
+  line-height: 1.7;
+}
+
 .content-grid,
 .photo-card-grid,
 .notice-grid,
