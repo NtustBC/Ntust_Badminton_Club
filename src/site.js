@@ -5859,17 +5859,24 @@ function renderUpcomingClassSessions(sessions = []) {
   container.innerHTML = upcoming.length ? `
     <div class="timeline-grid">
       ${upcoming.map((session, index) => `
-        <article class="timeline-card">
-          <div class="timeline-index">${String(index + 1).padStart(2, "0")}</div>
-          <h3 class="timeline-title">${escapeHtml(getClassSessionDateLabel(session))}</h3>
-          <p class="timeline-copy">${escapeHtml(getLocalizedContentTitle(session, "社課"))}</p>
-          <dl class="upcoming-session-times">
-            <div><dt>社課時間</dt><dd>${escapeHtml(getClassSessionTimeLabel(session) || "尚未設定")}</dd></div>
-            <div><dt>社員優先報名</dt><dd>${escapeHtml(timeLabel(getMemberSignupOpenMs(session)))}</dd></div>
-            <div><dt>全面開放報名</dt><dd>${escapeHtml(getPublicSignupOpenMs(session) ? timeLabel(getPublicSignupOpenMs(session)) : "尚未開放非社員報名")}</dd></div>
-            <div><dt>報名截止</dt><dd>${escapeHtml(timeLabel(getDateTimeLocalMs(session.signupCloseAt)))}</dd></div>
-          </dl>
-        </article>
+        <details class="timeline-card upcoming-session-card">
+          <summary class="upcoming-session-summary">
+            <span class="timeline-index">${String(index + 1).padStart(2, "0")}</span>
+            <span class="upcoming-session-summary-copy">
+              <strong class="timeline-title">${escapeHtml(getClassSessionDateLabel(session))}</strong>
+              <span class="timeline-copy">${escapeHtml([getLocalizedContentTitle(session, "社課"), getClassSessionTimeLabel(session)].filter(Boolean).join(" ・ "))}</span>
+            </span>
+            <span class="upcoming-session-toggle">展開</span>
+          </summary>
+          <div class="upcoming-session-detail">
+            <dl class="upcoming-session-times">
+              <div><dt>社課時間</dt><dd>${escapeHtml(getClassSessionTimeLabel(session) || "尚未設定")}</dd></div>
+              <div><dt>社員優先報名</dt><dd>${escapeHtml(timeLabel(getMemberSignupOpenMs(session)))}</dd></div>
+              <div><dt>全面開放報名</dt><dd>${escapeHtml(getPublicSignupOpenMs(session) ? timeLabel(getPublicSignupOpenMs(session)) : "尚未開放非社員報名")}</dd></div>
+              <div><dt>報名截止</dt><dd>${escapeHtml(timeLabel(getDateTimeLocalMs(session.signupCloseAt)))}</dd></div>
+            </dl>
+          </div>
+        </details>
       `).join("")}
     </div>
   ` : `<article class="content-card is-tight"><p class="content-copy">目前沒有即將開放或仍可報名的社課場次。</p></article>`;

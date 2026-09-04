@@ -849,10 +849,35 @@ body.spa-navigating .page-main {
   color: var(--muted);
 }
 
-.upcoming-session-times { display: grid; gap: 12px; margin: 20px 0 0; }
+.timeline-card.upcoming-session-card { padding: 0; overflow: hidden; }
+.upcoming-session-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  min-height: 148px;
+  padding: clamp(22px, 3vw, 40px);
+  cursor: pointer;
+  list-style: none;
+}
+.upcoming-session-summary::-webkit-details-marker { display: none; }
+.upcoming-session-summary:focus-visible { outline: 3px solid rgba(15, 76, 129, 0.22); outline-offset: -3px; }
+.upcoming-session-summary-copy { display: grid; min-width: 0; gap: 8px; }
+.upcoming-session-summary .timeline-title,
+.upcoming-session-summary .timeline-copy { margin: 0; }
+.upcoming-session-toggle { color: var(--brand); font-size: 0.88rem; font-weight: 800; }
+.upcoming-session-card[open] .upcoming-session-toggle { font-size: 0; }
+.upcoming-session-card[open] .upcoming-session-toggle::after { content: "收合"; font-size: 0.88rem; }
+.upcoming-session-detail { padding: 0 clamp(22px, 3vw, 40px) clamp(22px, 3vw, 40px); }
+.upcoming-session-times { display: grid; gap: 12px; margin: 0; padding-top: 20px; border-top: 1px solid rgba(15, 76, 129, 0.12); }
 .upcoming-session-times > div { display: grid; gap: 4px; }
 .upcoming-session-times dt { font-weight: 700; color: var(--brand); }
 .upcoming-session-times dd { margin: 0; color: var(--muted); line-height: 1.6; }
+
+@media (max-width: 560px) {
+  .upcoming-session-summary { grid-template-columns: auto minmax(0, 1fr); gap: 14px; min-height: 124px; }
+  .upcoming-session-toggle { grid-column: 2; }
+}
 
 .content-grid,
 .photo-card-grid,
