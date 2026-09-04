@@ -5857,7 +5857,7 @@ function renderUpcomingClassSessions(sessions = []) {
   const upcoming = getUpcomingSignupSessions(sessions);
   const timeLabel = (value) => value ? formatTimestamp(value) : "尚未設定";
   container.innerHTML = upcoming.length ? `
-    <div class="timeline-grid">
+    <div class="upcoming-session-list">
       ${upcoming.map((session, index) => `
         <details class="timeline-card upcoming-session-card">
           <summary class="upcoming-session-summary">
