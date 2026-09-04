@@ -5922,8 +5922,6 @@ function renderClassCalendarBoard(sessions = []) {
     <div class="calendar-shell class-signup-availability">
       <div class="calendar-header">
         <div>
-          <p class="section-kicker">Open for Signup</p>
-          <h3 class="content-title">目前開放報名的社課</h3>
           <p class="section-description">只顯示目前報名期間已開放的社課。</p>
         </div>
       </div>
