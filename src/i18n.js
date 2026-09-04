@@ -71,6 +71,7 @@ const EN_TRANSLATIONS = {
   "加入臺科大羽球社": "Join NTUST Badminton Club",
   "註冊帳號時可以決定本學期是否申請社員；只有選擇申請、完成社費繳納並經幹部確認後，才會成為正式社員。": "When registering, choose whether to apply for membership this semester. Membership becomes active after payment is confirmed by club staff.",
   "社員與非社員": "Members and Non-members",
+  "社員與非社員的不同": "Differences Between Members and Non-members",
   "社員（已繳交社費）": "Member (Membership Fee Paid)",
   "享有社員優先報名時段。": "Access the priority registration period for members.",
   "參加社課不必繳交零打費。": "No drop-in fee is required for club sessions.",
@@ -90,6 +91,14 @@ const EN_TRANSLATIONS = {
 
   "這裡可以知道目前有開放報名的社課日期及剩餘名額。": "See class dates currently open for registration and their remaining capacity.",
   "最近可報名場次": "Upcoming Sessions Open for Registration",
+  "依社課時間列出最近三場，包含尚未開放報名的場次。": "The next three sessions, including those whose registration has not opened yet.",
+  "社課時間": "Session Time",
+  "社員優先報名": "Member Registration Opens",
+  "全面開放報名": "Public Registration Opens",
+  "報名截止": "Registration Closes",
+  "尚未設定": "Not Yet Set",
+  "尚未開放非社員報名": "Non-member Registration Not Yet Available",
+  "目前沒有即將開放或仍可報名的社課場次。": "There are no upcoming sessions with registration open or scheduled to open.",
   "可報名社課日期": "Classes Open for Registration",
 
   "這裡會整理社團公告與提醒事項，方便你直接看每天有哪些重要訊息。": "Club announcements and reminders are organized here by date.",

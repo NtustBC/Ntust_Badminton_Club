@@ -5837,7 +5837,47 @@ function getPublicRosterDisplayName(entry = {}) {
   return String(entry.maskedName || "").trim() || maskPublicName(entry.name);
 }
 
+function getUpcomingSignupSessions(sessions = [], now = Date.now()) {
+  return sessions
+    .filter((session) => {
+      const startMs = getClassSessionStartMs(session);
+      const closeMs = getDateTimeLocalMs(session.signupCloseAt);
+      return Boolean(session.signupRequired)
+        && Number.isFinite(startMs)
+        && startMs >= now
+        && (!closeMs || closeMs >= now);
+    })
+    .sort((a, b) => getClassSessionStartMs(a) - getClassSessionStartMs(b))
+    .slice(0, 3);
+}
+
+function renderUpcomingClassSessions(sessions = []) {
+  const container = document.querySelector("[data-upcoming-class-sessions]");
+  if (!container) return;
+  const upcoming = getUpcomingSignupSessions(sessions);
+  const timeLabel = (value) => value ? formatTimestamp(value) : "尚未設定";
+  container.innerHTML = upcoming.length ? `
+    <div class="timeline-grid">
+      ${upcoming.map((session, index) => `
+        <article class="timeline-card">
+          <div class="timeline-index">${String(index + 1).padStart(2, "0")}</div>
+          <h3 class="timeline-title">${escapeHtml(getClassSessionDateLabel(session))}</h3>
+          <p class="timeline-copy">${escapeHtml(getLocalizedContentTitle(session, "社課"))}</p>
+          <dl class="upcoming-session-times">
+            <div><dt>社課時間</dt><dd>${escapeHtml(getClassSessionTimeLabel(session) || "尚未設定")}</dd></div>
+            <div><dt>社員優先報名</dt><dd>${escapeHtml(timeLabel(getMemberSignupOpenMs(session)))}</dd></div>
+            <div><dt>全面開放報名</dt><dd>${escapeHtml(getPublicSignupOpenMs(session) ? timeLabel(getPublicSignupOpenMs(session)) : "尚未開放非社員報名")}</dd></div>
+            <div><dt>報名截止</dt><dd>${escapeHtml(timeLabel(getDateTimeLocalMs(session.signupCloseAt)))}</dd></div>
+          </dl>
+        </article>
+      `).join("")}
+    </div>
+  ` : `<article class="content-card is-tight"><p class="content-copy">目前沒有即將開放或仍可報名的社課場次。</p></article>`;
+  clearLoadingState(container);
+}
+
 function renderClassCalendarBoard(sessions = []) {
+  renderUpcomingClassSessions(sessions);
   const container = document.querySelector("[data-class-calendar]");
   if (!container) {
     return;
@@ -6192,6 +6232,7 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
   }
 
   const calendar = document.querySelector("[data-class-calendar]");
+  const upcomingSessions = document.querySelector("[data-upcoming-class-sessions]");
   const rosterBoard = document.querySelector("[data-class-roster-board]");
 
   if (!calendar) {
@@ -6206,12 +6247,14 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
       </article>
     `;
     calendar.innerHTML = message;
+    if (upcomingSessions) upcomingSessions.innerHTML = message;
     if (rosterBoard) rosterBoard.innerHTML = message;
     return;
   }
 
   if (force || !classSignupPageState.loaded) {
     renderLoadingSkeleton(calendar, { rows: 4, label: "社課資料載入中" });
+    if (upcomingSessions) renderLoadingSkeleton(upcomingSessions, { rows: 3, label: "社課資料載入中" });
     if (rosterBoard) renderLoadingSkeleton(rosterBoard, { rows: 3, label: "報名名單載入中" });
   }
 
@@ -6280,6 +6323,10 @@ async function refreshClassSignupPageSafe({ force = false } = {}) {
       </article>
     `;
     calendar.innerHTML = message;
+    if (upcomingSessions) {
+      upcomingSessions.innerHTML = message;
+      clearLoadingState(upcomingSessions);
+    }
     if (rosterBoard) rosterBoard.innerHTML = message;
   }
 }

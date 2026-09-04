@@ -840,32 +840,19 @@ body.spa-navigating .page-main {
   line-height: 1.85;
 }
 
-.membership-comparison {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-  gap: 24px 36px;
-  color: var(--muted);
-}
-
-.membership-comparison section {
-  display: grid;
-  gap: 8px;
-}
-
-.membership-comparison h3 {
-  margin: 0;
-  color: var(--ink);
-  font-size: 1rem;
-  line-height: 1.55;
-}
-
 .membership-comparison ol {
   display: grid;
   gap: 5px;
-  margin: 0;
+  margin: 12px 0 0;
   padding-left: 1.35rem;
   line-height: 1.7;
+  color: var(--muted);
 }
+
+.upcoming-session-times { display: grid; gap: 12px; margin: 20px 0 0; }
+.upcoming-session-times > div { display: grid; gap: 4px; }
+.upcoming-session-times dt { font-weight: 700; color: var(--brand); }
+.upcoming-session-times dd { margin: 0; color: var(--muted); line-height: 1.6; }
 
 .content-grid,
 .photo-card-grid,
