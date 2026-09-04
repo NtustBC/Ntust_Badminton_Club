@@ -372,9 +372,9 @@ const membersPageCopy = {
     title: "社團管理頁",
     copy: "你目前已使用管理員帳號登入，可以直接查看社員資料、註冊名單與各種管理區塊。",
     sideTitle: "這裡是管理頁，不只是註冊名單",
-    sideCopy: "你可以在下方直接管理社員資料、審核報名、安排社課與發布公告或 FAQ，所有內容都會同步到 Firestore。",
+    sideCopy: "你可以在下方直接管理社員資料、審核報名、安排社課與發布公告或 Q&A，所有內容都會同步到 Firestore。",
     overviewTitle: "管理總覽",
-    overviewCopy: "登入管理員後會顯示完整管理內容，包括社員、報名、社課、公告與 FAQ。",
+    overviewCopy: "登入管理員後會顯示完整管理內容，包括社員、報名、社課、公告與 Q&A。",
   },
 };
 
@@ -986,7 +986,7 @@ const syncGlobalNavigationLabels = () => {
 
   document.querySelectorAll('a[href="./faq.html"]').forEach((link) => {
     if (link.closest(".site-nav") || link.closest(".mobile-nav")) {
-      link.textContent = "常見QA";
+      link.textContent = "常見 Q&A";
     }
   });
 
@@ -5515,7 +5515,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
             loadWithFallback("社課日期", dashboardWarnings, () => getCollectionEntries(CLASS_SESSION_COLLECTION), []),
             loadWithFallback("社課報名", dashboardWarnings, () => getCollectionEntries(CLASS_SIGNUP_COLLECTION), []),
             loadWithFallback("公告", dashboardWarnings, () => getCollectionEntries(CLASS_ANNOUNCEMENT_COLLECTION), []),
-            loadWithFallback("FAQ", dashboardWarnings, () => getCollectionEntries(FAQ_COLLECTION), []),
+            loadWithFallback("Q&A", dashboardWarnings, () => getCollectionEntries(FAQ_COLLECTION), []),
             loadWithFallback("待回答問題", dashboardWarnings, () => getCollectionEntries(FAQ_QUESTION_COLLECTION), []),
             loadWithFallback("社課相簿", dashboardWarnings, () => getCollectionEntries(CLASS_ALBUM_COLLECTION), []),
           ]);
@@ -5638,7 +5638,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
     if (faqAdminList) {
       faqAdminList.innerHTML = `
         <article class="content-card is-tight">
-          <h3 class="content-title">FAQ 載入失敗</h3>
+          <h3 class="content-title">Q&amp;A 載入失敗</h3>
           <p class="content-copy">${escapeHtml(error?.message || "請稍後再試一次。")}</p>
         </article>
       `;
@@ -6595,7 +6595,7 @@ function renderFaqBoard(faqEntries = []) {
   if (sortedFaqs.length === 0) {
     container.innerHTML = `
       <article class="content-card is-tight">
-        <h3 class="content-title">目前沒有 FAQ</h3>
+        <h3 class="content-title">目前沒有 Q&amp;A</h3>
         <p class="content-copy">管理員可以先在後台新增問題與回答，這一頁就會自動顯示。</p>
       </article>
     `;
@@ -6647,7 +6647,7 @@ async function refreshFaqPageSafe({ force = false } = {}) {
   try {
     const loadWarnings = [];
     if (force || !faqPageState.loaded) {
-      const faqs = await loadWithFallback("FAQ", loadWarnings, () => getCollectionEntries(FAQ_COLLECTION), []);
+      const faqs = await loadWithFallback("Q&A", loadWarnings, () => getCollectionEntries(FAQ_COLLECTION), []);
       faqPageState.faqs = faqs;
       faqPageState.loadWarnings = loadWarnings;
       faqPageState.loaded = true;
@@ -6659,7 +6659,7 @@ async function refreshFaqPageSafe({ force = false } = {}) {
         "afterbegin",
         buildLoadWarningMarkup({
           title: "部分資料載入失敗",
-          copy: "目前部分 FAQ 資料無法讀取，下面仍會顯示已載入的問題。",
+          copy: "目前部分 Q&A 資料無法讀取，下面仍會顯示已載入的問題。",
           details: faqPageState.loadWarnings,
         }),
       );
@@ -6668,7 +6668,7 @@ async function refreshFaqPageSafe({ force = false } = {}) {
     console.error("FAQ board load failed:", error);
     board.innerHTML = `
       <article class="content-card is-tight">
-        <h3 class="content-title">FAQ 載入失敗</h3>
+        <h3 class="content-title">Q&amp;A 載入失敗</h3>
         <p class="content-copy">${escapeHtml(error?.message || "請稍後再試一次。")}</p>
       </article>
     `;
@@ -6718,7 +6718,7 @@ function bindFaqQuestionForm() {
       });
       form.reset();
       if (status) {
-        status.textContent = "問題已送出，管理員回答後會顯示在上方 FAQ。";
+        status.textContent = "問題已送出，管理員回答後會顯示在上方 Q&A。";
       }
     } catch (error) {
       console.error("Submit FAQ question failed:", error);
@@ -6801,7 +6801,7 @@ function renderAdminFaqs(faqEntries = []) {
   if (sortedFaqs.length === 0) {
     container.innerHTML = `
       <article class="content-card is-tight">
-        <h3 class="content-title">目前沒有 FAQ</h3>
+        <h3 class="content-title">目前沒有 Q&amp;A</h3>
         <p class="content-copy">你可以先用左邊表單新增第一則問答。</p>
       </article>
     `;
@@ -6824,7 +6824,7 @@ function renderAdminFaqs(faqEntries = []) {
           <div class="faq-panel">
             <p class="faq-answer">${escapeHtml(faq.answer || faq.body || "")}</p>
             <div class="application-actions class-admin-actions">
-              <button class="button-secondary application-save" data-faq-delete type="button" data-faq-id="${escapeHtml(faq.id)}">刪除 FAQ</button>
+              <button class="button-secondary application-save" data-faq-delete type="button" data-faq-id="${escapeHtml(faq.id)}">刪除 Q&amp;A</button>
             </div>
           </div>
         </details>
@@ -6852,7 +6852,7 @@ function renderAdminFaqQuestions(questionEntries = []) {
     container.innerHTML = `
       <article class="content-card is-tight">
         <h3 class="content-title">目前沒有待處理問題</h3>
-        <p class="content-copy">訪客從 FAQ 頁送出問題後，會依序顯示在這裡。</p>
+        <p class="content-copy">訪客從 Q&amp;A 頁送出問題後，會依序顯示在這裡。</p>
       </article>
     `;
     return;
@@ -6870,7 +6870,7 @@ function renderAdminFaqQuestions(questionEntries = []) {
           <form class="form-grid faq-form" data-faq-question-answer-form data-question-id="${escapeHtml(entry.id)}">
             <div class="form-field">
               <label for="faq-question-answer-${escapeHtml(entry.id)}">回答</label>
-              <textarea id="faq-question-answer-${escapeHtml(entry.id)}" name="answer" rows="4" placeholder="輸入回答後會發布到 FAQ">${escapeHtml(entry.answer || "")}</textarea>
+              <textarea id="faq-question-answer-${escapeHtml(entry.id)}" name="answer" rows="4" placeholder="輸入回答後會發布到 Q&amp;A">${escapeHtml(entry.answer || "")}</textarea>
             </div>
             <div class="application-actions class-admin-actions">
               <button class="button-primary" type="submit">發布回答</button>
@@ -6928,7 +6928,7 @@ function bindAdminFaqQuestionActions(container) {
   container.querySelectorAll("[data-faq-question-delete]").forEach((button) => {
     button.addEventListener("click", async () => {
       const questionId = String(button.dataset.questionId || "").trim();
-      if (!questionId || !window.confirm("確定要刪除這個問題嗎？已發布的 FAQ 回答也會一併移除。")) {
+      if (!questionId || !window.confirm("確定要刪除這個問題嗎？已發布的 Q&A 回答也會一併移除。")) {
         return;
       }
 
@@ -6990,7 +6990,7 @@ function bindAdminFaqActions() {
         return;
       }
 
-      const confirmed = window.confirm("要刪除這則 FAQ 嗎？");
+      const confirmed = window.confirm("要刪除這則 Q&A 嗎？");
       if (!confirmed) {
         return;
       }
@@ -7000,7 +7000,7 @@ function bindAdminFaqActions() {
         await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
       } catch (error) {
         console.error("Delete FAQ failed:", error);
-        window.alert(`刪除 FAQ 失敗：${error?.message || "請稍後再試一次。"}`);
+        window.alert(`刪除 Q&A 失敗：${error?.message || "請稍後再試一次。"}`);
       }
     });
   });
@@ -7053,7 +7053,7 @@ async function handleFaqFormSubmit(event) {
   const answer = String(form.querySelector("[name='answer']")?.value || "").trim();
 
   if (!question || !answer) {
-    window.alert("請填寫 FAQ 問題與回答。");
+    window.alert("請填寫 Q&A 問題與回答。");
     return;
   }
 
@@ -7070,10 +7070,10 @@ async function handleFaqFormSubmit(event) {
 
     form.reset();
     await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
-    showToast("FAQ 已儲存。", { tone: "success" });
+    showToast("Q&A 已儲存。", { tone: "success" });
   } catch (error) {
     console.error("Save FAQ failed:", error);
-    window.alert(`儲存 FAQ 失敗：${error?.message || "請稍後再試一次。"}`);
+    window.alert(`儲存 Q&A 失敗：${error?.message || "請稍後再試一次。"}`);
   } finally {
     submitButton.disabled = false;
   }
