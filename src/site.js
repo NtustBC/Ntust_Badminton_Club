@@ -23,6 +23,7 @@ let getDocs;
 let getFirestore;
 let getFunctions;
 let httpsCallable;
+let onSnapshot;
 let query;
 let runTransaction;
 let serverTimestamp;
@@ -63,6 +64,7 @@ const ensureFirebaseModules = async () => {
         getFirestore,
         getFunctions,
         httpsCallable,
+        onSnapshot,
         query,
         runTransaction,
         serverTimestamp,
@@ -98,8 +100,6 @@ const STORAGE_KEYS = {
 const DEFAULT_TERMS = ["上學期", "下學期", "未設定"];
 const MIN_ACADEMIC_YEAR = 115;
 const APPLICATION_SUBMIT_COOLDOWN_MS = 10 * 60 * 1000;
-const MEMBERS_DASHBOARD_REFRESH_MS = 60 * 1000;
-const PUBLIC_PAGE_REFRESH_MS = 60 * 1000;
 const NON_MEMBER_SIGNUP_DELAY_MS = 2 * 24 * 60 * 60 * 1000;
 const CLASS_SESSION_COLLECTION = "classSessions";
 const CLASS_SIGNUP_COLLECTION = "classSessionSignups";
@@ -169,7 +169,6 @@ let currentUserIsAdmin = false;
 let currentMemberStatus = "non_member";
 let currentMemberProfile = null;
 let notificationIndicatorRequestId = 0;
-let notificationRefreshTimer = null;
 let notificationCenterVisibleIds = [];
 let configuredAcademicYear = "";
 let configuredAcademicTerm = "";
@@ -194,15 +193,24 @@ let membershipRegistrationSettings = {
   waitlistSequence: 0,
 };
 let maintenanceSettings = { ...DEFAULT_MAINTENANCE_SETTINGS };
-let maintenanceRefreshTimer = null;
 let classScheduleDefaults = [];
 let authMode = "signin";
 let authReadyPromise = null;
 let lastLoginTrigger = null;
 let lastApplicationTrigger = null;
 let lastClassSignupTrigger = null;
-let membersAutoRefreshTimer = null;
-let publicPageAutoRefreshTimer = null;
+let realtimePageUnsubscribers = [];
+let realtimeNotificationUnsubscribers = [];
+let realtimeSettingsUnsubscriber = null;
+let realtimeRefreshTimer = null;
+let realtimeNotificationTimer = null;
+let classSignupBoundaryTimer = null;
+let realtimePageDirty = false;
+let realtimeNotificationDirty = false;
+let realtimeSettingsDirty = false;
+let realtimeVisibilityBound = false;
+let realtimePageKey = "";
+let realtimeNotificationKey = "";
 let membersDashboardCache = {
   members: [],
   admins: [],
@@ -1712,14 +1720,7 @@ const openNotificationCenter = async () => {
 
 const bindNotificationCenter = () => {
   installHeaderAccountControls();
-  if (!notificationRefreshTimer) {
-    notificationRefreshTimer = window.setInterval(() => {
-      if (!document.hidden && currentUser?.uid) void syncNotificationIndicator({ refreshProfile: true });
-    }, PUBLIC_PAGE_REFRESH_MS);
-    document.addEventListener("visibilitychange", () => {
-      if (!document.hidden && currentUser?.uid) void syncNotificationIndicator({ refreshProfile: true });
-    });
-  }
+  configureNotificationRealtimeSubscriptions();
   document.addEventListener("click", async (event) => {
     const selectAllInput = event.target.closest("[data-notification-select-all]");
     if (selectAllInput) {
@@ -2596,6 +2597,7 @@ const ensureAuthReady = async () => {
       updateLoginButtons();
       updateAuthView();
       applyMaintenanceView();
+      configureRealtimeSubscriptions();
 
       if (!initialAuthStateResolved) {
         initialAuthStateResolved = true;
@@ -3885,50 +3887,6 @@ const restoreExpandedMemberKeys = (keys = []) => {
       setMemberRowExpanded(row, true);
     }
   });
-};
-
-const shouldAutoRefreshMembersDashboard = () => {
-  if (pageName !== "members" || document.hidden || body.classList.contains("modal-open")) {
-    return false;
-  }
-
-  if (!currentUser || !currentUserIsAdmin) {
-    return false;
-  }
-
-  const activeElement = document.activeElement;
-  if (
-    activeElement &&
-    (activeElement.closest("[data-members-list]") ||
-      activeElement.closest("[data-class-session-calendar]") ||
-      activeElement.closest("[data-announcement-admin-list]") ||
-      activeElement.closest("[data-class-session-form]") ||
-      activeElement.closest("[data-announcement-form]") ||
-      activeElement.closest("[data-members-content] select") ||
-      activeElement.closest("[data-members-content] input") ||
-      activeElement.closest("[data-members-content] textarea") ||
-      activeElement.tagName === "SELECT" ||
-      activeElement.tagName === "INPUT" ||
-      activeElement.tagName === "TEXTAREA")
-  ) {
-    return false;
-  }
-
-  return true;
-};
-
-const startMembersDashboardAutoRefresh = () => {
-  if (pageName !== "members" || membersAutoRefreshTimer) {
-    return;
-  }
-
-  membersAutoRefreshTimer = window.setInterval(async () => {
-    if (!shouldAutoRefreshMembersDashboard()) {
-      return;
-    }
-
-    await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
-  }, MEMBERS_DASHBOARD_REFRESH_MS);
 };
 
 const bindMemberActionButtons = (memberList) => {
@@ -5851,6 +5809,32 @@ function getUpcomingSignupSessions(sessions = [], now = Date.now()) {
     .slice(0, 3);
 }
 
+function scheduleClassSignupBoundaryRender(sessions = []) {
+  window.clearTimeout(classSignupBoundaryTimer);
+  classSignupBoundaryTimer = null;
+  if (pageName !== "class-signup") return;
+  const now = Date.now();
+  const nextBoundary = sessions
+    .flatMap((session) => [
+      getMemberSignupOpenMs(session),
+      getPublicSignupOpenMs(session),
+      getDateTimeLocalMs(session.signupCloseAt),
+      getClassSessionStartMs(session),
+    ])
+    .filter((value) => Number.isFinite(value) && value > now)
+    .sort((a, b) => a - b)[0];
+  if (!nextBoundary) return;
+  const delay = Math.min(nextBoundary - now + 100, 2_147_000_000);
+  classSignupBoundaryTimer = window.setTimeout(() => {
+    classSignupBoundaryTimer = null;
+    if (document.hidden) {
+      realtimePageDirty = true;
+      return;
+    }
+    renderClassCalendarBoard(classSignupPageState.sessions);
+  }, delay);
+}
+
 function renderUpcomingClassSessions(sessions = []) {
   const container = document.querySelector("[data-upcoming-class-sessions]");
   if (!container) return;
@@ -5884,6 +5868,7 @@ function renderUpcomingClassSessions(sessions = []) {
 }
 
 function renderClassCalendarBoard(sessions = []) {
+  scheduleClassSignupBoundaryRender(sessions);
   renderUpcomingClassSessions(sessions);
   const container = document.querySelector("[data-class-calendar]");
   if (!container) {
@@ -9710,86 +9695,173 @@ const initKeybindings = () => {
   });
 };
 
-const initMembersAutoRefresh = () => {
-  if (pageName !== "members") {
-    return;
-  }
-
-  startMembersDashboardAutoRefresh();
-
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden || !shouldAutoRefreshMembersDashboard()) {
-      return;
+const unsubscribeRealtimeGroup = (unsubscribers) => {
+  unsubscribers.splice(0).forEach((unsubscribe) => {
+    try {
+      unsubscribe();
+    } catch (error) {
+      console.warn("Stop realtime listener failed:", error);
     }
-
-    void refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
   });
 };
 
-const shouldAutoRefreshPublicBoard = () => {
-  if ((pageName !== "class-signup" && pageName !== "notices" && pageName !== "faq") || document.hidden || body.classList.contains("modal-open")) {
-    return false;
-  }
+const subscribeAfterInitialSnapshot = (reference, onChange, label) => {
+  let receivedInitialSnapshot = false;
+  return onSnapshot(
+    reference,
+    () => {
+      if (!receivedInitialSnapshot) {
+        receivedInitialSnapshot = true;
+        return;
+      }
+      onChange();
+    },
+    (error) => console.warn(`${label} realtime listener failed:`, error),
+  );
+};
 
+const canApplyRealtimePageRefresh = () => {
+  if (document.hidden || body.classList.contains("modal-open")) return false;
   const activeElement = document.activeElement;
-  if (
-    activeElement &&
-    (activeElement.closest("[data-class-signup-form]") ||
-      activeElement.closest("[data-announcement-board]") ||
-      activeElement.closest("[data-faq-board]") ||
-      activeElement.tagName === "SELECT" ||
-      activeElement.tagName === "INPUT" ||
-      activeElement.tagName === "TEXTAREA")
-  ) {
-    return false;
-  }
-
-  return true;
+  return !activeElement || !["INPUT", "SELECT", "TEXTAREA"].includes(activeElement.tagName);
 };
 
-const initPublicBoardAutoRefresh = () => {
-  if (pageName !== "class-signup" && pageName !== "notices" && pageName !== "faq") {
-    return;
+const performRealtimePageRefresh = async () => {
+  realtimeRefreshTimer = null;
+  if (!realtimePageDirty || !canApplyRealtimePageRefresh()) return;
+  realtimePageDirty = false;
+  if (pageName === "members" && currentUserIsAdmin) {
+    await refreshMembersDashboardSafe({ force: true, preserveExpandedRows: true });
+  } else if (pageName === "class-signup") {
+    await refreshClassSignupPageSafe({ force: true });
+  } else if (pageName === "notices") {
+    await refreshAnnouncementsPageSafe({ force: true });
+  } else if (pageName === "faq") {
+    await refreshFaqPageSafe({ force: true });
+  }
+};
+
+const scheduleRealtimePageRefresh = () => {
+  realtimePageDirty = true;
+  if (document.hidden) return;
+  window.clearTimeout(realtimeRefreshTimer);
+  realtimeRefreshTimer = window.setTimeout(() => void performRealtimePageRefresh(), 250);
+};
+
+const configurePageRealtimeSubscriptions = () => {
+  const nextKey = db ? `${pageName}:${currentUser?.uid || "guest"}:${currentUserIsAdmin}` : "";
+  if (nextKey === realtimePageKey) return;
+  unsubscribeRealtimeGroup(realtimePageUnsubscribers);
+  if (pageName !== "class-signup") {
+    window.clearTimeout(classSignupBoundaryTimer);
+    classSignupBoundaryTimer = null;
+  }
+  realtimePageKey = nextKey;
+  realtimePageDirty = false;
+  if (!db || !onSnapshot) return;
+
+  let references = [];
+  if (pageName === "members" && currentUserIsAdmin) {
+    references = [
+      collection(db, "members"),
+      collection(db, "admins"),
+      collection(db, CLASS_SESSION_COLLECTION),
+      collection(db, CLASS_SIGNUP_COLLECTION),
+      collection(db, CLASS_ANNOUNCEMENT_COLLECTION),
+      collection(db, CLASS_ALBUM_COLLECTION),
+      collection(db, FAQ_COLLECTION),
+      collection(db, FAQ_QUESTION_COLLECTION),
+    ];
+  } else if (pageName === "class-signup") {
+    references = [
+      collection(db, CLASS_SESSION_COLLECTION),
+      collection(db, CLASS_SESSION_STATS_COLLECTION),
+    ];
+    if (currentUser?.uid) {
+      references.push(query(collection(db, CLASS_SIGNUP_COLLECTION), where("userId", "==", currentUser.uid)));
+    }
+  } else if (pageName === "notices") {
+    references = [collection(db, CLASS_ANNOUNCEMENT_COLLECTION)];
+  } else if (pageName === "faq") {
+    references = [collection(db, FAQ_COLLECTION)];
   }
 
-  if (publicPageAutoRefreshTimer) {
-    return;
-  }
+  realtimePageUnsubscribers = references.map((reference, index) =>
+    subscribeAfterInitialSnapshot(reference, scheduleRealtimePageRefresh, `Page data ${index + 1}`));
+};
 
-  publicPageAutoRefreshTimer = window.setInterval(async () => {
-    if (!shouldAutoRefreshPublicBoard()) {
-      return;
-    }
+const scheduleNotificationRealtimeSync = () => {
+  realtimeNotificationDirty = true;
+  if (document.hidden || !currentUser?.uid) return;
+  window.clearTimeout(realtimeNotificationTimer);
+  realtimeNotificationTimer = window.setTimeout(() => {
+    realtimeNotificationTimer = null;
+    if (!realtimeNotificationDirty || !currentUser?.uid) return;
+    realtimeNotificationDirty = false;
+    void syncNotificationIndicator({ refreshProfile: true });
+  }, 250);
+};
 
-    if (pageName === "class-signup") {
-      await refreshClassSignupPageSafe({ force: true });
-      return;
-    }
+const configureNotificationRealtimeSubscriptions = () => {
+  const nextKey = db && currentUser?.uid ? `${currentUser.uid}:${currentUserIsAdmin}` : "";
+  if (nextKey === realtimeNotificationKey) return;
+  unsubscribeRealtimeGroup(realtimeNotificationUnsubscribers);
+  realtimeNotificationKey = nextKey;
+  realtimeNotificationDirty = false;
+  if (!nextKey || !onSnapshot) return;
 
-    if (pageName === "notices") {
-      await refreshAnnouncementsPageSafe({ force: true });
-      return;
-    }
+  const references = [
+    collection(db, CLASS_ANNOUNCEMENT_COLLECTION),
+    collection(db, CLASS_SESSION_COLLECTION),
+    doc(db, "members", currentUser.uid),
+    query(collection(db, MEMBER_NOTIFICATION_COLLECTION), where("userId", "==", currentUser.uid)),
+  ];
+  if (currentUserIsAdmin) references.push(collection(db, ADMIN_NOTIFICATION_COLLECTION));
+  realtimeNotificationUnsubscribers = references.map((reference, index) =>
+    subscribeAfterInitialSnapshot(reference, scheduleNotificationRealtimeSync, `Notification data ${index + 1}`));
+};
 
-    if (pageName === "faq") {
-      await refreshFaqPageSafe({ force: true });
-    }
-  }, PUBLIC_PAGE_REFRESH_MS);
+const refreshSettingsFromRealtime = async () => {
+  realtimeSettingsDirty = false;
+  await loadCurrentTermSettings();
+  scheduleRealtimePageRefresh();
+};
 
+const configureSettingsRealtimeSubscription = () => {
+  if (!db || !onSnapshot || realtimeSettingsUnsubscriber) return;
+  realtimeSettingsUnsubscriber = subscribeAfterInitialSnapshot(
+    getSiteSettingsDocRef(CURRENT_TERM_SETTINGS_DOC),
+    () => {
+      realtimeSettingsDirty = true;
+      if (!document.hidden) void refreshSettingsFromRealtime();
+    },
+    "Site settings",
+  );
+};
+
+const bindRealtimeVisibilityResume = () => {
+  if (realtimeVisibilityBound) return;
+  realtimeVisibilityBound = true;
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden || !shouldAutoRefreshPublicBoard()) {
-      return;
-    }
-
-    if (pageName === "class-signup") {
-      void refreshClassSignupPageSafe({ force: true });
-    } else if (pageName === "notices") {
-      void refreshAnnouncementsPageSafe({ force: true });
-    } else if (pageName === "faq") {
-      void refreshFaqPageSafe({ force: true });
-    }
+    if (document.hidden) return;
+    if (realtimeSettingsDirty) void refreshSettingsFromRealtime();
+    if (realtimeNotificationDirty) scheduleNotificationRealtimeSync();
+    if (realtimePageDirty) scheduleRealtimePageRefresh();
+  });
+  document.addEventListener("focusout", () => {
+    if (realtimePageDirty) window.setTimeout(scheduleRealtimePageRefresh, 0);
   });
 };
+
+const configureRealtimeSubscriptions = () => {
+  configurePageRealtimeSubscriptions();
+  configureNotificationRealtimeSubscriptions();
+  configureSettingsRealtimeSubscription();
+  bindRealtimeVisibilityResume();
+};
+
+const initMembersAutoRefresh = configureRealtimeSubscriptions;
+const initPublicBoardAutoRefresh = configureRealtimeSubscriptions;
 
 const SPA_PAGE_FILES = new Set([
   "index.html",
@@ -10045,13 +10117,7 @@ const init = async () => {
   }
 
   applyMaintenanceView();
-  if (!maintenanceRefreshTimer && firebaseConfigured) {
-    maintenanceRefreshTimer = window.setInterval(() => {
-      if (!document.hidden) {
-        void loadCurrentTermSettings();
-      }
-    }, PUBLIC_PAGE_REFRESH_MS);
-  }
+  configureRealtimeSubscriptions();
 
   await activateCurrentPage();
 };
