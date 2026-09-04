@@ -15,6 +15,9 @@
   --radius-md: 8px;
   --radius-sm: 4px;
   --header-height: 96px;
+  --title-page-size: clamp(2.4rem, 5vw, 4.4rem);
+  --title-section-size: clamp(2rem, 3.4vw, 3.2rem);
+  --title-card-size: 1.4rem;
   --font-sans:
     "Noto Sans TC",
     "PingFang TC",
@@ -484,16 +487,18 @@ body.spa-navigating .page-main {
 .page-title {
   margin: 0;
   font-family: var(--font-serif);
-  line-height: 0.96;
+  font-weight: 700;
+  line-height: 1.04;
   letter-spacing: -0.04em;
 }
 
-.hero-title {
-  font-size: clamp(3rem, 7vw, 5.7rem);
+.hero-title,
+h1.page-title {
+  font-size: var(--title-page-size);
 }
 
 .page-title {
-  font-size: clamp(2.4rem, 5vw, 4.4rem);
+  font-size: var(--title-section-size);
 }
 
 .page-title-signup-link {
@@ -908,7 +913,8 @@ body.spa-navigating .page-main {
 .timeline-title {
   margin: 16px 0 0;
   font-family: var(--font-serif);
-  font-size: 1.4rem;
+  font-size: var(--title-card-size);
+  font-weight: 700;
   line-height: 1.2;
   letter-spacing: -0.03em;
 }
@@ -3645,10 +3651,6 @@ button.admin-calendar-day:focus-visible {
     padding: 0 20px 20px;
   }
 
-  .hero-title {
-    font-size: 2.9rem;
-  }
-
   .side-card-photo {
     min-height: 460px;
   }
@@ -3688,8 +3690,10 @@ button.admin-calendar-day:focus-visible {
     bottom: 68px;
   }
 
-  .page-title {
-    font-size: 2.3rem;
+  :root {
+    --title-page-size: 2.3rem;
+    --title-section-size: 2rem;
+    --title-card-size: 1.3rem;
   }
 
   .member-filter-header,
