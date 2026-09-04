@@ -3869,6 +3869,55 @@ button.admin-calendar-day:focus-visible {
 .notification-delete-button:disabled { cursor: wait; opacity: 0.45; }
 .class-capacity-summary { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin: 14px 0; padding: 13px 16px; border-radius: 12px; background: rgba(15, 84, 160, 0.08); color: #0f54a0; }
 
+/* Keep every expandable interface consistent with the FAQ + / × control. */
+:is(.member-row-toggle, .upcoming-session-toggle, .notification-expand-label, .class-announcement-toggle-open) {
+  position: relative;
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 0 !important;
+}
+:is(.member-row-toggle, .upcoming-session-toggle, .notification-expand-label, .class-announcement-toggle-open)::before,
+:is(.member-row-toggle, .upcoming-session-toggle, .notification-expand-label, .class-announcement-toggle-open)::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+  transform-origin: center;
+  transition: transform 220ms ease;
+}
+:is(.member-row-toggle, .upcoming-session-toggle, .notification-expand-label, .class-announcement-toggle-open)::after {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+.member-row-expandable[data-expanded="true"] .member-row-toggle::before,
+.upcoming-session-card[open] .upcoming-session-toggle::before,
+.notification-item[open] .notification-expand-label::before,
+.class-announcement-card[open] .class-announcement-toggle-open::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.member-row-expandable[data-expanded="true"] .member-row-toggle::after,
+.upcoming-session-card[open] .upcoming-session-toggle::after,
+.notification-item[open] .notification-expand-label::after,
+.class-announcement-card[open] .class-announcement-toggle-open::after {
+  content: "";
+  font-size: 0;
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+.class-announcement-card[open] .class-announcement-toggle-open { display: inline-grid; }
+.class-announcement-toggle-close { display: none !important; }
+
 @media (max-width: 560px) {
   .account-popover { position: fixed; top: 76px; right: 14px; }
   .notification-modal-dialog .modal-header { padding: 20px; }
