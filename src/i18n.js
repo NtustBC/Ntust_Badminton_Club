@@ -99,7 +99,7 @@ const EN_TRANSLATIONS = {
   "尚未設定": "Not Yet Set",
   "尚未開放非社員報名": "Non-member Registration Not Yet Available",
   "目前沒有即將開放或仍可報名的社課場次。": "There are no upcoming sessions with registration open or scheduled to open.",
-  "可報名社課日期": "Classes Open for Registration",
+  "目前開放報名的社課": "Classes Currently Open for Registration",
 
   "這裡會整理社團公告與提醒事項，方便你直接看每天有哪些重要訊息。": "Club announcements and reminders are organized here by date.",
   "前往社課報名": "Go to Class Registration",
@@ -201,7 +201,6 @@ const EN_TRANSLATIONS = {
   "訪客送出的問題會條列在這裡；回答後會自動發布到 FAQ，也可以直接刪除。": "Visitor questions appear here. Answering publishes them to the FAQ; they may also be deleted.",
 
   "輕鬆上場": "Get on Court with Ease",
-  "目前可報名的社課日期": "Class Dates Currently Open for Registration",
   "目前沒有開放報名的社課": "No Classes Are Currently Open for Registration",
   "有新的報名日期時會顯示在這裡。": "New registration dates will appear here.",
   "只顯示目前報名期間已開放的社課。": "Only classes whose registration window is currently open are shown.",
