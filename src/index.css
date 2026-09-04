@@ -430,6 +430,10 @@ body.spa-navigating .page-main {
   align-items: start;
 }
 
+.page-hero.page-hero-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .hero-card,
 .side-card,
 .content-card,
@@ -838,8 +842,8 @@ body.spa-navigating .page-main {
 
 .membership-comparison {
   display: grid;
-  gap: 18px;
-  margin-top: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 24px 36px;
   color: var(--muted);
 }
 
@@ -848,7 +852,7 @@ body.spa-navigating .page-main {
   gap: 8px;
 }
 
-.membership-comparison h2 {
+.membership-comparison h3 {
   margin: 0;
   color: var(--ink);
   font-size: 1rem;

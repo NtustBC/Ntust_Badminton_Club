@@ -89,6 +89,7 @@ const EN_TRANSLATIONS = {
   "幹部確認收款後，帳號狀態才會由非社員更新為社員。": "Your status changes to member after club staff confirm payment.",
 
   "這裡可以知道目前有開放報名的社課日期及剩餘名額。": "See class dates currently open for registration and their remaining capacity.",
+  "最近可報名場次": "Upcoming Sessions Open for Registration",
   "可報名社課日期": "Classes Open for Registration",
 
   "這裡會整理社團公告與提醒事項，方便你直接看每天有哪些重要訊息。": "Club announcements and reminders are organized here by date.",
