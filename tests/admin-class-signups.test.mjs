@@ -21,6 +21,11 @@ test("class signup roster has its own panel and renderer", () => {
   assert.match(siteSource, /報名時間：/);
   assert.match(siteSource, /時段志願：/);
   assert.match(siteSource, /data-admin-class-signup-session-select/);
+  assert.match(siteSource, /data-admin-class-signup-filter="academicYear"/);
+  assert.match(siteSource, /data-admin-class-signup-filter="term"/);
+  assert.match(siteSource, /data-admin-class-signup-filter="timing"/);
+  assert.match(siteSource, /entry\.timing === adminClassSignupFilters\.timing/);
+  assert.match(siteSource, /getAcademicPeriodForDate\(sessionDate\)/);
   assert.match(siteSource, /admin-class-signup-roster-details/);
   assert.match(siteSource, /getClassSessionSortMs\(b\.session\) - getClassSessionSortMs\(a\.session\)/);
 });

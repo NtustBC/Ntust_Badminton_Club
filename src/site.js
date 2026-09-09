@@ -252,6 +252,11 @@ let adminClassCalendarMonthOffset = 0;
 let announcementCalendarMonthOffset = 0;
 let adminClassSessionEditingId = "";
 let adminClassSignupSelectedSessionId = "";
+let adminClassSignupFilters = {
+  academicYear: "all",
+  term: "all",
+  timing: "all",
+};
 let lastAdminClassCalendarTrigger = null;
 let adminAnnouncementListResizeBound = false;
 let adminFaqListResizeBound = false;
@@ -7528,7 +7533,18 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
   const grouped = groupClassSignupsBySession(signups);
   const membersById = Object.fromEntries(membersDashboardCache.members.map((member) => [member.uid || member.id, member]));
   const sessionsWithSignups = sessions
-    .map((session) => ({ session, sessionId: getClassSessionId(session), signups: grouped[getClassSessionId(session)] || [] }))
+    .map((session) => {
+      const sessionDate = parseDateKey(session.date || session.sessionDate || "");
+      const academicPeriod = sessionDate ? getAcademicPeriodForDate(sessionDate) : { academicYear: "", term: "" };
+      return {
+        session,
+        sessionId: getClassSessionId(session),
+        signups: grouped[getClassSessionId(session)] || [],
+        academicYear: academicPeriod.academicYear,
+        term: academicPeriod.term,
+        timing: getClassSessionStartMs(session) >= Date.now() ? "upcoming" : "past",
+      };
+    })
     .filter((entry) => entry.session.signupRequired === true)
     .sort((a, b) => getClassSessionSortMs(b.session) - getClassSessionSortMs(a.session));
 
@@ -7544,32 +7560,66 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
     `;
   }
 
-  if (!sessionsWithSignups.some((entry) => entry.sessionId === adminClassSignupSelectedSessionId)) {
-    adminClassSignupSelectedSessionId = sessionsWithSignups[0].sessionId;
+  const academicYears = [...new Set(sessionsWithSignups.map((entry) => entry.academicYear).filter(Boolean))]
+    .sort((a, b) => Number(b) - Number(a));
+  const filteredSessions = sessionsWithSignups.filter((entry) => {
+    const academicYearMatches = adminClassSignupFilters.academicYear === "all"
+      || entry.academicYear === adminClassSignupFilters.academicYear;
+    const termMatches = adminClassSignupFilters.term === "all" || entry.term === adminClassSignupFilters.term;
+    const timingMatches = adminClassSignupFilters.timing === "all" || entry.timing === adminClassSignupFilters.timing;
+    return academicYearMatches && termMatches && timingMatches;
+  });
+
+  if (!filteredSessions.some((entry) => entry.sessionId === adminClassSignupSelectedSessionId)) {
+    adminClassSignupSelectedSessionId = filteredSessions[0]?.sessionId || "";
   }
-  const visibleSessions = sessionsWithSignups.filter((entry) => entry.sessionId === adminClassSignupSelectedSessionId);
+  const visibleSessions = filteredSessions.filter((entry) => entry.sessionId === adminClassSignupSelectedSessionId);
 
   return `
     <section class="member-section">
       <div class="section-header is-compact">
         <div class="section-kicker">Signups</div>
         <h3 class="content-title">報名名單</h3>
-        <p class="section-description">依日期選擇社課，再點開查看該場完整報名名單。正式社員不需要單場零打費；非社員可在這裡標記該場零打費。</p>
+        <p class="section-description">先依學年、學期與社課狀態篩選，再選擇日期並點開完整報名名單。正式社員不需要單場零打費；非社員可在這裡標記該場零打費。</p>
       </div>
       <article class="content-card is-tight admin-class-signup-date-picker">
-        <div class="form-field">
-          <label for="admin-class-signup-session-select">選擇社課日期</label>
-          <select id="admin-class-signup-session-select" data-admin-class-signup-session-select>
-            ${sessionsWithSignups.map(({ session, sessionId }) => `
-              <option value="${escapeHtml(sessionId)}" ${sessionId === adminClassSignupSelectedSessionId ? "selected" : ""}>
-                ${escapeHtml(`${getClassSessionDateLabel(session)}・${getLocalizedContentTitle(session, "社課")}${getClassSessionTimeLabel(session) ? `・${getClassSessionTimeLabel(session)}` : ""}`)}
-              </option>
-            `).join("")}
-          </select>
+        <div class="admin-class-signup-filter-grid">
+          <div class="form-field">
+            <label for="admin-class-signup-academic-year">學年</label>
+            <select id="admin-class-signup-academic-year" data-admin-class-signup-filter="academicYear">
+              <option value="all" ${adminClassSignupFilters.academicYear === "all" ? "selected" : ""}>全部學年</option>
+              ${academicYears.map((year) => `<option value="${escapeHtml(year)}" ${adminClassSignupFilters.academicYear === year ? "selected" : ""}>${escapeHtml(`${year} 學年度`)}</option>`).join("")}
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="admin-class-signup-term">學期</label>
+            <select id="admin-class-signup-term" data-admin-class-signup-filter="term">
+              <option value="all" ${adminClassSignupFilters.term === "all" ? "selected" : ""}>全部學期</option>
+              ${["上學期", "下學期"].map((term) => `<option value="${term}" ${adminClassSignupFilters.term === term ? "selected" : ""}>${term}</option>`).join("")}
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="admin-class-signup-timing">社課狀態</label>
+            <select id="admin-class-signup-timing" data-admin-class-signup-filter="timing">
+              <option value="all" ${adminClassSignupFilters.timing === "all" ? "selected" : ""}>全部社課</option>
+              <option value="upcoming" ${adminClassSignupFilters.timing === "upcoming" ? "selected" : ""}>即將到來</option>
+              <option value="past" ${adminClassSignupFilters.timing === "past" ? "selected" : ""}>過去社課</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="admin-class-signup-session-select">選擇社課日期</label>
+            <select id="admin-class-signup-session-select" data-admin-class-signup-session-select ${filteredSessions.length ? "" : "disabled"}>
+              ${filteredSessions.length ? filteredSessions.map(({ session, sessionId }) => `
+                <option value="${escapeHtml(sessionId)}" ${sessionId === adminClassSignupSelectedSessionId ? "selected" : ""}>
+                  ${escapeHtml(`${getClassSessionDateLabel(session)}・${getLocalizedContentTitle(session, "社課")}${getClassSessionTimeLabel(session) ? `・${getClassSessionTimeLabel(session)}` : ""}`)}
+                </option>
+              `).join("") : '<option value="">沒有符合條件的社課</option>'}
+            </select>
+          </div>
         </div>
       </article>
       <div class="member-list">
-        ${visibleSessions
+        ${visibleSessions.length ? visibleSessions
           .map(({ session, sessionId, signups: sessionSignups }) => {
             const limit = getSessionSignupLimit(session);
             const sortedSignups = [...sessionSignups].sort((a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt));
@@ -7642,7 +7692,7 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
               </details>
             `;
           })
-          .join("")}
+          .join("") : '<article class="content-card is-tight"><p class="content-copy">目前沒有符合篩選條件的社課，請調整學年、學期或社課狀態。</p></article>'}
       </div>
     </section>
   `;
@@ -7652,6 +7702,15 @@ const renderAdminClassSignupOverview = (sessions = [], signups = []) => {
   const container = document.querySelector("[data-class-signup-management]");
   if (!container) return;
   container.innerHTML = buildAdminSignupOverviewMarkup(sessions, signups);
+  container.querySelectorAll("[data-admin-class-signup-filter]").forEach((select) => {
+    select.addEventListener("change", (event) => {
+      const filterName = String(event.currentTarget.dataset.adminClassSignupFilter || "");
+      if (!Object.hasOwn(adminClassSignupFilters, filterName)) return;
+      adminClassSignupFilters[filterName] = String(event.currentTarget.value || "all");
+      renderAdminClassSignupOverview(sessions, signups);
+      bindAdminClassCalendarActions();
+    });
+  });
   container.querySelector("[data-admin-class-signup-session-select]")?.addEventListener("change", (event) => {
     adminClassSignupSelectedSessionId = String(event.currentTarget.value || "");
     renderAdminClassSignupOverview(sessions, signups);
