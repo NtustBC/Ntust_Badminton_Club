@@ -4125,6 +4125,25 @@ button.admin-calendar-day:focus-visible {
 .admin-roster-add-form { display: grid; grid-template-columns: minmax(240px, 1fr) auto; align-items: end; gap: 0.8rem; }
 .admin-roster-add-form .button-primary { min-width: 140px; }
 .admin-roster-list { min-width: 0; }
+.admin-class-signup-date-picker { margin-bottom: 1rem; }
+.admin-class-signup-roster-details { display: grid; gap: 0.8rem; }
+.admin-class-signup-roster-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+  list-style: none;
+}
+.admin-class-signup-roster-summary::-webkit-details-marker { display: none; }
+.admin-class-signup-roster-summary strong,
+.admin-class-signup-roster-summary small { display: block; }
+.admin-class-signup-roster-summary strong { color: var(--ink); font-size: 1.05rem; }
+.admin-class-signup-roster-summary small { margin-top: 0.25rem; color: var(--muted); }
+.admin-class-signup-roster-details[open] > .admin-class-signup-roster-summary {
+  border-color: rgba(15, 76, 129, 0.32);
+}
+.admin-class-signup-roster-details > .member-row { margin-top: 0.8rem; }
 .class-default-list { display: grid; gap: 0.8rem; }
 .class-default-row { display: grid; gap: 0.9rem; padding: 0.9rem; border: 1px solid rgba(17, 24, 39, 0.1); border-radius: 0.9rem; }
 .class-default-basic-grid { display: grid; grid-template-columns: 0.7fr 0.7fr 0.7fr 1fr 1.3fr; align-items: end; gap: 0.75rem; }
@@ -4220,6 +4239,7 @@ button.admin-calendar-day:focus-visible {
   .class-default-basic-grid, .class-default-signup-fields { grid-template-columns: 1fr; }
   .admin-roster-add-form { grid-template-columns: 1fr; }
   .admin-roster-add-form .button-primary { width: 100%; }
+  .admin-class-signup-roster-summary { align-items: flex-start; flex-direction: column; }
   .class-default-signup-period { grid-template-columns: 1fr 1fr; }
   .class-default-row .member-delete-button { width: 100%; }
   .cash-payment-option-row { grid-template-columns: 1fr; }

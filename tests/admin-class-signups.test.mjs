@@ -20,4 +20,7 @@ test("class signup roster has its own panel and renderer", () => {
   assert.match(siteSource, /renderAdminClassSignupOverview\(membersDashboardCache\.classSessions, membersDashboardCache\.classSessionSignups\)/);
   assert.match(siteSource, /報名時間：/);
   assert.match(siteSource, /時段志願：/);
+  assert.match(siteSource, /data-admin-class-signup-session-select/);
+  assert.match(siteSource, /admin-class-signup-roster-details/);
+  assert.match(siteSource, /getClassSessionSortMs\(b\.session\) - getClassSessionSortMs\(a\.session\)/);
 });

@@ -251,6 +251,7 @@ let faqPageState = {
 let adminClassCalendarMonthOffset = 0;
 let announcementCalendarMonthOffset = 0;
 let adminClassSessionEditingId = "";
+let adminClassSignupSelectedSessionId = "";
 let lastAdminClassCalendarTrigger = null;
 let adminAnnouncementListResizeBound = false;
 let adminFaqListResizeBound = false;
@@ -7543,22 +7544,45 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
     `;
   }
 
+  if (!sessionsWithSignups.some((entry) => entry.sessionId === adminClassSignupSelectedSessionId)) {
+    adminClassSignupSelectedSessionId = sessionsWithSignups[0].sessionId;
+  }
+  const visibleSessions = sessionsWithSignups.filter((entry) => entry.sessionId === adminClassSignupSelectedSessionId);
+
   return `
     <section class="member-section">
       <div class="section-header is-compact">
         <div class="section-kicker">Signups</div>
         <h3 class="content-title">報名名單</h3>
-        <p class="section-description">依場次顯示所有報名者。正式社員不需要單場零打費；非社員可在這裡標記該場零打費，社費請到社員名單標記。</p>
+        <p class="section-description">依日期選擇社課，再點開查看該場完整報名名單。正式社員不需要單場零打費；非社員可在這裡標記該場零打費。</p>
       </div>
+      <article class="content-card is-tight admin-class-signup-date-picker">
+        <div class="form-field">
+          <label for="admin-class-signup-session-select">選擇社課日期</label>
+          <select id="admin-class-signup-session-select" data-admin-class-signup-session-select>
+            ${sessionsWithSignups.map(({ session, sessionId }) => `
+              <option value="${escapeHtml(sessionId)}" ${sessionId === adminClassSignupSelectedSessionId ? "selected" : ""}>
+                ${escapeHtml(`${getClassSessionDateLabel(session)}・${getLocalizedContentTitle(session, "社課")}${getClassSessionTimeLabel(session) ? `・${getClassSessionTimeLabel(session)}` : ""}`)}
+              </option>
+            `).join("")}
+          </select>
+        </div>
+      </article>
       <div class="member-list">
-        ${sessionsWithSignups
+        ${visibleSessions
           .map(({ session, sessionId, signups: sessionSignups }) => {
             const limit = getSessionSignupLimit(session);
             const sortedSignups = [...sessionSignups].sort((a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt));
-            const acceptedCount = sortedSignups.filter((signup, index) => getComputedSignupStatus(signup, index, session) === "accepted").length;
-            const waitlistedCount = sortedSignups.length - acceptedCount;
             const exportAvailable = isClassSignupExportAvailable(session);
             return `
+              <details class="admin-class-signup-roster-details">
+                <summary class="content-card is-tight admin-class-signup-roster-summary">
+                  <span>
+                    <strong>${escapeHtml(getClassSessionDateLabel(session))}</strong>
+                    <small>${escapeHtml([getLocalizedContentTitle(session, "社課"), getClassSessionTimeLabel(session)].filter(Boolean).join("・"))}</small>
+                  </span>
+                  <span class="member-row-status">${escapeHtml(`${sortedSignups.length} 人報名`)}　點開名單</span>
+                </summary>
               <article class="member-row">
                 <div class="member-row-top">
                   <p class="member-row-index">${escapeHtml(getLocalizedContentTitle(session, "社團報名"))}</p>
@@ -7615,6 +7639,7 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
                     .join("") : `<p class="content-copy">本場次目前尚無人報名。</p>`}
                 </div>
               </article>
+              </details>
             `;
           })
           .join("")}
@@ -7627,6 +7652,11 @@ const renderAdminClassSignupOverview = (sessions = [], signups = []) => {
   const container = document.querySelector("[data-class-signup-management]");
   if (!container) return;
   container.innerHTML = buildAdminSignupOverviewMarkup(sessions, signups);
+  container.querySelector("[data-admin-class-signup-session-select]")?.addEventListener("change", (event) => {
+    adminClassSignupSelectedSessionId = String(event.currentTarget.value || "");
+    renderAdminClassSignupOverview(sessions, signups);
+    bindAdminClassCalendarActions();
+  });
 };
 
 const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
