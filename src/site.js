@@ -107,6 +107,8 @@ const CLASS_SESSION_COLLECTION = "classSessions";
 const CLASS_SIGNUP_COLLECTION = "classSessionSignups";
 const CLASS_PUBLIC_ROSTER_COLLECTION = "classPublicRosters";
 const CLASS_SESSION_STATS_COLLECTION = "classSessionStats";
+const CLASS_SIGNUP_SLOT_KEYS = ["firstHalf", "secondHalf"];
+const DEFAULT_CLASS_SLOT_LIMIT = 30;
 const CLASS_ANNOUNCEMENT_COLLECTION = "classAnnouncements";
 const CLASS_ALBUM_COLLECTION = "classAlbums";
 const ADMIN_NOTIFICATION_COLLECTION = "adminNotifications";
@@ -883,8 +885,8 @@ const adminClassCalendarModalMarkup = `
                 </div>
               </div>
               <div class="form-field admin-calendar-limit-field">
-                <label for="admin-calendar-signup-limit">人數上限</label>
-                <input id="admin-calendar-signup-limit" name="signupLimit" min="1" placeholder="不填則不限" type="number" />
+                <label for="admin-calendar-signup-limit">每時段人數上限</label>
+                <input id="admin-calendar-signup-limit" name="signupLimit" min="1" placeholder="預設 30 人" type="number" />
               </div>
             </div>
           </section>
@@ -2961,7 +2963,9 @@ const renderClassSignupModalContent = (sessionId) => {
 
   const { ownSignup, approvalData, canSignup, isSignupSession, signupOpen, statusLabel } = getPublicClassSignupModalState(session);
   const albumUrl = classSignupPageState.classAlbums.find((album) => album.id === sessionId)?.url || "";
-  const signupCount = getSessionSignupCount(sessionId);
+  const slotLimit = getSessionSignupLimit(session);
+  const firstHalfCount = getSessionSlotSignupCount(sessionId, "firstHalf");
+  const secondHalfCount = getSessionSlotSignupCount(sessionId, "secondHalf");
   const formMarkup = isSignupSession
     ? buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup, signupOpen)
     : `
@@ -2992,7 +2996,7 @@ const renderClassSignupModalContent = (sessionId) => {
         ${session.reminder ? `<p class="class-session-reminder">提醒：${escapeHtml(session.reminder)}</p>` : ""}
         ${currentUser && albumUrl ? `<p class="class-session-album"><a class="button-secondary" href="${escapeHtml(albumUrl)}" target="_blank" rel="noopener noreferrer">查看本次社課照片</a></p>` : ""}
       </article>
-      <div class="class-capacity-summary"><strong>${escapeHtml(getRemainingCapacityMarkup(session))}</strong><span>${escapeHtml(`${signupCount} 人正取${getSessionWaitlistCount(sessionId) ? `，${getSessionWaitlistCount(sessionId)} 人候補` : ""}`)}</span></div>
+      <div class="class-capacity-summary"><strong>各時段上限 ${escapeHtml(slotLimit)} 人</strong><span>${escapeHtml(`上半場 ${firstHalfCount} 人・下半場 ${secondHalfCount} 人`)}</span></div>
       <section class="class-signup-modal-form-shell">
         ${formMarkup}
       </section>
@@ -4112,7 +4116,7 @@ const getMemberFilterCategoryLabel = () => ({
 })[memberFilters.category] || "全部身分";
 
 const buildClassSignupWorksheetMarkup = (name, session, signups = [], membersById = {}) => {
-  const columns = ["姓名", "學號", "Email", "報名狀態", "候補順位", "零打費", "備註", "報名時間"];
+  const columns = ["姓名", "學號", "Email", "錄取時段", "報名狀態", "候補順位", "零打費", "備註", "報名時間"];
   const rows = signups.map((signup, index) => {
     const member = membersById[signup.userId] || null;
     const computedStatus = getComputedSignupStatus(signup, index, session);
@@ -4121,6 +4125,7 @@ const buildClassSignupWorksheetMarkup = (name, session, signups = [], membersByI
       signup.name || "",
       signup.studentId || "",
       signup.email || "",
+      getClassSignupSlotsLabel(signup),
       getSignupStatusLabel({ ...signup, signupStatus: computedStatus }),
       position || "",
       getSignupPaymentLabel(signup, member),
@@ -5739,7 +5744,29 @@ function isNonMemberPriorityWindow(session) {
 
 function getSessionSignupLimit(session = {}) {
   const limit = Number(session.signupLimit || 0);
-  return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : null;
+  return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : DEFAULT_CLASS_SLOT_LIMIT;
+}
+
+function normalizeClassSignupSlots(value, { fallbackToBoth = false } = {}) {
+  const slots = Array.isArray(value)
+    ? CLASS_SIGNUP_SLOT_KEYS.filter((slot) => value.includes(slot))
+    : [];
+  return slots.length || !fallbackToBoth ? slots : [...CLASS_SIGNUP_SLOT_KEYS];
+}
+
+function getClassSignupSlots(signup = {}) {
+  return normalizeClassSignupSlots(signup.timeSlots, {
+    fallbackToBoth: Boolean(signup.id || signup.userId || signup.sessionId),
+  });
+}
+
+function getClassSignupSlotLabel(slot) {
+  return slot === "firstHalf" ? "上半場" : slot === "secondHalf" ? "下半場" : "";
+}
+
+function getClassSignupSlotsLabel(signup = {}) {
+  const labels = getClassSignupSlots(signup).map(getClassSignupSlotLabel).filter(Boolean);
+  return labels.length ? labels.join("、") : "未選擇時段";
 }
 
 function isFormalMemberRecord(member = {}) {
@@ -5777,6 +5804,14 @@ function getSessionSignupCount(sessionId) {
   const stats = classSignupPageState.sessionSignups.find((entry) => String(entry.sessionId || entry.id || "") === String(sessionId || ""));
   return Math.max(0, Number(stats?.signupCount || 0));
 }
+function getSessionSlotSignupCount(sessionId, slot) {
+  const stats = classSignupPageState.sessionSignups.find((entry) => String(entry.sessionId || entry.id || "") === String(sessionId || ""));
+  const field = slot === "firstHalf" ? "firstHalfCount" : "secondHalfCount";
+  const explicitCount = Number(stats?.[field]);
+  return Number.isInteger(explicitCount) && explicitCount >= 0
+    ? explicitCount
+    : Math.max(0, Number(stats?.signupCount || 0));
+}
 function getSessionWaitlistCount(sessionId) {
   const stats = classSignupPageState.sessionSignups.find((entry) => String(entry.sessionId || entry.id || "") === String(sessionId || ""));
   return Math.max(0, Number(stats?.waitlistCount || 0));
@@ -5789,6 +5824,9 @@ function getRemainingCapacityMarkup(session) {
 function getComputedSignupStatus(signup = {}, index = 0, session = {}) {
   if (signup.signupStatus === "accepted" || signup.signupStatus === "waitlisted") {
     return signup.signupStatus;
+  }
+  if (Array.isArray(signup.timeSlots) && signup.timeSlots.length) {
+    return "accepted";
   }
 
   const limit = getSessionSignupLimit(session);
@@ -5903,9 +5941,8 @@ function renderClassCalendarBoard(sessions = []) {
   const sessionMarkup = openSignupSessions
     .map((session) => {
       const sessionId = getClassSessionId(session);
-      const signupCount = getSessionSignupCount(sessionId);
       const signupLimit = getSessionSignupLimit(session);
-      const signupCountLabel = signupLimit ? `${signupCount} / ${signupLimit} 人` : `${signupCount} 人已報名`;
+      const signupCountLabel = `上半場 ${getSessionSlotSignupCount(sessionId, "firstHalf")} / ${signupLimit}・下半場 ${getSessionSlotSignupCount(sessionId, "secondHalf")} / ${signupLimit}`;
       const publicSignupOpenMs = getPublicSignupOpenMs(session);
       const signupAudienceLabel = publicSignupOpenMs && Date.now() >= publicSignupOpenMs
         ? "社員與非社員皆可報名"
@@ -5960,6 +5997,13 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
   const studentIdValue = currentMemberProfile?.studentId || approvalData?.studentId || "";
   const noteValue = ownSignup?.note || "";
   const sessionId = getClassSessionId(session);
+  const selectedSlots = ownSignup ? getClassSignupSlots(ownSignup) : [];
+  const slotLimit = getSessionSignupLimit(session);
+  const firstHalfCount = getSessionSlotSignupCount(sessionId, "firstHalf");
+  const secondHalfCount = getSessionSlotSignupCount(sessionId, "secondHalf");
+  const ownSignupResultCopy = ownSignup?.signupStatus === "waitlisted"
+    ? "候補狀態請洽幹部確認。"
+    : ownSignup ? `已錄取：${getClassSignupSlotsLabel(ownSignup)}。` : "";
   const deleteButton = ownSignup
     ? `<button class="button-secondary" data-class-signup-delete type="button" data-session-id="${escapeHtml(sessionId)}">取消報名</button>`
     : "";
@@ -5969,7 +6013,7 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
       <div class="class-session-locked">
         <p class="signup-alert ${ownSignup.signupStatus === "waitlisted" ? "is-waitlisted" : "is-success"}">
           <strong>${escapeHtml(getSignupStatusLabel(ownSignup))}</strong>
-          ${signupOpen ? "你仍可自行取消這筆報名。" : "報名期間已結束，但你仍可自行取消報名。"}
+          ${escapeHtml(ownSignupResultCopy)}${signupOpen ? "你仍可自行取消這筆報名。" : "報名期間已結束，但你仍可自行取消報名。"}
         </p>
         <div class="class-signup-actions">${deleteButton}</div>
       </div>
@@ -5994,7 +6038,7 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
 
   return `
     <form class="form-grid class-signup-form" data-class-signup-form data-session-id="${escapeHtml(sessionId)}">
-      ${ownSignup ? `<p class="signup-alert ${ownSignup.signupStatus === "waitlisted" ? "is-waitlisted" : "is-success"}"><strong>${escapeHtml(getSignupStatusLabel(ownSignup))}</strong>${ownSignup.signupStatus === "waitlisted" ? "候補狀態請洽幹部確認。" : "你的名額已保留。"}</p>` : ""}
+      ${ownSignup ? `<p class="signup-alert ${ownSignup.signupStatus === "waitlisted" ? "is-waitlisted" : "is-success"}"><strong>${escapeHtml(getSignupStatusLabel(ownSignup))}</strong>${escapeHtml(ownSignupResultCopy)}</p>` : ""}
       <input type="hidden" name="sessionId" value="${escapeHtml(sessionId)}" />
       <div class="class-signup-profile">
         <div class="form-field">
@@ -6006,12 +6050,26 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
           <input name="studentId" type="text" value="${escapeHtml(studentIdValue)}" readonly />
         </div>
       </div>
+      <fieldset class="class-signup-slot-fieldset">
+        <legend>時段志願（可複選）</legend>
+        <p>每個時段各錄取 ${escapeHtml(slotLimit)} 人；兩個時段都有空位時可同時錄取。</p>
+        <div class="class-signup-slot-options">
+          <label class="class-signup-slot-option">
+            <input name="timeSlots" type="checkbox" value="firstHalf" ${selectedSlots.includes("firstHalf") ? "checked" : ""} ${firstHalfCount >= slotLimit && !selectedSlots.includes("firstHalf") ? "disabled" : ""} />
+            <span><strong>上半場</strong><small>${escapeHtml(firstHalfCount >= slotLimit && !selectedSlots.includes("firstHalf") ? `${firstHalfCount} / ${slotLimit} 人・已額滿` : `${firstHalfCount} / ${slotLimit} 人`)}</small></span>
+          </label>
+          <label class="class-signup-slot-option">
+            <input name="timeSlots" type="checkbox" value="secondHalf" ${selectedSlots.includes("secondHalf") ? "checked" : ""} ${secondHalfCount >= slotLimit && !selectedSlots.includes("secondHalf") ? "disabled" : ""} />
+            <span><strong>下半場</strong><small>${escapeHtml(secondHalfCount >= slotLimit && !selectedSlots.includes("secondHalf") ? `${secondHalfCount} / ${slotLimit} 人・已額滿` : `${secondHalfCount} / ${slotLimit} 人`)}</small></span>
+          </label>
+        </div>
+      </fieldset>
       <div class="form-field">
         <label for="class-note-${escapeHtml(sessionId)}">備註</label>
         <textarea id="class-note-${escapeHtml(sessionId)}" name="note" rows="3" placeholder="如果有需要補充的資訊可以寫在這裡">${escapeHtml(noteValue)}</textarea>
       </div>
       <div class="class-signup-actions">
-        <button class="button-primary" data-class-signup-submit type="submit" ${!ownSignup && getSessionSignupLimit(session) && getSessionSignupCount(sessionId) >= getSessionSignupLimit(session) ? "disabled" : ""}>${ownSignup ? "更新報名資料" : getSessionSignupLimit(session) && getSessionSignupCount(sessionId) >= getSessionSignupLimit(session) ? "名額已滿" : "送出報名"}</button>
+        <button class="button-primary" data-class-signup-submit type="submit">${ownSignup ? "更新報名資料" : "送出報名"}</button>
         ${deleteButton}
       </div>
     </form>
@@ -6064,7 +6122,7 @@ function renderClassRosterBoard(sessions = []) {
                 (entry, index) => `
                   <div class="class-roster-item">
                     <span class="class-roster-index">#${String(index + 1).padStart(2, "0")}</span>
-                    <p class="class-roster-name">${escapeHtml(entry.studentId || "未填學號")}　${escapeHtml(getPublicRosterDisplayName(entry))}</p>
+                    <p class="class-roster-name">${escapeHtml(entry.studentId || "未填學號")}　${escapeHtml(getPublicRosterDisplayName(entry))}<small>${escapeHtml(getClassSignupSlotsLabel(entry))}</small></p>
                   </div>
                 `,
               )
@@ -6172,7 +6230,7 @@ function bindClassSignupModalEvents() {
   }
 }
 
-async function upsertClassSessionSignup(session, { note = "" } = {}) {
+async function upsertClassSessionSignup(session, { note = "", timeSlots = CLASS_SIGNUP_SLOT_KEYS } = {}) {
   await ensureAuthReady();
   if (!currentUser?.uid) {
     throw new Error("請先登入後再報名。");
@@ -6182,6 +6240,8 @@ async function upsertClassSessionSignup(session, { note = "" } = {}) {
   }
   const sessionId = getClassSessionId(session);
   const user = currentUser;
+  const requestedSlots = normalizeClassSignupSlots(timeSlots);
+  if (!requestedSlots.length) throw new Error("請至少選擇一個可參加時段。");
   const signupRef = doc(db, CLASS_SIGNUP_COLLECTION, `${sessionId}-${user.uid}`);
   const statsRef = doc(db, CLASS_SESSION_STATS_COLLECTION, sessionId);
   // Keep the signup and counter atomic. Firestore rules enforce the same
@@ -6196,12 +6256,15 @@ async function upsertClassSessionSignup(session, { note = "" } = {}) {
       ? await transaction.get(doc(db, "signupApprovals", user.email)) : null;
     if (!sessionSnapshot.exists()) throw new Error("找不到這場社課，請重新整理頁面。");
     if (!memberSnapshot.exists()) throw new Error("請先完成個人資料。");
-    if (signupSnapshot.exists()) {
-      transaction.update(signupRef, { note: note.slice(0, 500), updatedAt: serverTimestamp() });
-      return { ok: true, signupStatus: signupSnapshot.data().signupStatus || "accepted" };
-    }
     const latestSession = sessionSnapshot.data();
     const member = memberSnapshot.data();
+    const existingData = signupSnapshot.exists() ? signupSnapshot.data() : {};
+    const previousSlots = signupSnapshot.exists() ? getClassSignupSlots(existingData) : [];
+    const configuredCloseAt = latestSession.signupCloseAtTimestamp?.toMillis?.();
+    if (signupSnapshot.exists() && Number.isFinite(configuredCloseAt) && Date.now() > configuredCloseAt) {
+      transaction.update(signupRef, { note: note.slice(0, 500), updatedAt: serverTimestamp() });
+      return { ok: true, signupStatus: existingData.signupStatus || "accepted", timeSlots: previousSlots };
+    }
     const formalStatuses = ["formal_member", "officer", "admin"];
     const formalAccess = adminSnapshot.exists() || Boolean(approvalSnapshot?.exists())
       || formalStatuses.includes(member.membershipStatus) || formalStatuses.includes(member.status);
@@ -6217,7 +6280,20 @@ async function upsertClassSessionSignup(session, { note = "" } = {}) {
     const count = Number(stats.signupCount || 0);
     if (!Number.isInteger(count) || count < 0) throw new Error("社課名額資料異常，請聯絡幹部。");
     const limit = getSessionSignupLimit(latestSession);
-    if (limit && count >= limit) throw new Error("本場社課已額滿，請於有人取消、名額釋出後再報名。");
+    const firstHalfCount = Number.isInteger(stats.firstHalfCount) ? stats.firstHalfCount : count;
+    const secondHalfCount = Number.isInteger(stats.secondHalfCount) ? stats.secondHalfCount : count;
+    const nextFirstHalfCount = firstHalfCount + Number(requestedSlots.includes("firstHalf")) - Number(previousSlots.includes("firstHalf"));
+    const nextSecondHalfCount = secondHalfCount + Number(requestedSlots.includes("secondHalf")) - Number(previousSlots.includes("secondHalf"));
+    if (nextFirstHalfCount > limit) throw new Error("上半場已額滿，請改選下半場或稍後再試。");
+    if (nextSecondHalfCount > limit) throw new Error("下半場已額滿，請改選上半場或稍後再試。");
+    if (signupSnapshot.exists()) {
+      transaction.update(signupRef, { note: note.slice(0, 500), timeSlots: requestedSlots, updatedAt: serverTimestamp() });
+      transaction.set(statsRef, {
+        sessionId, signupCount: count, waitlistCount: Number(stats.waitlistCount || 0),
+        firstHalfCount: nextFirstHalfCount, secondHalfCount: nextSecondHalfCount, updatedAt: serverTimestamp(),
+      });
+      return { ok: true, signupStatus: existingData.signupStatus || "accepted", timeSlots: requestedSlots };
+    }
     transaction.set(signupRef, {
       sessionId, userId: user.uid, email: user.email || "",
       name: String(member.name || member.displayName || "").slice(0, 100),
@@ -6225,13 +6301,14 @@ async function upsertClassSessionSignup(session, { note = "" } = {}) {
       membershipStatusAtSignup: formalAccess ? "formal_member" : String(member.membershipStatus || "non_member"),
       isFormalMemberAtSignup: formalAccess, dropInPaymentStatus: formalAccess ? "not_required" : "unpaid",
       sessionDate: latestSession.date || "", sessionWeekday: latestSession.weekday || "",
-      sessionTitle: latestSession.title || "", sessionTimeLabel: latestSession.timeLabel || "",
+      sessionTitle: latestSession.title || "", sessionTimeLabel: latestSession.timeLabel || "", timeSlots: requestedSlots,
       createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
     });
     transaction.set(statsRef, {
-      sessionId, signupCount: count + 1, waitlistCount: Number(stats.waitlistCount || 0), updatedAt: serverTimestamp(),
+      sessionId, signupCount: count + 1, waitlistCount: Number(stats.waitlistCount || 0),
+      firstHalfCount: nextFirstHalfCount, secondHalfCount: nextSecondHalfCount, updatedAt: serverTimestamp(),
     });
-    return { ok: true, signupStatus: "accepted" };
+    return { ok: true, signupStatus: "accepted", timeSlots: requestedSlots };
   });
 }
 
@@ -6267,10 +6344,14 @@ async function deleteClassSessionSignup(sessionId) {
     if (signupSnapshot.data().signupStatus === "waitlisted") throw new Error("請聯絡幹部取消這筆候補紀錄。");
     if (statsSnapshot.exists()) {
       const stats = statsSnapshot.data();
+      const selectedSlots = getClassSignupSlots(signupSnapshot.data());
       if (!Number.isInteger(stats.signupCount) || stats.signupCount < 1) throw new Error("社課名額資料異常，請聯絡幹部協助取消。");
       transaction.set(statsRef, {
         sessionId, signupCount: stats.signupCount - 1,
-        waitlistCount: Number(stats.waitlistCount || 0), updatedAt: serverTimestamp(),
+        waitlistCount: Number(stats.waitlistCount || 0),
+        firstHalfCount: Math.max(0, (Number.isInteger(stats.firstHalfCount) ? stats.firstHalfCount : stats.signupCount) - Number(selectedSlots.includes("firstHalf"))),
+        secondHalfCount: Math.max(0, (Number.isInteger(stats.secondHalfCount) ? stats.secondHalfCount : stats.signupCount) - Number(selectedSlots.includes("secondHalf"))),
+        updatedAt: serverTimestamp(),
       });
     }
     transaction.delete(signupRef);
@@ -6293,6 +6374,7 @@ async function adminDeleteClassSessionSignup(sessionId, signupId) {
     if (!signupSnapshot.exists()) return;
 
     const isWaitlisted = signupSnapshot.data().signupStatus === "waitlisted";
+    const selectedSlots = getClassSignupSlots(signupSnapshot.data());
     transaction.delete(signupRef);
     transaction.delete(publicRosterRef);
     if (statsSnapshot.exists()) {
@@ -6301,6 +6383,8 @@ async function adminDeleteClassSessionSignup(sessionId, signupId) {
         sessionId,
         signupCount: Math.max(0, Number(stats.signupCount || 0) - Number(!isWaitlisted)),
         waitlistCount: Math.max(0, Number(stats.waitlistCount || 0) - Number(isWaitlisted)),
+        firstHalfCount: Math.max(0, (Number.isInteger(stats.firstHalfCount) ? stats.firstHalfCount : Number(stats.signupCount || 0)) - Number(!isWaitlisted && selectedSlots.includes("firstHalf"))),
+        secondHalfCount: Math.max(0, (Number.isInteger(stats.secondHalfCount) ? stats.secondHalfCount : Number(stats.signupCount || 0)) - Number(!isWaitlisted && selectedSlots.includes("secondHalf"))),
         updatedAt: serverTimestamp(),
       }, { merge: true });
     }
@@ -6318,10 +6402,15 @@ async function handleClassSignupSubmit(event) {
   const submitButton = form.querySelector("[data-class-signup-submit]");
   const sessionId = String(form.dataset.sessionId || form.querySelector("[name='sessionId']")?.value || "").trim();
   const note = String(form.querySelector("[name='note']")?.value || "").trim();
+  const timeSlots = [...form.querySelectorAll("[name='timeSlots']:checked")].map((input) => input.value);
   const name = String(form.querySelector("[name='name']")?.value || "").trim();
   const studentId = String(form.querySelector("[name='studentId']")?.value || "").trim();
 
   if (!currentUser?.uid || !sessionId) {
+    return;
+  }
+  if (!timeSlots.length) {
+    showToast("請至少選擇上半場或下半場。", { tone: "error", title: "尚未選擇時段" });
     return;
   }
 
@@ -6333,10 +6422,10 @@ async function handleClassSignupSubmit(event) {
   setButtonLoading(submitButton, true, "送出中…");
 
   try {
-    const result = await upsertClassSessionSignup(session, { note, name, studentId });
+    const result = await upsertClassSessionSignup(session, { note, name, studentId, timeSlots });
 
     await refreshClassSignupPageSafe({ force: true });
-    showToast(result.signupStatus === "waitlisted" ? "已更新候補紀錄，候補狀態請洽幹部確認。" : "社課報名成功。", {
+    showToast(result.signupStatus === "waitlisted" ? "已更新候補紀錄，候補狀態請洽幹部確認。" : `已錄取${result.timeSlots.map(getClassSignupSlotLabel).join("、")}。`, {
       tone: result.signupStatus === "waitlisted" ? "info" : "success",
       title: result.signupStatus === "waitlisted" ? "候補資料已更新" : "報名完成",
     });
@@ -7431,7 +7520,7 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
               <article class="member-row">
                 <div class="member-row-top">
                   <p class="member-row-index">${escapeHtml(getLocalizedContentTitle(session, "社團報名"))}</p>
-                  <p class="member-row-status">${escapeHtml(`正取 ${acceptedCount} 人${waitlistedCount ? ` ‧ 候補 ${waitlistedCount} 人` : ""}${limit ? ` ‧ 上限 ${limit} 人` : ""}`)}</p>
+                  <p class="member-row-status">${escapeHtml(`上半場 ${sessionSignups.filter((signup) => getClassSignupSlots(signup).includes("firstHalf")).length} 人 ‧ 下半場 ${sessionSignups.filter((signup) => getClassSignupSlots(signup).includes("secondHalf")).length} 人 ‧ 各 ${limit} 人上限`)}</p>
                 </div>
                 <p class="member-row-email">${escapeHtml([getClassSessionDateLabel(session), getClassSessionTimeLabel(session)].filter(Boolean).join(" / "))}</p>
                 <div class="application-actions">
@@ -7469,6 +7558,7 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
                             <div class="member-row-meta">
                               <span>學號：${escapeHtml(signup.studentId || "未填寫")}</span>
                               <span>身分：${escapeHtml(isFormalMember ? "正式社員" : "非社員零打")}</span>
+                              <span>錄取時段：${escapeHtml(getClassSignupSlotsLabel(signup))}</span>
                               <span>報名時間：${escapeHtml(formatTimestamp(signup.submittedAt || signup.createdAt) || "未記錄")}</span>
                               <span>備註：${escapeHtml(signup.note || "無")}</span>
                             </div>

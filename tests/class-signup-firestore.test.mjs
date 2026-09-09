@@ -23,6 +23,15 @@ function fixture({ member = { membershipStatus: "formal_member", name: "Test", s
   const context = vm.createContext({
     db: {}, currentUser: { uid: "u", email: "test@example.com" },
     CLASS_SIGNUP_COLLECTION: "classSessionSignups", CLASS_SESSION_STATS_COLLECTION: "classSessionStats", CLASS_SESSION_COLLECTION: "classSessions",
+    CLASS_SIGNUP_SLOT_KEYS: ["firstHalf", "secondHalf"],
+    normalizeClassSignupSlots: (value, { fallbackToBoth = false } = {}) => {
+      const slots = Array.isArray(value) ? ["firstHalf", "secondHalf"].filter((slot) => value.includes(slot)) : [];
+      return slots.length || !fallbackToBoth ? slots : ["firstHalf", "secondHalf"];
+    },
+    getClassSignupSlots: (signup = {}) => {
+      const slots = Array.isArray(signup.timeSlots) ? ["firstHalf", "secondHalf"].filter((slot) => signup.timeSlots.includes(slot)) : [];
+      return slots.length || !(signup.id || signup.userId || signup.sessionId) ? slots : ["firstHalf", "secondHalf"];
+    },
     ensureAuthReady: async () => {}, doc: (_, collection, id) => `${collection}/${id}`,
     getMemberDocRef: (uid) => `members/${uid}`, getClassSessionId: (s) => s.id,
     getSessionSignupLimit: (s) => s.signupLimit > 0 ? Math.floor(s.signupLimit) : null,
@@ -50,7 +59,7 @@ function fixture({ member = { membershipStatus: "formal_member", name: "Test", s
     },
   });
   vm.runInContext(implementation, context);
-  return { documents, context, signup: (note = "") => context.upsertClassSessionSignup({ id: "s" }, { note }), cancel: () => context.deleteClassSessionSignup("s") };
+  return { documents, context, signup: (note = "", timeSlots = ["firstHalf", "secondHalf"]) => context.upsertClassSessionSignup({ id: "s" }, { note, timeSlots }), cancel: () => context.deleteClassSessionSignup("s") };
 }
 
 test("member signup atomically creates one accepted place with the existing rules' field set", async () => {
@@ -60,9 +69,38 @@ test("member signup atomically creates one accepted place with the existing rule
   assert.equal(signup.dropInPaymentStatus, "not_required");
   assert.equal(signup.name, "Test");
   assert.equal(signup.note, "hello");
+  assert.deepEqual(Array.from(signup.timeSlots), ["firstHalf", "secondHalf"]);
   assert.equal(signup.createdAt, "SERVER_TIME");
   assert.equal("signupStatus" in signup, false, "existing rules do not allow this field on create");
   assert.equal(f.documents.get("classSessionStats/s").signupCount, 1);
+  assert.equal(f.documents.get("classSessionStats/s").firstHalfCount, 1);
+  assert.equal(f.documents.get("classSessionStats/s").secondHalfCount, 1);
+});
+
+test("each half has an independent capacity", async () => {
+  const f = fixture({ stats: { sessionId: "s", signupCount: 1, firstHalfCount: 1, secondHalfCount: 0 } });
+  await assert.rejects(f.signup("", ["firstHalf"]), /上半場已額滿/);
+  await f.signup("", ["secondHalf"]);
+  assert.equal(f.documents.get("classSessionStats/s").signupCount, 2);
+  assert.equal(f.documents.get("classSessionStats/s").firstHalfCount, 1);
+  assert.equal(f.documents.get("classSessionStats/s").secondHalfCount, 1);
+});
+
+test("an existing signup can change its selected halves atomically", async () => {
+  const f = fixture();
+  await f.signup("", ["firstHalf"]);
+  await f.signup("updated", ["firstHalf", "secondHalf"]);
+  const stats = f.documents.get("classSessionStats/s");
+  assert.equal(stats.signupCount, 1);
+  assert.equal(stats.firstHalfCount, 1);
+  assert.equal(stats.secondHalfCount, 1);
+  assert.equal(f.documents.get("classSessionSignups/s-u").note, "updated");
+});
+
+test("a signup must select at least one half", async () => {
+  const f = fixture();
+  await assert.rejects(f.signup("", []), /至少選擇一個/);
+  assert.equal(f.documents.has("classSessionSignups/s-u"), false);
 });
 
 test("concurrent duplicate submissions retry without counting the same member twice", async () => {

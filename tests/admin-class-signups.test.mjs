@@ -19,4 +19,5 @@ test("class signup roster has its own panel and renderer", () => {
   assert.match(membersHtml, /data-class-signup-management/);
   assert.match(siteSource, /renderAdminClassSignupOverview\(membersDashboardCache\.classSessions, membersDashboardCache\.classSessionSignups\)/);
   assert.match(siteSource, /報名時間：/);
+  assert.match(siteSource, /錄取時段：/);
 });
