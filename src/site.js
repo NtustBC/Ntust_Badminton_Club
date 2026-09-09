@@ -4116,7 +4116,7 @@ const getMemberFilterCategoryLabel = () => ({
 })[memberFilters.category] || "全部身分";
 
 const buildClassSignupWorksheetMarkup = (name, session, signups = [], membersById = {}) => {
-  const columns = ["姓名", "學號", "Email", "錄取時段", "報名狀態", "候補順位", "零打費", "備註", "報名時間"];
+  const columns = ["姓名", "學號", "Email", "時段志願", "報名狀態", "候補順位", "零打費", "備註", "報名時間"];
   const rows = signups.map((signup, index) => {
     const member = membersById[signup.userId] || null;
     const computedStatus = getComputedSignupStatus(signup, index, session);
@@ -4125,7 +4125,7 @@ const buildClassSignupWorksheetMarkup = (name, session, signups = [], membersByI
       signup.name || "",
       signup.studentId || "",
       signup.email || "",
-      getClassSignupSlotsLabel(signup),
+      getClassSignupPreferenceLabel(signup),
       getSignupStatusLabel({ ...signup, signupStatus: computedStatus }),
       position || "",
       getSignupPaymentLabel(signup, member),
@@ -5749,7 +5749,7 @@ function getSessionSignupLimit(session = {}) {
 
 function normalizeClassSignupSlots(value, { fallbackToBoth = false } = {}) {
   const slots = Array.isArray(value)
-    ? CLASS_SIGNUP_SLOT_KEYS.filter((slot) => value.includes(slot))
+    ? value.filter((slot, index) => CLASS_SIGNUP_SLOT_KEYS.includes(slot) && value.indexOf(slot) === index)
     : [];
   return slots.length || !fallbackToBoth ? slots : [...CLASS_SIGNUP_SLOT_KEYS];
 }
@@ -5760,6 +5760,13 @@ function getClassSignupSlots(signup = {}) {
   });
 }
 
+function getClassSignupPreferences(signup = {}) {
+  return normalizeClassSignupSlots(
+    Array.isArray(signup.slotPreferences) ? signup.slotPreferences : signup.timeSlots,
+    { fallbackToBoth: Boolean(signup.id || signup.userId || signup.sessionId) },
+  );
+}
+
 function getClassSignupSlotLabel(slot) {
   return slot === "firstHalf" ? "上半場" : slot === "secondHalf" ? "下半場" : "";
 }
@@ -5767,6 +5774,29 @@ function getClassSignupSlotLabel(slot) {
 function getClassSignupSlotsLabel(signup = {}) {
   const labels = getClassSignupSlots(signup).map(getClassSignupSlotLabel).filter(Boolean);
   return labels.length ? labels.join("、") : "未選擇時段";
+}
+
+function getClassSignupPreferenceLabel(signup = {}) {
+  const slots = getClassSignupPreferences(signup);
+  if (slots.length === 1) return `只選${getClassSignupSlotLabel(slots[0])}`;
+  if (slots.length === 2) return `${getClassSignupSlotLabel(slots[0])}優先、${getClassSignupSlotLabel(slots[1])}第二志願`;
+  return "未選擇時段";
+}
+
+function getClassSignupPreferenceValue(signup = {}) {
+  const slots = getClassSignupPreferences(signup);
+  if (slots.length === 1) return slots[0] === "firstHalf" ? "firstOnly" : "secondOnly";
+  if (slots.length === 2) return slots[0] === "secondHalf" ? "secondFirst" : "firstFirst";
+  return "";
+}
+
+function getClassSignupSlotsFromPreference(value) {
+  return ({
+    firstFirst: ["firstHalf", "secondHalf"],
+    secondFirst: ["secondHalf", "firstHalf"],
+    firstOnly: ["firstHalf"],
+    secondOnly: ["secondHalf"],
+  })[value] || [];
 }
 
 function isFormalMemberRecord(member = {}) {
@@ -5998,12 +6028,13 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
   const noteValue = ownSignup?.note || "";
   const sessionId = getClassSessionId(session);
   const selectedSlots = ownSignup ? getClassSignupSlots(ownSignup) : [];
+  const selectedPreference = ownSignup ? getClassSignupPreferenceValue(ownSignup) : "";
   const slotLimit = getSessionSignupLimit(session);
   const firstHalfCount = getSessionSlotSignupCount(sessionId, "firstHalf");
   const secondHalfCount = getSessionSlotSignupCount(sessionId, "secondHalf");
   const ownSignupResultCopy = ownSignup?.signupStatus === "waitlisted"
     ? "候補狀態請洽幹部確認。"
-    : ownSignup ? `已錄取：${getClassSignupSlotsLabel(ownSignup)}。` : "";
+    : ownSignup ? `志願：${getClassSignupPreferenceLabel(ownSignup)}；已錄取：${getClassSignupSlotsLabel(ownSignup)}。` : "";
   const deleteButton = ownSignup
     ? `<button class="button-secondary" data-class-signup-delete type="button" data-session-id="${escapeHtml(sessionId)}">取消報名</button>`
     : "";
@@ -6051,16 +6082,24 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
         </div>
       </div>
       <fieldset class="class-signup-slot-fieldset">
-        <legend>時段志願（可複選）</legend>
-        <p>每個時段各錄取 ${escapeHtml(slotLimit)} 人；兩個時段都有空位時可同時錄取。</p>
+        <legend>時段志願</legend>
+        <p>請選擇志願順序。上半場 ${escapeHtml(firstHalfCount)} / ${escapeHtml(slotLimit)} 人、下半場 ${escapeHtml(secondHalfCount)} / ${escapeHtml(slotLimit)} 人；兩邊都有名額時可同時錄取。</p>
         <div class="class-signup-slot-options">
           <label class="class-signup-slot-option">
-            <input name="timeSlots" type="checkbox" value="firstHalf" ${selectedSlots.includes("firstHalf") ? "checked" : ""} ${firstHalfCount >= slotLimit && !selectedSlots.includes("firstHalf") ? "disabled" : ""} />
-            <span><strong>上半場</strong><small>${escapeHtml(firstHalfCount >= slotLimit && !selectedSlots.includes("firstHalf") ? `${firstHalfCount} / ${slotLimit} 人・已額滿` : `${firstHalfCount} / ${slotLimit} 人`)}</small></span>
+            <input name="slotPreference" type="radio" value="firstFirst" ${selectedPreference === "firstFirst" ? "checked" : ""} required />
+            <span><strong>上半場優先</strong><small>第二志願下半場；兩邊有名額就兩邊錄取</small></span>
           </label>
           <label class="class-signup-slot-option">
-            <input name="timeSlots" type="checkbox" value="secondHalf" ${selectedSlots.includes("secondHalf") ? "checked" : ""} ${secondHalfCount >= slotLimit && !selectedSlots.includes("secondHalf") ? "disabled" : ""} />
-            <span><strong>下半場</strong><small>${escapeHtml(secondHalfCount >= slotLimit && !selectedSlots.includes("secondHalf") ? `${secondHalfCount} / ${slotLimit} 人・已額滿` : `${secondHalfCount} / ${slotLimit} 人`)}</small></span>
+            <input name="slotPreference" type="radio" value="secondFirst" ${selectedPreference === "secondFirst" ? "checked" : ""} required />
+            <span><strong>下半場優先</strong><small>第二志願上半場；兩邊有名額就兩邊錄取</small></span>
+          </label>
+          <label class="class-signup-slot-option">
+            <input name="slotPreference" type="radio" value="firstOnly" ${selectedPreference === "firstOnly" ? "checked" : ""} ${firstHalfCount >= slotLimit && !selectedSlots.includes("firstHalf") ? "disabled" : ""} required />
+            <span><strong>只參加上半場</strong><small>${escapeHtml(`${firstHalfCount} / ${slotLimit} 人${firstHalfCount >= slotLimit && !selectedSlots.includes("firstHalf") ? "・已額滿" : ""}`)}</small></span>
+          </label>
+          <label class="class-signup-slot-option">
+            <input name="slotPreference" type="radio" value="secondOnly" ${selectedPreference === "secondOnly" ? "checked" : ""} ${secondHalfCount >= slotLimit && !selectedSlots.includes("secondHalf") ? "disabled" : ""} required />
+            <span><strong>只參加下半場</strong><small>${escapeHtml(`${secondHalfCount} / ${slotLimit} 人${secondHalfCount >= slotLimit && !selectedSlots.includes("secondHalf") ? "・已額滿" : ""}`)}</small></span>
           </label>
         </div>
       </fieldset>
@@ -6282,17 +6321,19 @@ async function upsertClassSessionSignup(session, { note = "", timeSlots = CLASS_
     const limit = getSessionSignupLimit(latestSession);
     const firstHalfCount = Number.isInteger(stats.firstHalfCount) ? stats.firstHalfCount : count;
     const secondHalfCount = Number.isInteger(stats.secondHalfCount) ? stats.secondHalfCount : count;
-    const nextFirstHalfCount = firstHalfCount + Number(requestedSlots.includes("firstHalf")) - Number(previousSlots.includes("firstHalf"));
-    const nextSecondHalfCount = secondHalfCount + Number(requestedSlots.includes("secondHalf")) - Number(previousSlots.includes("secondHalf"));
-    if (nextFirstHalfCount > limit) throw new Error("上半場已額滿，請改選下半場或稍後再試。");
-    if (nextSecondHalfCount > limit) throw new Error("下半場已額滿，請改選上半場或稍後再試。");
+    const acceptedSlots = requestedSlots.filter((slot) => previousSlots.includes(slot) || (
+      slot === "firstHalf" ? firstHalfCount - Number(previousSlots.includes(slot)) < limit : secondHalfCount - Number(previousSlots.includes(slot)) < limit
+    ));
+    if (!acceptedSlots.length) throw new Error("所選時段目前皆已額滿，請於有人取消、名額釋出後再報名。");
+    const nextFirstHalfCount = firstHalfCount + Number(acceptedSlots.includes("firstHalf")) - Number(previousSlots.includes("firstHalf"));
+    const nextSecondHalfCount = secondHalfCount + Number(acceptedSlots.includes("secondHalf")) - Number(previousSlots.includes("secondHalf"));
     if (signupSnapshot.exists()) {
-      transaction.update(signupRef, { note: note.slice(0, 500), timeSlots: requestedSlots, updatedAt: serverTimestamp() });
+      transaction.update(signupRef, { note: note.slice(0, 500), slotPreferences: requestedSlots, timeSlots: acceptedSlots, updatedAt: serverTimestamp() });
       transaction.set(statsRef, {
         sessionId, signupCount: count, waitlistCount: Number(stats.waitlistCount || 0),
         firstHalfCount: nextFirstHalfCount, secondHalfCount: nextSecondHalfCount, updatedAt: serverTimestamp(),
       });
-      return { ok: true, signupStatus: existingData.signupStatus || "accepted", timeSlots: requestedSlots };
+      return { ok: true, signupStatus: existingData.signupStatus || "accepted", slotPreferences: requestedSlots, timeSlots: acceptedSlots };
     }
     transaction.set(signupRef, {
       sessionId, userId: user.uid, email: user.email || "",
@@ -6301,14 +6342,14 @@ async function upsertClassSessionSignup(session, { note = "", timeSlots = CLASS_
       membershipStatusAtSignup: formalAccess ? "formal_member" : String(member.membershipStatus || "non_member"),
       isFormalMemberAtSignup: formalAccess, dropInPaymentStatus: formalAccess ? "not_required" : "unpaid",
       sessionDate: latestSession.date || "", sessionWeekday: latestSession.weekday || "",
-      sessionTitle: latestSession.title || "", sessionTimeLabel: latestSession.timeLabel || "", timeSlots: requestedSlots,
+      sessionTitle: latestSession.title || "", sessionTimeLabel: latestSession.timeLabel || "", slotPreferences: requestedSlots, timeSlots: acceptedSlots,
       createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
     });
     transaction.set(statsRef, {
       sessionId, signupCount: count + 1, waitlistCount: Number(stats.waitlistCount || 0),
       firstHalfCount: nextFirstHalfCount, secondHalfCount: nextSecondHalfCount, updatedAt: serverTimestamp(),
     });
-    return { ok: true, signupStatus: "accepted", timeSlots: requestedSlots };
+    return { ok: true, signupStatus: "accepted", slotPreferences: requestedSlots, timeSlots: acceptedSlots };
   });
 }
 
@@ -6402,7 +6443,8 @@ async function handleClassSignupSubmit(event) {
   const submitButton = form.querySelector("[data-class-signup-submit]");
   const sessionId = String(form.dataset.sessionId || form.querySelector("[name='sessionId']")?.value || "").trim();
   const note = String(form.querySelector("[name='note']")?.value || "").trim();
-  const timeSlots = [...form.querySelectorAll("[name='timeSlots']:checked")].map((input) => input.value);
+  const slotPreference = String(form.querySelector("[name='slotPreference']:checked")?.value || "");
+  const timeSlots = getClassSignupSlotsFromPreference(slotPreference);
   const name = String(form.querySelector("[name='name']")?.value || "").trim();
   const studentId = String(form.querySelector("[name='studentId']")?.value || "").trim();
 
@@ -7558,7 +7600,7 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
                             <div class="member-row-meta">
                               <span>學號：${escapeHtml(signup.studentId || "未填寫")}</span>
                               <span>身分：${escapeHtml(isFormalMember ? "正式社員" : "非社員零打")}</span>
-                              <span>錄取時段：${escapeHtml(getClassSignupSlotsLabel(signup))}</span>
+                              <span>時段志願：${escapeHtml(getClassSignupPreferenceLabel(signup))}</span>
                               <span>報名時間：${escapeHtml(formatTimestamp(signup.submittedAt || signup.createdAt) || "未記錄")}</span>
                               <span>備註：${escapeHtml(signup.note || "無")}</span>
                             </div>

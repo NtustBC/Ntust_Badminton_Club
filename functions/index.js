@@ -16,7 +16,7 @@ const DEFAULT_CLASS_SLOT_LIMIT = 30;
 
 function normalizeClassSignupSlots(value, fallbackToBoth = false) {
   const slots = Array.isArray(value)
-    ? CLASS_SIGNUP_SLOT_KEYS.filter((slot) => value.includes(slot))
+    ? value.filter((slot, index) => CLASS_SIGNUP_SLOT_KEYS.includes(slot) && value.indexOf(slot) === index)
     : [];
   return slots.length || !fallbackToBoth ? slots : [...CLASS_SIGNUP_SLOT_KEYS];
 }
@@ -665,19 +665,22 @@ exports.upsertClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (
         ? normalizeClassSignupSlots(existingData.timeSlots, true) : [];
       const firstHalfCount = acceptedSignups.filter((entry) => normalizeClassSignupSlots(entry.data().timeSlots, true).includes("firstHalf")).length;
       const secondHalfCount = acceptedSignups.filter((entry) => normalizeClassSignupSlots(entry.data().timeSlots, true).includes("secondHalf")).length;
-      const nextFirstHalfCount = firstHalfCount + Number(requestedSlots.includes("firstHalf")) - Number(previousSlots.includes("firstHalf"));
-      const nextSecondHalfCount = secondHalfCount + Number(requestedSlots.includes("secondHalf")) - Number(previousSlots.includes("secondHalf"));
       const configuredLimit = Number(session.signupLimit || DEFAULT_CLASS_SLOT_LIMIT);
       const limit = Number.isFinite(configuredLimit) && configuredLimit > 0 ? Math.floor(configuredLimit) : DEFAULT_CLASS_SLOT_LIMIT;
-      if (nextFirstHalfCount > limit) throw new HttpsError("resource-exhausted", "上半場已額滿，請改選下半場或稍後再試。");
-      if (nextSecondHalfCount > limit) throw new HttpsError("resource-exhausted", "下半場已額滿，請改選上半場或稍後再試。");
+      const acceptedSlots = requestedSlots.filter((slot) => previousSlots.includes(slot) || (
+        slot === "firstHalf" ? firstHalfCount - Number(previousSlots.includes(slot)) < limit : secondHalfCount - Number(previousSlots.includes(slot)) < limit
+      ));
+      if (!acceptedSlots.length) throw new HttpsError("resource-exhausted", "所選時段目前皆已額滿，請於有人取消、名額釋出後再報名。");
+      const nextFirstHalfCount = firstHalfCount + Number(acceptedSlots.includes("firstHalf")) - Number(previousSlots.includes("firstHalf"));
+      const nextSecondHalfCount = secondHalfCount + Number(acceptedSlots.includes("secondHalf")) - Number(previousSlots.includes("secondHalf"));
       const signupStatus = existingData.signupStatus || "accepted";
       transaction.set(signupRef, {
         sessionId, userId: uid, email: request.auth.token?.email || "", name: member.name || "", studentId: member.studentId || "", note,
         membershipStatusAtSignup: isFormalMember ? "formal_member" : String(member.membershipStatus || "non_member"),
         isFormalMemberAtSignup: isFormalMember, dropInPaymentStatus: isFormalMember ? "not_required" : existingData.dropInPaymentStatus || "unpaid",
         sessionDate: session.date || "", sessionWeekday: session.weekday || "", sessionTitle: session.title || "", sessionTimeLabel: session.timeLabel || "",
-        timeSlots: requestedSlots,
+        slotPreferences: requestedSlots,
+        timeSlots: acceptedSlots,
         signupStatus,
         waitlistPosition: null,
         createdAt: existingData.createdAt || admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -697,13 +700,18 @@ exports.upsertClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (
           userId: uid,
           type: "signup_accepted",
           title: "社課報名成功",
-          message: `你已成功報名「${sessionTitle}」${sessionTime ? `（${sessionTime}）` : ""}的${requestedSlots.map((slot) => slot === "firstHalf" ? "上半場" : "下半場").join("、")}。`,
+          message: `你已成功報名「${sessionTitle}」${sessionTime ? `（${sessionTime}）` : ""}的${acceptedSlots.map((slot) => slot === "firstHalf" ? "上半場" : "下半場").join("、")}。`,
           sessionId,
         });
       }
     });
     const savedSignup = await signupRef.get();
-    return { ok: true, signupStatus: savedSignup.data()?.signupStatus || "accepted", timeSlots: normalizeClassSignupSlots(savedSignup.data()?.timeSlots, true) };
+    return {
+      ok: true,
+      signupStatus: savedSignup.data()?.signupStatus || "accepted",
+      slotPreferences: normalizeClassSignupSlots(savedSignup.data()?.slotPreferences || savedSignup.data()?.timeSlots, true),
+      timeSlots: normalizeClassSignupSlots(savedSignup.data()?.timeSlots, true),
+    };
   } catch (error) {
     if (error instanceof HttpsError) throw error;
     logger.error("Class session signup failed.", { uid, sessionId, stage, code: error?.code || "unknown", message: error?.message || String(error) });

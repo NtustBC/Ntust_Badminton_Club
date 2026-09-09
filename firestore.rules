@@ -282,7 +282,7 @@ service cloud.firestore {
           "sessionId", "userId", "email", "name", "studentId", "note",
           "membershipStatusAtSignup", "isFormalMemberAtSignup", "dropInPaymentStatus",
           "sessionDate", "sessionWeekday", "sessionTitle", "sessionTimeLabel",
-          "timeSlots", "createdAt", "updatedAt"
+          "slotPreferences", "timeSlots", "createdAt", "updatedAt"
         ])
         && request.resource.data.name is string && request.resource.data.name.size() <= 100
         && request.resource.data.studentId is string && request.resource.data.studentId.size() <= 30
@@ -291,6 +291,11 @@ service cloud.firestore {
         && request.resource.data.timeSlots.size() > 0
         && request.resource.data.timeSlots.size() <= 2
         && request.resource.data.timeSlots.hasOnly(["firstHalf", "secondHalf"])
+        && request.resource.data.slotPreferences is list
+        && request.resource.data.slotPreferences.size() > 0
+        && request.resource.data.slotPreferences.size() <= 2
+        && request.resource.data.slotPreferences.hasOnly(["firstHalf", "secondHalf"])
+        && request.resource.data.slotPreferences.hasAll(request.resource.data.timeSlots)
         && request.resource.data.membershipStatusAtSignup is string
         && request.resource.data.isFormalMemberAtSignup == formalAccess
         && request.resource.data.dropInPaymentStatus == (formalAccess ? "not_required" : "unpaid")
@@ -315,11 +320,16 @@ service cloud.firestore {
       let oldSlots = resource.data.get("timeSlots", ["firstHalf", "secondHalf"]);
       let newSlots = request.resource.data.get("timeSlots", oldSlots);
       let limit = get(/databases/$(database)/documents/classSessions/$(sessionId)).data.get("signupLimit", 30);
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(["note", "timeSlots", "updatedAt"])
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(["note", "slotPreferences", "timeSlots", "updatedAt"])
         && request.resource.data.note is string
         && request.resource.data.note.size() <= 500
         && newSlots is list && newSlots.size() > 0 && newSlots.size() <= 2
         && newSlots.hasOnly(["firstHalf", "secondHalf"])
+        && request.resource.data.get("slotPreferences", newSlots) is list
+        && request.resource.data.get("slotPreferences", newSlots).size() > 0
+        && request.resource.data.get("slotPreferences", newSlots).size() <= 2
+        && request.resource.data.get("slotPreferences", newSlots).hasOnly(["firstHalf", "secondHalf"])
+        && request.resource.data.get("slotPreferences", newSlots).hasAll(newSlots)
         && statsAfter.signupCount == count
         && statsAfter.firstHalfCount == firstBefore + (newSlots.hasAny(["firstHalf"]) ? 1 : 0) - (oldSlots.hasAny(["firstHalf"]) ? 1 : 0)
         && statsAfter.secondHalfCount == secondBefore + (newSlots.hasAny(["secondHalf"]) ? 1 : 0) - (oldSlots.hasAny(["secondHalf"]) ? 1 : 0)

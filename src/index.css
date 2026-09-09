@@ -2559,6 +2559,17 @@ h1.page-title {
   cursor: pointer;
 }
 
+.class-signup-slot-option:has(input:checked) {
+  border-color: rgba(15, 76, 129, 0.48);
+  background: rgba(15, 76, 129, 0.07);
+  box-shadow: 0 0 0 3px rgba(15, 76, 129, 0.06);
+}
+
+.class-signup-slot-option:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .class-signup-slot-option span,
 .class-signup-slot-option small { display: block; }
 
@@ -4132,27 +4143,12 @@ button.admin-calendar-day:focus-visible {
 
 .maintenance-setting-card {
   display: grid;
-  gap: 28px;
-}
-.maintenance-setting-card > .member-filter-header {
-  align-items: flex-start;
-  width: 100%;
-  max-width: 960px;
-  margin-inline: auto;
-  padding-bottom: 22px;
-  border-bottom: 1px solid var(--admin-border);
-}
-.maintenance-setting-card > .member-filter-header .content-copy {
-  max-width: 760px;
-  margin-top: 10px;
 }
 .maintenance-setting-card [data-maintenance-setting-form] {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 22px;
   width: 100%;
-  max-width: 960px;
-  margin-inline: auto;
 }
 .maintenance-setting-card .maintenance-toggle {
   grid-column: 1 / -1;
@@ -4235,8 +4231,6 @@ button.admin-calendar-day:focus-visible {
   .admin-calendar-limit-field::after { margin-top: -2px; }
   .admin-section-nav { justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; }
   .admin-section-nav a { flex: 0 0 auto; }
-  .maintenance-setting-card { gap: 22px; }
-  .maintenance-setting-card > .member-filter-header { padding-bottom: 18px; }
   .maintenance-setting-card [data-maintenance-setting-form] { grid-template-columns: 1fr; gap: 18px; }
   .maintenance-setting-card .maintenance-toggle { width: 100%; min-height: 84px; padding: 18px; }
   .maintenance-setting-footer { align-items: stretch; flex-direction: column; gap: 12px; }

@@ -25,11 +25,11 @@ function fixture({ member = { membershipStatus: "formal_member", name: "Test", s
     CLASS_SIGNUP_COLLECTION: "classSessionSignups", CLASS_SESSION_STATS_COLLECTION: "classSessionStats", CLASS_SESSION_COLLECTION: "classSessions",
     CLASS_SIGNUP_SLOT_KEYS: ["firstHalf", "secondHalf"],
     normalizeClassSignupSlots: (value, { fallbackToBoth = false } = {}) => {
-      const slots = Array.isArray(value) ? ["firstHalf", "secondHalf"].filter((slot) => value.includes(slot)) : [];
+      const slots = Array.isArray(value) ? value.filter((slot, index) => ["firstHalf", "secondHalf"].includes(slot) && value.indexOf(slot) === index) : [];
       return slots.length || !fallbackToBoth ? slots : ["firstHalf", "secondHalf"];
     },
     getClassSignupSlots: (signup = {}) => {
-      const slots = Array.isArray(signup.timeSlots) ? ["firstHalf", "secondHalf"].filter((slot) => signup.timeSlots.includes(slot)) : [];
+      const slots = Array.isArray(signup.timeSlots) ? signup.timeSlots.filter((slot, index) => ["firstHalf", "secondHalf"].includes(slot) && signup.timeSlots.indexOf(slot) === index) : [];
       return slots.length || !(signup.id || signup.userId || signup.sessionId) ? slots : ["firstHalf", "secondHalf"];
     },
     ensureAuthReady: async () => {}, doc: (_, collection, id) => `${collection}/${id}`,
@@ -70,6 +70,7 @@ test("member signup atomically creates one accepted place with the existing rule
   assert.equal(signup.name, "Test");
   assert.equal(signup.note, "hello");
   assert.deepEqual(Array.from(signup.timeSlots), ["firstHalf", "secondHalf"]);
+  assert.deepEqual(Array.from(signup.slotPreferences), ["firstHalf", "secondHalf"]);
   assert.equal(signup.createdAt, "SERVER_TIME");
   assert.equal("signupStatus" in signup, false, "existing rules do not allow this field on create");
   assert.equal(f.documents.get("classSessionStats/s").signupCount, 1);
@@ -79,7 +80,7 @@ test("member signup atomically creates one accepted place with the existing rule
 
 test("each half has an independent capacity", async () => {
   const f = fixture({ stats: { sessionId: "s", signupCount: 1, firstHalfCount: 1, secondHalfCount: 0 } });
-  await assert.rejects(f.signup("", ["firstHalf"]), /上半場已額滿/);
+  await assert.rejects(f.signup("", ["firstHalf"]), /皆已額滿/);
   await f.signup("", ["secondHalf"]);
   assert.equal(f.documents.get("classSessionStats/s").signupCount, 2);
   assert.equal(f.documents.get("classSessionStats/s").firstHalfCount, 1);
@@ -95,6 +96,22 @@ test("an existing signup can change its selected halves atomically", async () =>
   assert.equal(stats.firstHalfCount, 1);
   assert.equal(stats.secondHalfCount, 1);
   assert.equal(f.documents.get("classSessionSignups/s-u").note, "updated");
+});
+
+test("the selected half order is preserved as the signup priority", async () => {
+  const f = fixture();
+  const result = await f.signup("", ["secondHalf", "firstHalf"]);
+  assert.deepEqual(Array.from(result.timeSlots), ["secondHalf", "firstHalf"]);
+  assert.deepEqual(Array.from(f.documents.get("classSessionSignups/s-u").slotPreferences), ["secondHalf", "firstHalf"]);
+});
+
+test("a full first choice falls back to an available second choice", async () => {
+  const f = fixture({ stats: { sessionId: "s", signupCount: 1, firstHalfCount: 1, secondHalfCount: 0 } });
+  const result = await f.signup("", ["firstHalf", "secondHalf"]);
+  assert.deepEqual(Array.from(result.slotPreferences), ["firstHalf", "secondHalf"]);
+  assert.deepEqual(Array.from(result.timeSlots), ["secondHalf"]);
+  assert.equal(f.documents.get("classSessionStats/s").firstHalfCount, 1);
+  assert.equal(f.documents.get("classSessionStats/s").secondHalfCount, 1);
 });
 
 test("a signup must select at least one half", async () => {
