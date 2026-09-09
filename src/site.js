@@ -5763,7 +5763,7 @@ function getSignupPaymentLabel(signup = {}, member = null) {
 }
 
 function getSignupStatusLabel(signup = {}) {
-  if (signup.signupStatus === "accepted") {
+  if (!signup.signupStatus || signup.signupStatus === "accepted") {
     return "報名成功";
   }
   if (signup.signupStatus === "waitlisted") {
@@ -5969,7 +5969,7 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
       <div class="class-session-locked">
         <p class="signup-alert ${ownSignup.signupStatus === "waitlisted" ? "is-waitlisted" : "is-success"}">
           <strong>${escapeHtml(getSignupStatusLabel(ownSignup))}</strong>
-          ${signupOpen ? "你仍可自行取消這筆報名。" : "報名期間已結束，但你仍可自行取消；若為正取，系統會自動遞補候補者。"}
+          ${signupOpen ? "你仍可自行取消這筆報名。" : "報名期間已結束，但你仍可自行取消報名。"}
         </p>
         <div class="class-signup-actions">${deleteButton}</div>
       </div>
@@ -5994,7 +5994,7 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
 
   return `
     <form class="form-grid class-signup-form" data-class-signup-form data-session-id="${escapeHtml(sessionId)}">
-      ${ownSignup ? `<p class="signup-alert ${ownSignup.signupStatus === "waitlisted" ? "is-waitlisted" : "is-success"}"><strong>${escapeHtml(getSignupStatusLabel(ownSignup))}</strong>${ownSignup.signupStatus === "waitlisted" ? "目前在候補名單中，有人取消時會依順序自動遞補。" : "你的名額已保留。"}</p>` : ""}
+      ${ownSignup ? `<p class="signup-alert ${ownSignup.signupStatus === "waitlisted" ? "is-waitlisted" : "is-success"}"><strong>${escapeHtml(getSignupStatusLabel(ownSignup))}</strong>${ownSignup.signupStatus === "waitlisted" ? "候補狀態請洽幹部確認。" : "你的名額已保留。"}</p>` : ""}
       <input type="hidden" name="sessionId" value="${escapeHtml(sessionId)}" />
       <div class="class-signup-profile">
         <div class="form-field">
@@ -6011,7 +6011,7 @@ function buildClassSignupFormMarkup(session, approvalData, ownSignup, canSignup,
         <textarea id="class-note-${escapeHtml(sessionId)}" name="note" rows="3" placeholder="如果有需要補充的資訊可以寫在這裡">${escapeHtml(noteValue)}</textarea>
       </div>
       <div class="class-signup-actions">
-        <button class="button-primary" data-class-signup-submit type="submit">${ownSignup ? "更新報名資料" : getSessionSignupLimit(session) && getSessionSignupCount(sessionId) >= getSessionSignupLimit(session) ? "加入候補" : "送出報名"}</button>
+        <button class="button-primary" data-class-signup-submit type="submit" ${!ownSignup && getSessionSignupLimit(session) && getSessionSignupCount(sessionId) >= getSessionSignupLimit(session) ? "disabled" : ""}>${ownSignup ? "更新報名資料" : getSessionSignupLimit(session) && getSessionSignupCount(sessionId) >= getSessionSignupLimit(session) ? "名額已滿" : "送出報名"}</button>
         ${deleteButton}
       </div>
     </form>
@@ -6101,7 +6101,7 @@ function bindClassSignupBoardEvents() {
         return;
       }
 
-      const confirmed = window.confirm("確定要取消這筆社課報名嗎？若你是正取，名額會自動遞補給候補者。");
+      const confirmed = window.confirm("確定要取消這筆社課報名嗎？取消後會釋出你的名額。");
       if (!confirmed) {
         return;
       }
@@ -6110,7 +6110,7 @@ function bindClassSignupBoardEvents() {
         setButtonLoading(button, true, "取消中…");
         await deleteClassSessionSignup(sessionId);
         await refreshClassSignupPageSafe({ force: true });
-        showToast("已取消報名；若有候補者，系統會自動依序遞補。", { tone: "success" });
+        showToast("已取消報名並釋出名額。", { tone: "success" });
       } catch (error) {
         console.error("Delete class signup failed:", error);
         showToast(error?.message || "請稍後再試一次。", { tone: "error", title: "取消報名失敗" });
@@ -6177,12 +6177,62 @@ async function upsertClassSessionSignup(session, { note = "" } = {}) {
   if (!currentUser?.uid) {
     throw new Error("請先登入後再報名。");
   }
-  if (!functionsClient || !httpsCallable) {
+  if (!db || !runTransaction) {
     throw new Error("報名服務目前無法使用，請稍後再試。");
   }
   const sessionId = getClassSessionId(session);
-  const response = await httpsCallable(functionsClient, "upsertClassSessionSignup")({ sessionId, note: note.slice(0, 500) });
-  return response.data || { ok: true, signupStatus: "accepted" };
+  const user = currentUser;
+  const signupRef = doc(db, CLASS_SIGNUP_COLLECTION, `${sessionId}-${user.uid}`);
+  const statsRef = doc(db, CLASS_SESSION_STATS_COLLECTION, sessionId);
+  // Keep the signup and counter atomic. Firestore rules enforce the same
+  // identity, server-time window and capacity checks without Cloud Functions.
+  return runTransaction(db, async (transaction) => {
+    const sessionSnapshot = await transaction.get(doc(db, CLASS_SESSION_COLLECTION, sessionId));
+    const signupSnapshot = await transaction.get(signupRef);
+    const statsSnapshot = await transaction.get(statsRef);
+    const memberSnapshot = await transaction.get(getMemberDocRef(user.uid));
+    const adminSnapshot = await transaction.get(doc(db, "admins", user.uid));
+    const approvalSnapshot = user.email
+      ? await transaction.get(doc(db, "signupApprovals", user.email)) : null;
+    if (!sessionSnapshot.exists()) throw new Error("找不到這場社課，請重新整理頁面。");
+    if (!memberSnapshot.exists()) throw new Error("請先完成個人資料。");
+    if (signupSnapshot.exists()) {
+      transaction.update(signupRef, { note: note.slice(0, 500), updatedAt: serverTimestamp() });
+      return { ok: true, signupStatus: signupSnapshot.data().signupStatus || "accepted" };
+    }
+    const latestSession = sessionSnapshot.data();
+    const member = memberSnapshot.data();
+    const formalStatuses = ["formal_member", "officer", "admin"];
+    const formalAccess = adminSnapshot.exists() || Boolean(approvalSnapshot?.exists())
+      || formalStatuses.includes(member.membershipStatus) || formalStatuses.includes(member.status);
+    if (!formalAccess && latestSession.allowNonMembers !== true) throw new Error("本場社課僅限正式社員報名。");
+    if (latestSession.signupRequired !== true) throw new Error("這場社課不需要報名。");
+    const openAt = (formalAccess ? latestSession.memberSignupOpenAtTimestamp : latestSession.publicSignupOpenAtTimestamp)?.toMillis?.();
+    const closeAt = latestSession.signupCloseAtTimestamp?.toMillis?.();
+    if (!Number.isFinite(openAt) || !Number.isFinite(closeAt)) throw new Error("這場社課的報名時間設定不完整，請聯絡幹部重新儲存社課設定。");
+    const now = Date.now();
+    if (now > closeAt) throw new Error("這場社課報名已截止。");
+    if (now < openAt) throw new Error(formalAccess ? "這場社課尚未開放報名。" : "尚未開放非社員報名，請於全面開放時間後再試。");
+    const stats = statsSnapshot.exists() ? statsSnapshot.data() : {};
+    const count = Number(stats.signupCount || 0);
+    if (!Number.isInteger(count) || count < 0) throw new Error("社課名額資料異常，請聯絡幹部。");
+    const limit = getSessionSignupLimit(latestSession);
+    if (limit && count >= limit) throw new Error("本場社課已額滿，請於有人取消、名額釋出後再報名。");
+    transaction.set(signupRef, {
+      sessionId, userId: user.uid, email: user.email || "",
+      name: String(member.name || member.displayName || "").slice(0, 100),
+      studentId: String(member.studentId || "").slice(0, 30), note: note.slice(0, 500),
+      membershipStatusAtSignup: formalAccess ? "formal_member" : String(member.membershipStatus || "non_member"),
+      isFormalMemberAtSignup: formalAccess, dropInPaymentStatus: formalAccess ? "not_required" : "unpaid",
+      sessionDate: latestSession.date || "", sessionWeekday: latestSession.weekday || "",
+      sessionTitle: latestSession.title || "", sessionTimeLabel: latestSession.timeLabel || "",
+      createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+    });
+    transaction.set(statsRef, {
+      sessionId, signupCount: count + 1, waitlistCount: Number(stats.waitlistCount || 0), updatedAt: serverTimestamp(),
+    });
+    return { ok: true, signupStatus: "accepted" };
+  });
 }
 
 function getClassSignupErrorMessage(error) {
@@ -6190,13 +6240,13 @@ function getClassSignupErrorMessage(error) {
   const detailsMessage = typeof error?.details?.message === "string" ? error.details.message.trim() : "";
   const rawMessage = String(error?.message || "").trim();
   if (detailsMessage) return detailsMessage;
-  if (rawMessage && rawMessage.toLowerCase() !== "internal") return rawMessage;
   if (code === "unauthenticated") return "登入狀態已失效，請重新登入後再報名。";
-  if (code === "permission-denied") return "目前的社員資格或報名時段不符合這場社課的設定。";
+  if (code === "permission-denied") return "報名未通過權限檢查，請重新整理確認社員資格、報名時段與剩餘名額；若仍失敗請聯絡幹部。";
   if (code === "failed-precondition") return "目前尚未開放報名，或帳號資料尚未完成。";
   if (code === "unavailable" || code.includes("network") || !navigator.onLine) {
-    return "網路連線中斷，這次報名尚未寫入，請恢復連線後再試。";
+    return "網路連線中斷，請恢復連線後重新整理，確認報名狀態再試。";
   }
+  if (rawMessage && rawMessage.toLowerCase() !== "internal") return rawMessage;
   return "報名服務暫時發生錯誤，請稍後再試；若持續發生請聯絡幹部。";
 }
 
@@ -6205,11 +6255,27 @@ async function deleteClassSessionSignup(sessionId) {
   if (!currentUser?.uid) {
     throw new Error("請先登入後再取消報名。");
   }
-  if (!functionsClient || !httpsCallable) {
+  if (!db || !runTransaction) {
     throw new Error("取消報名服務目前無法使用，請稍後再試。");
   }
-  const response = await httpsCallable(functionsClient, "deleteClassSessionSignup")({ sessionId });
-  return response.data || { ok: true };
+  const signupRef = doc(db, CLASS_SIGNUP_COLLECTION, `${sessionId}-${currentUser.uid}`);
+  const statsRef = doc(db, CLASS_SESSION_STATS_COLLECTION, sessionId);
+  return runTransaction(db, async (transaction) => {
+    const signupSnapshot = await transaction.get(signupRef);
+    const statsSnapshot = await transaction.get(statsRef);
+    if (!signupSnapshot.exists()) return { ok: true };
+    if (signupSnapshot.data().signupStatus === "waitlisted") throw new Error("請聯絡幹部取消這筆候補紀錄。");
+    if (statsSnapshot.exists()) {
+      const stats = statsSnapshot.data();
+      if (!Number.isInteger(stats.signupCount) || stats.signupCount < 1) throw new Error("社課名額資料異常，請聯絡幹部協助取消。");
+      transaction.set(statsRef, {
+        sessionId, signupCount: stats.signupCount - 1,
+        waitlistCount: Number(stats.waitlistCount || 0), updatedAt: serverTimestamp(),
+      });
+    }
+    transaction.delete(signupRef);
+    return { ok: true };
+  });
 }
 
 async function adminDeleteClassSessionSignup(sessionId, signupId) {
@@ -6270,9 +6336,9 @@ async function handleClassSignupSubmit(event) {
     const result = await upsertClassSessionSignup(session, { note, name, studentId });
 
     await refreshClassSignupPageSafe({ force: true });
-    showToast(result.signupStatus === "waitlisted" ? "本場已額滿，已依順序加入候補名單。" : "社課報名成功。", {
+    showToast(result.signupStatus === "waitlisted" ? "已更新候補紀錄，候補狀態請洽幹部確認。" : "社課報名成功。", {
       tone: result.signupStatus === "waitlisted" ? "info" : "success",
-      title: result.signupStatus === "waitlisted" ? "已加入候補" : "報名完成",
+      title: result.signupStatus === "waitlisted" ? "候補資料已更新" : "報名完成",
     });
   } catch (error) {
     console.error("Class signup submit failed:", error);
