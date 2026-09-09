@@ -251,7 +251,6 @@ let faqPageState = {
 let adminClassCalendarMonthOffset = 0;
 let announcementCalendarMonthOffset = 0;
 let adminClassSessionEditingId = "";
-let adminClassSignupSelectedSessionId = "";
 let adminClassSignupFilters = {
   academicYear: "all",
   term: "all",
@@ -7570,17 +7569,12 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
     return academicYearMatches && termMatches && timingMatches;
   });
 
-  if (!filteredSessions.some((entry) => entry.sessionId === adminClassSignupSelectedSessionId)) {
-    adminClassSignupSelectedSessionId = filteredSessions[0]?.sessionId || "";
-  }
-  const visibleSessions = filteredSessions.filter((entry) => entry.sessionId === adminClassSignupSelectedSessionId);
-
   return `
     <section class="member-section">
       <div class="section-header is-compact">
         <div class="section-kicker">Signups</div>
         <h3 class="content-title">報名名單</h3>
-        <p class="section-description">先依學年、學期與社課狀態篩選，再選擇日期並點開完整報名名單。正式社員不需要單場零打費；非社員可在這裡標記該場零打費。</p>
+        <p class="section-description">依學年、學期與社課狀態篩選，再點開各場社課的完整報名名單。正式社員不需要單場零打費；非社員可在這裡標記該場零打費。</p>
       </div>
       <article class="content-card is-tight admin-class-signup-date-picker">
         <div class="admin-class-signup-filter-grid">
@@ -7606,20 +7600,10 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
               <option value="past" ${adminClassSignupFilters.timing === "past" ? "selected" : ""}>過去社課</option>
             </select>
           </div>
-          <div class="form-field">
-            <label for="admin-class-signup-session-select">選擇社課日期</label>
-            <select id="admin-class-signup-session-select" data-admin-class-signup-session-select ${filteredSessions.length ? "" : "disabled"}>
-              ${filteredSessions.length ? filteredSessions.map(({ session, sessionId }) => `
-                <option value="${escapeHtml(sessionId)}" ${sessionId === adminClassSignupSelectedSessionId ? "selected" : ""}>
-                  ${escapeHtml(`${getClassSessionDateLabel(session)}・${getLocalizedContentTitle(session, "社課")}${getClassSessionTimeLabel(session) ? `・${getClassSessionTimeLabel(session)}` : ""}`)}
-                </option>
-              `).join("") : '<option value="">沒有符合條件的社課</option>'}
-            </select>
-          </div>
         </div>
       </article>
       <div class="member-list">
-        ${visibleSessions.length ? visibleSessions
+        ${filteredSessions.length ? filteredSessions
           .map(({ session, sessionId, signups: sessionSignups }) => {
             const limit = getSessionSignupLimit(session);
             const sortedSignups = [...sessionSignups].sort((a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt));
@@ -7710,11 +7694,6 @@ const renderAdminClassSignupOverview = (sessions = [], signups = []) => {
       renderAdminClassSignupOverview(sessions, signups);
       bindAdminClassCalendarActions();
     });
-  });
-  container.querySelector("[data-admin-class-signup-session-select]")?.addEventListener("change", (event) => {
-    adminClassSignupSelectedSessionId = String(event.currentTarget.value || "");
-    renderAdminClassSignupOverview(sessions, signups);
-    bindAdminClassCalendarActions();
   });
 };
 
