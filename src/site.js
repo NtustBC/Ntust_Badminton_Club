@@ -7531,21 +7531,24 @@ const clearAdminClassSessionFormMode = () => {
 const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
   const grouped = groupClassSignupsBySession(signups);
   const membersById = Object.fromEntries(membersDashboardCache.members.map((member) => [member.uid || member.id, member]));
+  const currentTimeMs = Date.now();
   const sessionsWithSignups = sessions
     .map((session) => {
       const sessionDate = parseDateKey(session.date || session.sessionDate || "");
       const academicPeriod = sessionDate ? getAcademicPeriodForDate(sessionDate) : { academicYear: "", term: "" };
+      const startMs = getClassSessionStartMs(session);
       return {
         session,
         sessionId: getClassSessionId(session),
         signups: grouped[getClassSessionId(session)] || [],
         academicYear: academicPeriod.academicYear,
         term: academicPeriod.term,
-        timing: getClassSessionStartMs(session) >= Date.now() ? "upcoming" : "past",
+        startMs,
+        timing: startMs >= currentTimeMs ? "upcoming" : "past",
       };
     })
     .filter((entry) => entry.session.signupRequired === true)
-    .sort((a, b) => getClassSessionSortMs(b.session) - getClassSessionSortMs(a.session));
+    .sort((a, b) => Math.abs(a.startMs - currentTimeMs) - Math.abs(b.startMs - currentTimeMs));
 
   if (sessionsWithSignups.length === 0) {
     return `
@@ -7606,7 +7609,7 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
         ${filteredSessions.length ? filteredSessions
           .map(({ session, sessionId, signups: sessionSignups }) => {
             const limit = getSessionSignupLimit(session);
-            const sortedSignups = [...sessionSignups].sort((a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt));
+            const sortedSignups = [...sessionSignups].sort((a, b) => getTimestampMs(b.submittedAt || b.createdAt) - getTimestampMs(a.submittedAt || a.createdAt));
             const exportAvailable = isClassSignupExportAvailable(session);
             return `
               <details class="admin-class-signup-roster-details">

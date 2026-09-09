@@ -27,5 +27,6 @@ test("class signup roster has its own panel and renderer", () => {
   assert.match(siteSource, /entry\.timing === adminClassSignupFilters\.timing/);
   assert.match(siteSource, /getAcademicPeriodForDate\(sessionDate\)/);
   assert.match(siteSource, /admin-class-signup-roster-details/);
-  assert.match(siteSource, /getClassSessionSortMs\(b\.session\) - getClassSessionSortMs\(a\.session\)/);
+  assert.match(siteSource, /Math\.abs\(a\.startMs - currentTimeMs\) - Math\.abs\(b\.startMs - currentTimeMs\)/);
+  assert.match(siteSource, /getTimestampMs\(b\.submittedAt \|\| b\.createdAt\) - getTimestampMs\(a\.submittedAt \|\| a\.createdAt\)/);
 });
