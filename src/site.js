@@ -5500,6 +5500,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
     renderLoadingSkeleton(list, { rows: 4, label: "社員名單載入中" });
     renderLoadingSkeleton(officerList, { rows: 3, label: "幹部名單載入中" });
     renderLoadingSkeleton(adminList, { rows: 3, label: "管理員名單載入中" });
+    renderLoadingSkeleton(document.querySelector("[data-class-signup-management]"), { rows: 4, label: "社課名單載入中" });
     renderLoadingSkeleton(document.querySelector("[data-class-session-calendar]"), { rows: 3, label: "行事曆載入中" });
   }
 
@@ -5593,6 +5594,7 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
     renderMembersList(displayMembers);
     renderOfficerRoster();
     renderAdminRoster();
+    renderAdminClassSignupOverview(membersDashboardCache.classSessions, membersDashboardCache.classSessionSignups);
     renderAdminClassCalendarCompact(membersDashboardCache.classSessions, membersDashboardCache.classSessionSignups);
     renderAdminAnnouncements(membersDashboardCache.announcements);
     renderAdminFaqQuestions(membersDashboardCache.faqQuestions);
@@ -5621,6 +5623,15 @@ const refreshMembersDashboardSafe = async ({ force = false, preserveExpandedRows
       classCalendar.innerHTML = `
         <article class="content-card is-tight">
           <h3 class="content-title">社課月曆讀取失敗</h3>
+          <p class="content-copy">${escapeHtml(error?.message || "請稍後再試一次。")}</p>
+        </article>
+      `;
+    }
+    const classSignupManagement = document.querySelector("[data-class-signup-management]");
+    if (classSignupManagement) {
+      classSignupManagement.innerHTML = `
+        <article class="content-card is-tight">
+          <h3 class="content-title">社課名單讀取失敗</h3>
           <p class="content-copy">${escapeHtml(error?.message || "請稍後再試一次。")}</p>
         </article>
       `;
@@ -6161,99 +6172,73 @@ function bindClassSignupModalEvents() {
   }
 }
 
-async function upsertClassSessionSignupDirect(session, { note = "", name = "", studentId = "" } = {}) {
+async function upsertClassSessionSignup(session, { note = "" } = {}) {
   await ensureAuthReady();
-  if (!db || !runTransaction || !currentUser?.uid) {
-    throw new Error("Firestore 目前無法使用，請稍後再試。");
+  if (!currentUser?.uid) {
+    throw new Error("請先登入後再報名。");
   }
-
+  if (!functionsClient || !httpsCallable) {
+    throw new Error("報名服務目前無法使用，請稍後再試。");
+  }
   const sessionId = getClassSessionId(session);
-  const sessionRef = getClassSessionDocRef(sessionId);
-  const signupRef = getClassSignupDocRef(sessionId, currentUser.uid);
-  const statsRef = doc(db, CLASS_SESSION_STATS_COLLECTION, sessionId);
-
-  await runTransaction(db, async (transaction) => {
-    const sessionSnapshot = await transaction.get(sessionRef);
-    const signupSnapshot = await transaction.get(signupRef);
-    const statsSnapshot = await transaction.get(statsRef);
-    if (!sessionSnapshot.exists()) throw new Error("找不到這場社課。");
-
-    const currentSession = sessionSnapshot.data();
-    if (currentSession.signupRequired !== true) throw new Error("這場社課不需要報名。");
-    if (!isClassSignupWindowOpen(currentSession)) throw new Error("目前不在報名期間內。");
-
-    if (signupSnapshot.exists()) {
-      transaction.update(signupRef, { note: note.slice(0, 500), updatedAt: serverTimestamp() });
-      return;
-    }
-
-    const signupCount = statsSnapshot.exists() ? Math.max(0, Number(statsSnapshot.data().signupCount || 0)) : 0;
-    const signupLimit = getSessionSignupLimit(currentSession);
-    if (signupLimit && signupCount >= signupLimit) {
-      throw new Error("這場社課已額滿，目前暫不開放線上候補，請聯絡幹部。");
-    }
-
-    const isFormalMember = hasFormalMemberAccess(classSignupPageState.approval);
-    transaction.set(signupRef, {
-      sessionId,
-      userId: currentUser.uid,
-      email: currentUser.email || "",
-      name: name || currentMemberProfile?.name || currentUser.displayName || "",
-      studentId: studentId || currentMemberProfile?.studentId || "",
-      note: note.slice(0, 500),
-      membershipStatusAtSignup: isFormalMember ? "formal_member" : String(currentMemberProfile?.membershipStatus || "non_member"),
-      isFormalMemberAtSignup: isFormalMember,
-      dropInPaymentStatus: isFormalMember ? "not_required" : "unpaid",
-      sessionDate: currentSession.date || "",
-      sessionWeekday: currentSession.weekday || "",
-      sessionTitle: currentSession.title || "",
-      sessionTimeLabel: currentSession.timeLabel || "",
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    transaction.set(statsRef, {
-      sessionId,
-      signupCount: signupCount + 1,
-      waitlistCount: statsSnapshot.exists() ? Math.max(0, Number(statsSnapshot.data().waitlistCount || 0)) : 0,
-      updatedAt: serverTimestamp(),
-    }, { merge: true });
-  });
+  const response = await httpsCallable(functionsClient, "upsertClassSessionSignup")({ sessionId, note: note.slice(0, 500) });
+  return response.data || { ok: true, signupStatus: "accepted" };
 }
 
-async function upsertClassSessionSignup(session, values) {
-  await upsertClassSessionSignupDirect(session, values);
-  return { ok: true, signupStatus: "accepted" };
+function getClassSignupErrorMessage(error) {
+  const code = String(error?.code || "").replace(/^(functions|firestore)\//, "");
+  const detailsMessage = typeof error?.details?.message === "string" ? error.details.message.trim() : "";
+  const rawMessage = String(error?.message || "").trim();
+  if (detailsMessage) return detailsMessage;
+  if (rawMessage && rawMessage.toLowerCase() !== "internal") return rawMessage;
+  if (code === "unauthenticated") return "登入狀態已失效，請重新登入後再報名。";
+  if (code === "permission-denied") return "目前的社員資格或報名時段不符合這場社課的設定。";
+  if (code === "failed-precondition") return "目前尚未開放報名，或帳號資料尚未完成。";
+  if (code === "unavailable" || code.includes("network") || !navigator.onLine) {
+    return "網路連線中斷，這次報名尚未寫入，請恢復連線後再試。";
+  }
+  return "報名服務暫時發生錯誤，請稍後再試；若持續發生請聯絡幹部。";
 }
 
 async function deleteClassSessionSignup(sessionId) {
   await ensureAuthReady();
-  if (!db || !runTransaction || !currentUser?.uid) {
-    throw new Error("Firestore 目前無法使用，請稍後再試。");
+  if (!currentUser?.uid) {
+    throw new Error("請先登入後再取消報名。");
   }
-  const signupRef = getClassSignupDocRef(sessionId, currentUser.uid);
+  if (!functionsClient || !httpsCallable) {
+    throw new Error("取消報名服務目前無法使用，請稍後再試。");
+  }
+  const response = await httpsCallable(functionsClient, "deleteClassSessionSignup")({ sessionId });
+  return response.data || { ok: true };
+}
+
+async function adminDeleteClassSessionSignup(sessionId, signupId) {
+  await ensureAuthReady();
+  if (!db || !runTransaction || !currentUserIsAdmin) {
+    throw new Error("管理報名服務目前無法使用，請稍後再試。");
+  }
+
+  const signupRef = doc(db, CLASS_SIGNUP_COLLECTION, signupId);
   const statsRef = doc(db, CLASS_SESSION_STATS_COLLECTION, sessionId);
+  const publicRosterRef = doc(db, CLASS_PUBLIC_ROSTER_COLLECTION, signupId);
   await runTransaction(db, async (transaction) => {
     const signupSnapshot = await transaction.get(signupRef);
     const statsSnapshot = await transaction.get(statsRef);
     if (!signupSnapshot.exists()) return;
-    if (signupSnapshot.data().signupStatus === "waitlisted") {
-      throw new Error("候補報名請聯絡幹部取消。");
-    }
+
+    const isWaitlisted = signupSnapshot.data().signupStatus === "waitlisted";
     transaction.delete(signupRef);
+    transaction.delete(publicRosterRef);
     if (statsSnapshot.exists()) {
+      const stats = statsSnapshot.data();
       transaction.set(statsRef, {
         sessionId,
-        signupCount: Math.max(0, Number(statsSnapshot.data().signupCount || 0) - 1),
-        waitlistCount: Math.max(0, Number(statsSnapshot.data().waitlistCount || 0)),
+        signupCount: Math.max(0, Number(stats.signupCount || 0) - Number(!isWaitlisted)),
+        waitlistCount: Math.max(0, Number(stats.waitlistCount || 0) - Number(isWaitlisted)),
         updatedAt: serverTimestamp(),
       }, { merge: true });
     }
   });
-}
-
-async function adminDeleteClassSessionSignup(sessionId, signupId) {
-  if (!functionsClient || !httpsCallable) throw new Error("管理報名服務目前無法使用，請稍後再試。");
-  await httpsCallable(functionsClient, "adminDeleteClassSessionSignup")({ sessionId, signupId });
 }
 
 async function adminDeleteClassSession(sessionId) {
@@ -6291,9 +6276,7 @@ async function handleClassSignupSubmit(event) {
     });
   } catch (error) {
     console.error("Class signup submit failed:", error);
-    const errorCode = String(error?.code || "").replace(/^firestore\//, "");
-    const offline = !navigator.onLine || errorCode.includes("unavailable") || errorCode.includes("network");
-    showToast(offline ? "網路連線中斷，這次報名尚未寫入，請恢復連線後再試。" : `${error?.message || "請稍後再試一次。"}${errorCode ? `（${errorCode}）` : ""}`, { tone: "error", title: "社課報名失敗" });
+    showToast(getClassSignupErrorMessage(error), { tone: "error", title: "社課報名失敗" });
   } finally {
     setButtonLoading(submitButton, false);
   }
@@ -7348,8 +7331,8 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
   const membersById = Object.fromEntries(membersDashboardCache.members.map((member) => [member.uid || member.id, member]));
   const sessionsWithSignups = sessions
     .map((session) => ({ session, sessionId: getClassSessionId(session), signups: grouped[getClassSessionId(session)] || [] }))
-    .filter((entry) => entry.signups.length > 0)
-    .sort((a, b) => getClassSessionSortMs(a.session) - getClassSessionSortMs(b.session));
+    .filter((entry) => entry.session.signupRequired === true)
+    .sort((a, b) => getClassSessionSortMs(b.session) - getClassSessionSortMs(a.session));
 
   if (sessionsWithSignups.length === 0) {
     return `
@@ -7357,7 +7340,7 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
         <div class="section-header is-compact">
           <div class="section-kicker">Signups</div>
           <h3 class="content-title">報名名單</h3>
-          <p class="section-description">目前還沒有任何報名資料。</p>
+          <p class="section-description">目前還沒有需要報名的社課場次。</p>
         </div>
       </section>
     `;
@@ -7375,12 +7358,14 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
           .map(({ session, sessionId, signups: sessionSignups }) => {
             const limit = getSessionSignupLimit(session);
             const sortedSignups = [...sessionSignups].sort((a, b) => getTimestampMs(a.submittedAt || a.createdAt) - getTimestampMs(b.submittedAt || b.createdAt));
+            const acceptedCount = sortedSignups.filter((signup, index) => getComputedSignupStatus(signup, index, session) === "accepted").length;
+            const waitlistedCount = sortedSignups.length - acceptedCount;
             const exportAvailable = isClassSignupExportAvailable(session);
             return `
               <article class="member-row">
                 <div class="member-row-top">
                   <p class="member-row-index">${escapeHtml(getLocalizedContentTitle(session, "社團報名"))}</p>
-                  <p class="member-row-status">${limit ? `上限 ${limit} 人` : "不限人數"}</p>
+                  <p class="member-row-status">${escapeHtml(`正取 ${acceptedCount} 人${waitlistedCount ? ` ‧ 候補 ${waitlistedCount} 人` : ""}${limit ? ` ‧ 上限 ${limit} 人` : ""}`)}</p>
                 </div>
                 <p class="member-row-email">${escapeHtml([getClassSessionDateLabel(session), getClassSessionTimeLabel(session)].filter(Boolean).join(" / "))}</p>
                 <div class="application-actions">
@@ -7389,7 +7374,7 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
                   </button>
                 </div>
                 <div class="member-list">
-                  ${sortedSignups
+                  ${sortedSignups.length ? sortedSignups
                     .map((signup, index) => {
                       const computedStatus = getComputedSignupStatus(signup, index, session);
                       const member = membersById[signup.userId] || null;
@@ -7418,6 +7403,7 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
                             <div class="member-row-meta">
                               <span>學號：${escapeHtml(signup.studentId || "未填寫")}</span>
                               <span>身分：${escapeHtml(isFormalMember ? "正式社員" : "非社員零打")}</span>
+                              <span>報名時間：${escapeHtml(formatTimestamp(signup.submittedAt || signup.createdAt) || "未記錄")}</span>
                               <span>備註：${escapeHtml(signup.note || "無")}</span>
                             </div>
                             <div class="application-actions">
@@ -7428,7 +7414,7 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
                         </details>
                       `;
                     })
-                    .join("")}
+                    .join("") : `<p class="content-copy">本場次目前尚無人報名。</p>`}
                 </div>
               </article>
             `;
@@ -7438,6 +7424,13 @@ const buildAdminSignupOverviewMarkup = (sessions = [], signups = []) => {
     </section>
   `;
 };
+
+const renderAdminClassSignupOverview = (sessions = [], signups = []) => {
+  const container = document.querySelector("[data-class-signup-management]");
+  if (!container) return;
+  container.innerHTML = buildAdminSignupOverviewMarkup(sessions, signups);
+};
+
 const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
   const container = getAdminClassCalendarContainer();
   if (!container) {
@@ -7579,7 +7572,6 @@ const renderAdminClassCalendarCompact = (sessions = [], signups = []) => {
         ${cells.join("")}
       </div>
     </div>
-    ${buildAdminSignupOverviewMarkup(sessions, signups)}
   `;
 
   container.querySelector("[data-admin-calendar-prev]")?.addEventListener("click", () => {
@@ -9623,6 +9615,7 @@ const ADMIN_PANEL_IDS = [
   "admin-member-management",
   "admin-officer-management",
   "admin-administrator-management",
+  "admin-class-signup-management",
   "admin-calendar-management",
   "admin-faq-management",
 ];

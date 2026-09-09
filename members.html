@@ -118,6 +118,7 @@
                 <a id="admin-tab-members" data-admin-tab href="#admin-member-management" role="tab" aria-controls="admin-member-management">社員名單</a>
                 <a id="admin-tab-officers" data-admin-tab href="#admin-officer-management" role="tab" aria-controls="admin-officer-management">幹部名單</a>
                 <a id="admin-tab-administrators" data-admin-tab href="#admin-administrator-management" role="tab" aria-controls="admin-administrator-management">管理員名單</a>
+                <a id="admin-tab-class-signups" data-admin-tab href="#admin-class-signup-management" role="tab" aria-controls="admin-class-signup-management">社課名單</a>
                 <a id="admin-tab-calendar" data-admin-tab href="#admin-calendar-management" role="tab" aria-controls="admin-calendar-management">行事曆</a>
                 <a id="admin-tab-faq" data-admin-tab href="#admin-faq-management" role="tab" aria-controls="admin-faq-management">Q&amp;A</a>
               </nav>
@@ -376,6 +377,10 @@
                   <p class="login-note" data-admin-roster-hint></p>
                   <div class="admin-roster-list" data-admin-roster-list></div>
                 </article>
+              </section>
+
+              <section class="member-section admin-panel" id="admin-class-signup-management" data-admin-panel role="tabpanel" aria-labelledby="admin-tab-class-signups" hidden>
+                <div data-class-signup-management></div>
               </section>
 
               <section class="member-section admin-panel" id="admin-calendar-management" data-admin-panel role="tabpanel" aria-labelledby="admin-tab-calendar" hidden>

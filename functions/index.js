@@ -590,20 +590,21 @@ exports.upsertClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (
     const signupRef = firestore.collection("classSessionSignups").doc(`${sessionId}-${uid}`);
     const statsRef = firestore.collection("classSessionStats").doc(sessionId);
     const adminRef = firestore.collection("admins").doc(uid);
-    const approvalRef = firestore.collection("signupApprovals").doc(authEmail);
-    const [sessionSnapshot, memberSnapshot, statsSnapshot, adminSnapshot, approvalSnapshot] = await Promise.all([
+    const approvalSnapshotPromise = authEmail
+      ? firestore.collection("signupApprovals").doc(authEmail).get()
+      : Promise.resolve(null);
+    const [sessionSnapshot, memberSnapshot, adminSnapshot, approvalSnapshot] = await Promise.all([
       sessionRef.get(),
       memberRef.get(),
-      statsRef.get(),
       adminRef.get(),
-      approvalRef.get(),
+      approvalSnapshotPromise,
     ]);
     if (!sessionSnapshot.exists) throw new HttpsError("not-found", "找不到這場社課。");
     if (!memberSnapshot.exists) throw new HttpsError("failed-precondition", "請先完成個人資料。");
     const session = sessionSnapshot.data();
     const member = memberSnapshot.data();
     const isAdmin = adminSnapshot.exists;
-    const isFormalMember = hasFormalMembership(member, approvalSnapshot.exists);
+    const isFormalMember = hasFormalMembership(member, Boolean(approvalSnapshot?.exists));
     if (!isAdmin && !isFormalMember && session.allowNonMembers !== true) throw new HttpsError("permission-denied", "本場社課僅限正式社員報名。");
     if (session.signupRequired !== true) throw new HttpsError("failed-precondition", "這場社課不需要報名。");
     const now = Date.now();
@@ -625,17 +626,17 @@ exports.upsertClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (
         : "目前不在報名期間內。");
     }
 
-    stage = "計算目前名額";
-    const seedCounts = statsSnapshot.exists
-      ? { signupCount: Number(statsSnapshot.data().signupCount || 0), waitlistCount: Number(statsSnapshot.data().waitlistCount || 0) }
-      : await getSessionSignupCounts(sessionId);
     stage = "寫入報名資料";
     await firestore.runTransaction(async (transaction) => {
-      const existingSignup = await transaction.get(signupRef);
-      const currentStats = await transaction.get(statsRef);
+      const signupsQuery = firestore.collection("classSessionSignups").where("sessionId", "==", sessionId);
+      const [existingSignup, currentStats, sessionSignups] = await Promise.all([
+        transaction.get(signupRef),
+        transaction.get(statsRef),
+        transaction.get(signupsQuery),
+      ]);
       const existingData = existingSignup.exists ? existingSignup.data() : {};
-      const count = currentStats.exists ? Number(currentStats.data().signupCount || 0) : seedCounts.signupCount;
-      const waitlistCount = currentStats.exists ? Number(currentStats.data().waitlistCount || 0) : seedCounts.waitlistCount;
+      const count = sessionSignups.docs.filter((entry) => entry.data().signupStatus !== "waitlisted").length;
+      const waitlistCount = sessionSignups.size - count;
       const limit = Number(session.signupLimit || 0);
       const signupStatus = existingSignup.exists
         ? existingData.signupStatus || "accepted"
@@ -675,7 +676,7 @@ exports.upsertClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (
   } catch (error) {
     if (error instanceof HttpsError) throw error;
     logger.error("Class session signup failed.", { uid, sessionId, stage, code: error?.code || "unknown", message: error?.message || String(error) });
-    throw new HttpsError("internal", `報名後端在「${stage}」時失敗，請聯絡管理員。`);
+    throw new HttpsError("internal", `報名服務在「${stage}」時發生錯誤，請稍後再試；若持續發生請聯絡幹部。`, { stage });
   }
 });
 
