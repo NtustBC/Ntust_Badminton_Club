@@ -47,6 +47,19 @@ service cloud.firestore {
         && (isAdmin() || hasFormalMemberRecord() || isOfficialMember() || classSessionAllowsNonMembers(sessionId));
     }
 
+    function classSignupWindowIsOpen(sessionId) {
+      let session = get(/databases/$(database)/documents/classSessions/$(sessionId)).data;
+      let formalAccess = isAdmin() || hasFormalMemberRecord() || isOfficialMember();
+      let openAt = formalAccess
+        ? session.get("memberSignupOpenAtTimestamp", null)
+        : session.get("publicSignupOpenAtTimestamp", null);
+      let closeAt = session.get("signupCloseAtTimestamp", null);
+      return openAt is timestamp
+        && closeAt is timestamp
+        && request.time >= openAt
+        && request.time <= closeAt;
+    }
+
     function currentTermSettingsPath() {
       return /databases/$(database)/documents/siteSettings/currentTerm;
     }
@@ -256,6 +269,7 @@ service cloud.firestore {
       let statsBefore = exists(classStatsPath(sessionId)) ? get(classStatsPath(sessionId)).data.signupCount : 0;
       let formalAccess = isAdmin() || hasFormalMemberRecord() || isOfficialMember();
       return canJoinClassSession(sessionId)
+        && classSignupWindowIsOpen(sessionId)
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.sessionId == sessionId
@@ -444,11 +458,27 @@ service cloud.firestore {
         )
       );
       allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      // User writes go through callable Functions so signup windows, capacity,
-      // waitlist order and membership checks cannot be bypassed from the client.
-      allow create, update: if isAdmin();
+      allow create: if isAdmin() || (
+        isSignedIn()
+        && signupId == request.resource.data.sessionId + "-" + request.auth.uid
+        && validOwnSignupCreate(request.resource.data.sessionId)
+      );
+      allow update: if isAdmin() || (
+        isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["note", "updatedAt"])
+        && request.resource.data.note is string
+        && request.resource.data.note.size() <= 500
+        && request.resource.data.updatedAt == request.time
+      );
       allow delete: if isAdmin() || (
-        isSignedIn() && resource.data.userId == request.auth.uid
+        isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && resource.data.get("signupStatus", "accepted") != "waitlisted"
+        && (
+          !exists(classStatsPath(resource.data.sessionId)) ||
+          getAfter(classStatsPath(resource.data.sessionId)).data.signupCount == get(classStatsPath(resource.data.sessionId)).data.signupCount - 1
+        )
       );
     }
 
@@ -464,7 +494,34 @@ service cloud.firestore {
 
     match /classSessionStats/{sessionId} {
       allow read: if true;
-      allow create, update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+        isSignedIn()
+        && request.resource.data.keys().hasOnly(["sessionId", "signupCount", "waitlistCount", "updatedAt"])
+        && request.resource.data.sessionId == sessionId
+        && request.resource.data.signupCount == 1
+        && request.resource.data.get("waitlistCount", 0) == 0
+        && request.resource.data.updatedAt == request.time
+        && !exists(ownClassSignupPath(sessionId))
+        && existsAfter(ownClassSignupPath(sessionId))
+      );
+      allow update: if isAdmin() || (
+        isSignedIn()
+        && request.resource.data.keys().hasOnly(["sessionId", "signupCount", "waitlistCount", "updatedAt"])
+        && request.resource.data.sessionId == resource.data.sessionId
+        && request.resource.data.signupCount is int
+        && request.resource.data.signupCount >= 0
+        && request.resource.data.get("waitlistCount", 0) == resource.data.get("waitlistCount", 0)
+        && request.resource.data.updatedAt == request.time
+        && (
+          (request.resource.data.signupCount == resource.data.signupCount + 1
+            && !exists(ownClassSignupPath(sessionId))
+            && existsAfter(ownClassSignupPath(sessionId))) ||
+          (request.resource.data.signupCount == resource.data.signupCount - 1
+            && exists(ownClassSignupPath(sessionId))
+            && !existsAfter(ownClassSignupPath(sessionId)))
+        )
+      );
+      allow delete: if isAdmin();
     }
 
     match /registrationVerifications/{verificationId} {

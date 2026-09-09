@@ -29,6 +29,7 @@ let runTransaction;
 let serverTimestamp;
 let setDoc;
 let setPersistence;
+let Timestamp;
 let updateDoc;
 let where;
 let writeBatch;
@@ -70,6 +71,7 @@ const ensureFirebaseModules = async () => {
         serverTimestamp,
         setDoc,
         setPersistence,
+        Timestamp,
         updateDoc,
         where,
         writeBatch,
@@ -5673,6 +5675,11 @@ function getPublicSignupOpenMs(session = {}) {
   return session.allowNonMembers === true && legacyMemberMs ? legacyMemberMs + NON_MEMBER_SIGNUP_DELAY_MS : null;
 }
 
+function getClassSignupTimestamp(value) {
+  const milliseconds = getDateTimeLocalMs(value);
+  return Timestamp && Number.isFinite(milliseconds) ? Timestamp.fromMillis(milliseconds) : null;
+}
+
 function isClassSignupWindowOpen(session) {
   const now = Date.now();
   const isFormalMember = hasFormalMemberAccess(classSignupPageState.approval);
@@ -6154,18 +6161,94 @@ function bindClassSignupModalEvents() {
   }
 }
 
-async function upsertClassSessionSignup(session, values) {
-  if (!functionsClient || !httpsCallable) throw new Error("報名服務目前無法使用，請稍後再試。");
-  const result = await httpsCallable(functionsClient, "upsertClassSessionSignup")({
-    sessionId: getClassSessionId(session),
-    note: values.note || "",
+async function upsertClassSessionSignupDirect(session, { note = "", name = "", studentId = "" } = {}) {
+  await ensureAuthReady();
+  if (!db || !runTransaction || !currentUser?.uid) {
+    throw new Error("Firestore 目前無法使用，請稍後再試。");
+  }
+
+  const sessionId = getClassSessionId(session);
+  const sessionRef = getClassSessionDocRef(sessionId);
+  const signupRef = getClassSignupDocRef(sessionId, currentUser.uid);
+  const statsRef = doc(db, CLASS_SESSION_STATS_COLLECTION, sessionId);
+
+  await runTransaction(db, async (transaction) => {
+    const sessionSnapshot = await transaction.get(sessionRef);
+    const signupSnapshot = await transaction.get(signupRef);
+    const statsSnapshot = await transaction.get(statsRef);
+    if (!sessionSnapshot.exists()) throw new Error("找不到這場社課。");
+
+    const currentSession = sessionSnapshot.data();
+    if (currentSession.signupRequired !== true) throw new Error("這場社課不需要報名。");
+    if (!isClassSignupWindowOpen(currentSession)) throw new Error("目前不在報名期間內。");
+
+    if (signupSnapshot.exists()) {
+      transaction.update(signupRef, { note: note.slice(0, 500), updatedAt: serverTimestamp() });
+      return;
+    }
+
+    const signupCount = statsSnapshot.exists() ? Math.max(0, Number(statsSnapshot.data().signupCount || 0)) : 0;
+    const signupLimit = getSessionSignupLimit(currentSession);
+    if (signupLimit && signupCount >= signupLimit) {
+      throw new Error("這場社課已額滿，目前暫不開放線上候補，請聯絡幹部。");
+    }
+
+    const isFormalMember = hasFormalMemberAccess(classSignupPageState.approval);
+    transaction.set(signupRef, {
+      sessionId,
+      userId: currentUser.uid,
+      email: currentUser.email || "",
+      name: name || currentMemberProfile?.name || currentUser.displayName || "",
+      studentId: studentId || currentMemberProfile?.studentId || "",
+      note: note.slice(0, 500),
+      membershipStatusAtSignup: isFormalMember ? "formal_member" : String(currentMemberProfile?.membershipStatus || "non_member"),
+      isFormalMemberAtSignup: isFormalMember,
+      dropInPaymentStatus: isFormalMember ? "not_required" : "unpaid",
+      sessionDate: currentSession.date || "",
+      sessionWeekday: currentSession.weekday || "",
+      sessionTitle: currentSession.title || "",
+      sessionTimeLabel: currentSession.timeLabel || "",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    transaction.set(statsRef, {
+      sessionId,
+      signupCount: signupCount + 1,
+      waitlistCount: statsSnapshot.exists() ? Math.max(0, Number(statsSnapshot.data().waitlistCount || 0)) : 0,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
   });
-  return result.data || { ok: true, signupStatus: "accepted" };
+}
+
+async function upsertClassSessionSignup(session, values) {
+  await upsertClassSessionSignupDirect(session, values);
+  return { ok: true, signupStatus: "accepted" };
 }
 
 async function deleteClassSessionSignup(sessionId) {
-  if (!functionsClient || !httpsCallable) throw new Error("取消報名服務目前無法使用，請稍後再試。");
-  await httpsCallable(functionsClient, "deleteClassSessionSignup")({ sessionId });
+  await ensureAuthReady();
+  if (!db || !runTransaction || !currentUser?.uid) {
+    throw new Error("Firestore 目前無法使用，請稍後再試。");
+  }
+  const signupRef = getClassSignupDocRef(sessionId, currentUser.uid);
+  const statsRef = doc(db, CLASS_SESSION_STATS_COLLECTION, sessionId);
+  await runTransaction(db, async (transaction) => {
+    const signupSnapshot = await transaction.get(signupRef);
+    const statsSnapshot = await transaction.get(statsRef);
+    if (!signupSnapshot.exists()) return;
+    if (signupSnapshot.data().signupStatus === "waitlisted") {
+      throw new Error("候補報名請聯絡幹部取消。");
+    }
+    transaction.delete(signupRef);
+    if (statsSnapshot.exists()) {
+      transaction.set(statsRef, {
+        sessionId,
+        signupCount: Math.max(0, Number(statsSnapshot.data().signupCount || 0) - 1),
+        waitlistCount: Math.max(0, Number(statsSnapshot.data().waitlistCount || 0)),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    }
+  });
 }
 
 async function adminDeleteClassSessionSignup(sessionId, signupId) {
@@ -7920,6 +8003,9 @@ async function handleAdminCalendarEventSubmit(event) {
           publicSignupOpenAt,
           signupOpenAt: memberSignupOpenAt,
           signupCloseAt,
+          memberSignupOpenAtTimestamp: signupRequired ? getClassSignupTimestamp(memberSignupOpenAt) : null,
+          publicSignupOpenAtTimestamp: signupRequired ? getClassSignupTimestamp(publicSignupOpenAt) : null,
+          signupCloseAtTimestamp: signupRequired ? getClassSignupTimestamp(signupCloseAt) : null,
           signupLimit: Number.isFinite(signupLimit) && signupLimit > 0 ? Math.floor(signupLimit) : null,
           rosterPublished: existing?.exists() ? Boolean(existing.data()?.rosterPublished) : false,
           publishedRoster: existing?.exists() ? existing.data()?.publishedRoster || [] : [],
