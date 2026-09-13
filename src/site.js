@@ -1971,11 +1971,9 @@ const getMembershipApplicationPositionLabel = (member = {}) => {
 
 const doesMembershipProfileOccupySlot = (member = {}, academicYear = getConfiguredAcademicYear(), term = getConfiguredAcademicTerm()) => {
   const status = getManagedMembershipStatus(member);
-  return !["officer", "admin"].includes(status)
-    && status !== "membership_waitlisted"
+  return ["pending_payment", "formal_member"].includes(status)
     && String(member.academicYear || "") === academicYear
-    && String(member.term || "") === term
-    && getMembershipIntentFromProfile(member) === "join";
+    && String(member.term || "") === term;
 };
 
 const doesMemberOccupyMembershipSlot = (member = {}, academicYear = getConfiguredAcademicYear(), term = getConfiguredAcademicTerm()) => {
@@ -9608,7 +9606,16 @@ const syncMembershipRegistrationSettingForm = () => {
   if (limit instanceof HTMLInputElement) limit.value = membershipRegistrationSettings.limit || "";
   const count = form.querySelector("[data-membership-registration-setting-count]");
   if (count) {
-    count.textContent = `目前已占用 ${membershipRegistrationSettings.count} / ${membershipRegistrationSettings.limit || "未設定"} 個名額。`;
+    const academicYear = getConfiguredAcademicYear();
+    const term = getConfiguredAcademicTerm();
+    const occupyingMembers = (membersDashboardCache.members || []).filter((member) =>
+      doesMemberOccupyMembershipSlot(member, academicYear, term));
+    const pendingCount = occupyingMembers.filter((member) => getManagedMembershipStatus(member) === "pending_payment").length;
+    const formalCount = occupyingMembers.filter((member) => getManagedMembershipStatus(member) === "formal_member").length;
+    const breakdown = membersDashboardCache.loaded || occupyingMembers.length
+      ? `（待繳社費 ${pendingCount} 人＋正式社員 ${formalCount} 人）`
+      : "";
+    count.textContent = `目前已占用 ${membershipRegistrationSettings.count} / ${membershipRegistrationSettings.limit || "未設定"} 個名額${breakdown}。`;
   }
 };
 

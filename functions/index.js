@@ -42,12 +42,9 @@ function membershipPeriodId(academicYear, term) {
 
 function occupiesMembershipSlot(member = {}, academicYear = "", term = "") {
   const status = String(member.membershipStatus || member.status || "").trim().toLowerCase();
-  const intent = String(member.membershipIntent || "").trim().toLowerCase();
-  return !["officer", "club_officer", "staff", "cadre", "admin", "administrator"].includes(status)
-    && status !== "membership_waitlisted"
+  return ["pending_payment", "formal_member", "formal", "approved", "member"].includes(status)
     && String(member.academicYear || "").trim() === academicYear
-    && String(member.term || "").trim() === term
-    && (intent === "join" || ["pending_payment", "formal_member", "formal", "approved", "member"].includes(status));
+    && String(member.term || "").trim() === term;
 }
 
 function normalizeMembershipPayment(data = {}, membershipIntent = "not_join") {
