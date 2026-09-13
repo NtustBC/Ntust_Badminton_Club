@@ -56,6 +56,8 @@ service cloud.firestore {
       let closeAt = session.get("signupCloseAtTimestamp", null);
       return openAt is timestamp
         && closeAt is timestamp
+        && session.get("allocationState", "open") == "open"
+        && session.get("allocationPublishedAt", null) == null
         && request.time >= openAt
         && request.time <= closeAt;
     }
@@ -307,8 +309,8 @@ service cloud.firestore {
         && statsAfter.signupCount == countBefore + 1
         && statsAfter.firstHalfCount == firstBefore + (firstSelected ? 1 : 0)
         && statsAfter.secondHalfCount == secondBefore + (secondSelected ? 1 : 0)
-        && statsAfter.firstHalfCount <= (limit is int && limit > 0 ? limit : 30)
-        && statsAfter.secondHalfCount <= (limit is int && limit > 0 ? limit : 30);
+        && statsAfter.firstHalfCount >= 0
+        && statsAfter.secondHalfCount >= 0;
     }
 
     function validOwnSignupUpdate(sessionId) {
@@ -321,6 +323,8 @@ service cloud.firestore {
       let newSlots = request.resource.data.get("timeSlots", oldSlots);
       let limit = get(/databases/$(database)/documents/classSessions/$(sessionId)).data.get("signupLimit", 30);
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(["note", "slotPreferences", "timeSlots", "updatedAt"])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["slotPreferences", "timeSlots"])
+          || classSignupWindowIsOpen(sessionId))
         && request.resource.data.note is string
         && request.resource.data.note.size() <= 500
         && newSlots is list && newSlots.size() > 0 && newSlots.size() <= 2
@@ -334,8 +338,6 @@ service cloud.firestore {
         && statsAfter.firstHalfCount == firstBefore + (newSlots.hasAny(["firstHalf"]) ? 1 : 0) - (oldSlots.hasAny(["firstHalf"]) ? 1 : 0)
         && statsAfter.secondHalfCount == secondBefore + (newSlots.hasAny(["secondHalf"]) ? 1 : 0) - (oldSlots.hasAny(["secondHalf"]) ? 1 : 0)
         && statsAfter.firstHalfCount >= 0 && statsAfter.secondHalfCount >= 0
-        && statsAfter.firstHalfCount <= (limit is int && limit > 0 ? limit : 30)
-        && statsAfter.secondHalfCount <= (limit is int && limit > 0 ? limit : 30)
         && request.resource.data.updatedAt == request.time;
     }
     match /admins/{userId} {
@@ -645,7 +647,8 @@ service cloud.firestore {
       allow get, list: if isAdmin() || (
         isSignedIn() && resource.data.userId == request.auth.uid
       );
-      allow create, update: if false;
+      allow create: if isAdmin();
+      allow update: if false;
       allow delete: if isAdmin() || (
         isSignedIn() && resource.data.userId == request.auth.uid
       );

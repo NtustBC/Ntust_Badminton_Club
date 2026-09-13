@@ -4,6 +4,8 @@ import test from "node:test";
 
 const membersHtml = readFileSync(new URL("../members.html", import.meta.url), "utf8");
 const siteSource = readFileSync(new URL("../src/site.js", import.meta.url), "utf8");
+const firestoreRules = readFileSync(new URL("../firestore.rules", import.meta.url), "utf8");
+const functionsSource = readFileSync(new URL("../functions/index.js", import.meta.url), "utf8");
 
 test("class signup roster tab follows the administrator roster tab", () => {
   const administratorTab = membersHtml.indexOf('id="admin-tab-administrators"');
@@ -27,6 +29,22 @@ test("class signup roster has its own panel and renderer", () => {
   assert.match(siteSource, /entry\.timing === adminClassSignupFilters\.timing/);
   assert.match(siteSource, /getAcademicPeriodForDate\(sessionDate\)/);
   assert.match(siteSource, /admin-class-signup-roster-details/);
+  assert.match(siteSource, /data-class-signup-finalize/);
+  assert.match(siteSource, /finalizeClassSignupAllocation\(session, signups\)/);
+  assert.match(siteSource, /type: "class_signup_allocation"/);
+  assert.match(firestoreRules, /match \/memberNotifications\/\{notificationId\}[\s\S]*allow create: if isAdmin\(\)/);
+  assert.match(functionsSource, /async function finalizeClassSessionWhenFull\(firestore, sessionId\)/);
+  assert.match(functionsSource, /demand\.firstHalf < limit \|\| demand\.secondHalf < limit/);
+  assert.match(functionsSource, /allocationPublishedReason: "capacity_full"/);
+  assert.match(functionsSource, /await finalizeClassSessionWhenFull\(firestore, sessionId\)/);
   assert.match(siteSource, /Math\.abs\(a\.startMs - currentTimeMs\) - Math\.abs\(b\.startMs - currentTimeMs\)/);
   assert.match(siteSource, /getTimestampMs\(b\.submittedAt \|\| b\.createdAt\) - getTimestampMs\(a\.submittedAt \|\| a\.createdAt\)/);
+});
+
+test("semester defaults include an editable class capacity", () => {
+  assert.match(membersHtml, /data-class-default-signup-limit/);
+  assert.match(membersHtml, /每時段預設人數上限/);
+  assert.match(siteSource, /classSignupDefaultLimit = Math\.max/);
+  assert.match(siteSource, /classSignupDefaultLimit: nextDefaultLimit/);
+  assert.match(siteSource, /signupLimit: defaultLimit/);
 });

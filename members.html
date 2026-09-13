@@ -223,11 +223,16 @@
                     <div>
                       <p class="section-kicker">Weekly Classes</p>
                       <h3 class="content-title">每週社課時間</h3>
-                      <p class="content-copy">可設定多個不同時段與是否需要報名；報名時間以社課日前幾天計算，套用到行事曆時會自動換算日期。</p>
+                      <p class="content-copy">可設定本學期每時段的預設人數上限，以及不同社課時段與報名時間；套用到行事曆時會自動換算日期。</p>
                     </div>
                     <button class="button-secondary" data-class-default-add type="button">新增時段</button>
                   </div>
                   <form class="form-grid" data-class-default-form>
+                    <div class="form-field class-default-capacity-field">
+                      <label for="class-default-signup-limit">每時段預設人數上限</label>
+                      <input id="class-default-signup-limit" data-class-default-signup-limit min="1" name="defaultSignupLimit" step="1" type="number" value="30" required />
+                      <p class="content-copy">新增預設時段或行事曆社課時會自動帶入；下方各時段仍可個別修改。</p>
+                    </div>
                     <div class="class-default-list" data-class-default-list></div>
                     <p class="login-note" data-class-default-hint></p>
                     <button class="button-primary" data-class-default-save type="submit">儲存社課時間</button>
