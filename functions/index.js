@@ -14,13 +14,6 @@ const CURRENT_TERM_SETTINGS_DOC = "currentTerm";
 const CLASS_SIGNUP_SLOT_KEYS = ["firstHalf", "secondHalf"];
 const DEFAULT_CLASS_SLOT_LIMIT = 30;
 
-function normalizeClassSignupSlots(value, fallbackToBoth = false) {
-  const slots = Array.isArray(value)
-    ? value.filter((slot, index) => CLASS_SIGNUP_SLOT_KEYS.includes(slot) && value.indexOf(slot) === index)
-    : [];
-  return slots.length || !fallbackToBoth ? slots : [...CLASS_SIGNUP_SLOT_KEYS];
-}
-
 function normalizedEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -476,17 +469,12 @@ exports.getMembershipApplicationPosition = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS,
 
 async function getSessionSignupCounts(sessionId) {
   const snapshot = await admin.firestore().collection("classSessionSignups").where("sessionId", "==", sessionId).get();
-  return snapshot.docs.reduce((counts, entry) => {
-    const data = entry.data();
-    if (data.signupStatus === "waitlisted") counts.waitlistCount += 1;
-    else {
-      counts.signupCount += 1;
-      const slots = normalizeClassSignupSlots(data.timeSlots, true);
-      counts.firstHalfCount += Number(slots.includes("firstHalf"));
-      counts.secondHalfCount += Number(slots.includes("secondHalf"));
-    }
-    return counts;
-  }, { signupCount: 0, waitlistCount: 0, firstHalfCount: 0, secondHalfCount: 0 });
+  return {
+    signupCount: snapshot.size,
+    waitlistCount: 0,
+    firstHalfCount: snapshot.size,
+    secondHalfCount: snapshot.size,
+  };
 }
 
 function getSessionNotificationLabel(session = {}) {
@@ -512,117 +500,6 @@ function setMemberNotification(transaction, firestore, data = {}) {
   });
 }
 
-function allocateClassSignupPreferences(signupDocs = [], limit = DEFAULT_CLASS_SLOT_LIMIT) {
-  const slotLimit = Number.isFinite(Number(limit)) && Number(limit) > 0
-    ? Math.floor(Number(limit)) : DEFAULT_CLASS_SLOT_LIMIT;
-  const allocations = [...signupDocs]
-    .sort((a, b) => {
-      const aMs = Number(a.data().createdAt?.toMillis?.() || 0);
-      const bMs = Number(b.data().createdAt?.toMillis?.() || 0);
-      return aMs - bMs || a.id.localeCompare(b.id);
-    })
-    .map((entry) => ({
-      entry,
-      preferences: normalizeClassSignupSlots(entry.data().slotPreferences || entry.data().timeSlots, true),
-      timeSlots: [],
-    }));
-  const counts = { firstHalf: 0, secondHalf: 0 };
-
-  [0, 1].forEach((preferenceIndex) => {
-    allocations.forEach((allocation) => {
-      const slot = allocation.preferences[preferenceIndex];
-      if (!slot || allocation.timeSlots.includes(slot) || counts[slot] >= slotLimit) return;
-      allocation.timeSlots.push(slot);
-      counts[slot] += 1;
-    });
-  });
-
-  let waitlistPosition = 0;
-  return allocations.map((allocation) => {
-    const accepted = allocation.timeSlots.length > 0;
-    if (!accepted) waitlistPosition += 1;
-    return {
-      ...allocation,
-      signupStatus: accepted ? "accepted" : "waitlisted",
-      waitlistPosition: accepted ? null : waitlistPosition,
-    };
-  });
-}
-
-async function finalizeClassSessionWhenFull(firestore, sessionId) {
-  const sessionRef = firestore.collection("classSessions").doc(sessionId);
-  const signupsQuery = firestore.collection("classSessionSignups").where("sessionId", "==", sessionId);
-  return firestore.runTransaction(async (transaction) => {
-    const [sessionSnapshot, signupsSnapshot] = await Promise.all([
-      transaction.get(sessionRef),
-      transaction.get(signupsQuery),
-    ]);
-    if (!sessionSnapshot.exists || !signupsSnapshot.size) return false;
-    const session = sessionSnapshot.data() || {};
-    if (session.allocationPublishedAt || ["processing", "published"].includes(session.allocationState)) return false;
-    const limit = Number.isFinite(Number(session.signupLimit)) && Number(session.signupLimit) > 0
-      ? Math.floor(Number(session.signupLimit)) : DEFAULT_CLASS_SLOT_LIMIT;
-    const demand = signupsSnapshot.docs.reduce((counts, entry) => {
-      const preferences = normalizeClassSignupSlots(entry.data().slotPreferences || entry.data().timeSlots, true);
-      counts.firstHalf += Number(preferences.includes("firstHalf"));
-      counts.secondHalf += Number(preferences.includes("secondHalf"));
-      return counts;
-    }, { firstHalf: 0, secondHalf: 0 });
-    if (demand.firstHalf < limit || demand.secondHalf < limit) return false;
-    if (signupsSnapshot.size > 200) {
-      logger.error("Automatic class allocation skipped because the signup count exceeds the transaction limit.", { sessionId, signupCount: signupsSnapshot.size });
-      return false;
-    }
-
-    const allocations = allocateClassSignupPreferences(signupsSnapshot.docs, limit);
-    const sessionTitle = getSessionNotificationLabel(session);
-    const sessionTime = getSessionNotificationTime(session);
-    let acceptedCount = 0;
-    let waitlistCount = 0;
-    let firstHalfCount = 0;
-    let secondHalfCount = 0;
-    allocations.forEach(({ entry, timeSlots, signupStatus, waitlistPosition }) => {
-      const signup = entry.data() || {};
-      acceptedCount += Number(signupStatus === "accepted");
-      waitlistCount += Number(signupStatus === "waitlisted");
-      firstHalfCount += Number(timeSlots.includes("firstHalf"));
-      secondHalfCount += Number(timeSlots.includes("secondHalf"));
-      transaction.set(entry.ref, {
-        timeSlots,
-        signupStatus,
-        waitlistPosition,
-        allocationFinalizedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
-      const resultLabel = timeSlots.map((slot) => slot === "firstHalf" ? "上半場" : "下半場").join("、");
-      setMemberNotification(transaction, firestore, {
-        userId: signup.userId,
-        type: "class_signup_allocation",
-        title: signupStatus === "accepted" ? "社課錄取通知" : "社課未錄取通知",
-        message: signupStatus === "accepted"
-          ? `你已錄取「${sessionTitle}」${sessionTime ? `（${sessionTime}）` : ""}的${resultLabel}。`
-          : `「${sessionTitle}」${sessionTime ? `（${sessionTime}）` : ""}本次未錄取，你目前是候補第 ${waitlistPosition} 位。`,
-        sessionId,
-      });
-    });
-    transaction.set(firestore.collection("classSessionStats").doc(sessionId), {
-      sessionId,
-      signupCount: acceptedCount,
-      waitlistCount,
-      firstHalfCount,
-      secondHalfCount,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
-    transaction.set(sessionRef, {
-      allocationState: "published",
-      allocationPublishedReason: "capacity_full",
-      allocationPublishedAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
-    return true;
-  });
-}
-
 async function cancelClassSessionSignup({ firestore, signupRef, sessionId, cancelledBy = "member" }) {
   const statsRef = firestore.collection("classSessionStats").doc(sessionId);
   const sessionRef = firestore.collection("classSessions").doc(sessionId);
@@ -639,13 +516,9 @@ async function cancelClassSessionSignup({ firestore, signupRef, sessionId, cance
     removed = true;
     const removedData = signup.data();
     if (String(removedData.sessionId || "") !== sessionId) throw new HttpsError("invalid-argument", "報名資料與社課不相符。");
-    const removedStatus = removedData.signupStatus || "accepted";
     const session = sessionSnapshot.exists ? sessionSnapshot.data() : removedData;
     const sessionTitle = getSessionNotificationLabel(session);
     const sessionTime = getSessionNotificationTime(session);
-    const remainingWaitlisted = sessionSignups.docs
-      .filter((entry) => entry.id !== signup.id && entry.data().signupStatus === "waitlisted")
-      .sort((a, b) => Number(a.data().createdAt?.toMillis?.() || 0) - Number(b.data().createdAt?.toMillis?.() || 0));
 
     transaction.delete(signupRef);
     setMemberNotification(transaction, firestore, {
@@ -656,48 +529,15 @@ async function cancelClassSessionSignup({ firestore, signupRef, sessionId, cance
       sessionId,
     });
 
-    const actualSignupCount = sessionSignups.docs.filter((entry) => entry.data().signupStatus !== "waitlisted").length;
-    const actualWaitlistCount = sessionSignups.size - actualSignupCount;
-    let signupCount = Math.max(0, actualSignupCount - Number(removedStatus !== "waitlisted"));
-    let waitlistCount = Math.max(0, actualWaitlistCount - Number(removedStatus === "waitlisted"));
-    const acceptedRemaining = sessionSignups.docs.filter((entry) => entry.id !== signup.id && entry.data().signupStatus !== "waitlisted");
-    let firstHalfCount = acceptedRemaining.filter((entry) => normalizeClassSignupSlots(entry.data().timeSlots, true).includes("firstHalf")).length;
-    let secondHalfCount = acceptedRemaining.filter((entry) => normalizeClassSignupSlots(entry.data().timeSlots, true).includes("secondHalf")).length;
-    if (removedStatus !== "waitlisted" && remainingWaitlisted.length) {
-      const promoted = remainingWaitlisted.shift();
-      transaction.set(promoted.ref, {
-        signupStatus: "accepted",
-        waitlistPosition: null,
-        promotedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
-      setMemberNotification(transaction, firestore, {
-        userId: promoted.data().userId,
-        type: "waitlist_promoted",
-        title: "候補已轉為正取",
-        message: `「${sessionTitle}」已有名額釋出，你已由候補轉為報名成功${sessionTime ? `（${sessionTime}）` : ""}。`,
-        sessionId,
-      });
-      signupCount += 1;
-      waitlistCount = Math.max(0, waitlistCount - 1);
-      const promotedSlots = normalizeClassSignupSlots(promoted.data().timeSlots, true);
-      firstHalfCount += Number(promotedSlots.includes("firstHalf"));
-      secondHalfCount += Number(promotedSlots.includes("secondHalf"));
-    }
-
-    remainingWaitlisted.forEach((entry, index) => {
-      const waitlistPosition = index + 1;
-      if (Number(entry.data().waitlistPosition || 0) === waitlistPosition) return;
-      transaction.set(entry.ref, { waitlistPosition, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-      setMemberNotification(transaction, firestore, {
-        userId: entry.data().userId,
-        type: "waitlist_position",
-        title: `候補順位更新：第 ${waitlistPosition} 位`,
-        message: `「${sessionTitle}」目前候補順位為第 ${waitlistPosition} 位。`,
-        sessionId,
-      });
-    });
-    transaction.set(statsRef, { sessionId, signupCount, waitlistCount, firstHalfCount, secondHalfCount, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    const signupCount = Math.max(0, sessionSignups.size - 1);
+    transaction.set(statsRef, {
+      sessionId,
+      signupCount,
+      waitlistCount: 0,
+      firstHalfCount: signupCount,
+      secondHalfCount: signupCount,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
   });
   if (removed) await firestore.collection("classPublicRosters").doc(signupRef.id).delete().catch(() => {});
   return removed;
@@ -708,9 +548,7 @@ exports.upsertClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (
   if (!uid) throw new HttpsError("unauthenticated", "請先登入後再報名。");
   const sessionId = String(request.data?.sessionId || "").trim();
   const note = String(request.data?.note || "").trim().slice(0, 500);
-  const requestedSlots = normalizeClassSignupSlots(request.data?.timeSlots);
   if (!sessionId) throw new HttpsError("invalid-argument", "缺少社課場次。");
-  if (!requestedSlots.length) throw new HttpsError("invalid-argument", "請至少選擇一個可參加時段。");
 
   let stage = "讀取社課資料";
   try {
@@ -735,9 +573,6 @@ exports.upsertClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (
     const session = sessionSnapshot.data();
     const member = memberSnapshot.data();
     const isAdmin = adminSnapshot.exists;
-    if (session.allocationPublishedAt || ["processing", "published"].includes(session.allocationState)) {
-      throw new HttpsError("failed-precondition", "本場名額已滿並完成結算，無法再新增或修改志願。");
-    }
     const isFormalMember = hasFormalMembership(member, Boolean(approvalSnapshot?.exists));
     if (!isAdmin && !isFormalMember && session.allowNonMembers !== true) throw new HttpsError("permission-denied", "本場社課僅限正式社員報名。");
     if (session.signupRequired !== true) throw new HttpsError("failed-precondition", "這場社課不需要報名。");
@@ -770,30 +605,26 @@ exports.upsertClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (
       ]);
       const existingData = existingSignup.exists ? existingSignup.data() : {};
       const count = sessionSignups.size;
-      const previousSlots = existingSignup.exists
-        ? normalizeClassSignupSlots(existingData.slotPreferences || existingData.timeSlots, true) : [];
-      const firstHalfCount = sessionSignups.docs.filter((entry) => normalizeClassSignupSlots(entry.data().slotPreferences || entry.data().timeSlots, true).includes("firstHalf")).length;
-      const secondHalfCount = sessionSignups.docs.filter((entry) => normalizeClassSignupSlots(entry.data().slotPreferences || entry.data().timeSlots, true).includes("secondHalf")).length;
-      const nextFirstHalfCount = firstHalfCount + Number(requestedSlots.includes("firstHalf")) - Number(previousSlots.includes("firstHalf"));
-      const nextSecondHalfCount = secondHalfCount + Number(requestedSlots.includes("secondHalf")) - Number(previousSlots.includes("secondHalf"));
-      const signupStatus = existingData.signupStatus || "pending";
+      const limit = Number.isFinite(Number(session.signupLimit)) && Number(session.signupLimit) > 0
+        ? Math.floor(Number(session.signupLimit)) : DEFAULT_CLASS_SLOT_LIMIT;
+      if (!existingSignup.exists && count >= limit) {
+        throw new HttpsError("resource-exhausted", "本場社課名額已滿，請洽幹部調高人數上限。");
+      }
       transaction.set(signupRef, {
         sessionId, userId: uid, email: request.auth.token?.email || "", name: member.name || "", studentId: member.studentId || "", note,
         membershipStatusAtSignup: isFormalMember ? "formal_member" : String(member.membershipStatus || "non_member"),
         isFormalMemberAtSignup: isFormalMember, dropInPaymentStatus: isFormalMember ? "not_required" : existingData.dropInPaymentStatus || "unpaid",
         sessionDate: session.date || "", sessionWeekday: session.weekday || "", sessionTitle: session.title || "", sessionTimeLabel: session.timeLabel || "",
-        slotPreferences: requestedSlots,
-        timeSlots: requestedSlots,
-        signupStatus,
-        waitlistPosition: null,
+        timeSlots: CLASS_SIGNUP_SLOT_KEYS,
+        signupStatus: "accepted",
         createdAt: existingData.createdAt || admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
       transaction.set(statsRef, {
         sessionId,
         signupCount: existingSignup.exists ? count : count + 1,
         waitlistCount: 0,
-        firstHalfCount: nextFirstHalfCount,
-        secondHalfCount: nextSecondHalfCount,
+        firstHalfCount: existingSignup.exists ? count : count + 1,
+        secondHalfCount: existingSignup.exists ? count : count + 1,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
       if (!existingSignup.exists) {
@@ -801,9 +632,9 @@ exports.upsertClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (
         const sessionTime = getSessionNotificationTime(session);
         setMemberNotification(transaction, firestore, {
           userId: uid,
-          type: "signup_preferences_recorded",
-          title: "社課志願已登記",
-          message: `你已登記「${sessionTitle}」${sessionTime ? `（${sessionTime}）` : ""}的時段志願。報名截止後會先統一分配第一志願，再分配第二志願並通知結果。`,
+          type: "class_signup_confirmed",
+          title: "社課報名成功",
+          message: `你已完成「${sessionTitle}」${sessionTime ? `（${sessionTime}）` : ""}的報名。`,
           sessionId,
         });
       }
@@ -811,9 +642,7 @@ exports.upsertClassSessionSignup = onCall(CLASS_SIGNUP_CALLABLE_OPTIONS, async (
     const savedSignup = await signupRef.get();
     return {
       ok: true,
-      signupStatus: savedSignup.data()?.signupStatus || "pending",
-      slotPreferences: normalizeClassSignupSlots(savedSignup.data()?.slotPreferences || savedSignup.data()?.timeSlots, true),
-      timeSlots: normalizeClassSignupSlots(savedSignup.data()?.timeSlots, true),
+      signupStatus: savedSignup.data()?.signupStatus || "accepted",
     };
   } catch (error) {
     if (error instanceof HttpsError) throw error;
@@ -892,7 +721,6 @@ exports.syncClassSessionStats = onDocumentWritten({ document: "classSessionSignu
   const sessionId = String(event.data.after.data()?.sessionId || event.data.before.data()?.sessionId || "");
   if (!sessionId) return;
   const firestore = admin.firestore();
-  await finalizeClassSessionWhenFull(firestore, sessionId);
   const counts = await getSessionSignupCounts(sessionId);
   const sessionSnapshot = await firestore.collection("classSessions").doc(sessionId).get();
   if (!sessionSnapshot.exists) {

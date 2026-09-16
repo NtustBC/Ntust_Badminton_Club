@@ -56,8 +56,6 @@ service cloud.firestore {
       let closeAt = session.get("signupCloseAtTimestamp", null);
       return openAt is timestamp
         && closeAt is timestamp
-        && session.get("allocationState", "open") == "open"
-        && session.get("allocationPublishedAt", null) == null
         && request.time >= openAt
         && request.time <= closeAt;
     }
@@ -265,13 +263,10 @@ service cloud.firestore {
       let statsAfter = getAfter(classStatsPath(sessionId)).data;
       let statsBefore = exists(classStatsPath(sessionId)) ? get(classStatsPath(sessionId)).data : {};
       let countBefore = statsBefore.get("signupCount", 0);
-      let firstBefore = statsBefore.get("firstHalfCount", countBefore);
-      let secondBefore = statsBefore.get("secondHalfCount", countBefore);
-      let firstSelected = request.resource.data.timeSlots.hasAny(["firstHalf"]);
-      let secondSelected = request.resource.data.timeSlots.hasAny(["secondHalf"]);
       let formalAccess = isAdmin() || hasFormalMemberRecord() || isOfficialMember();
       return canJoinClassSession(sessionId)
         && classSignupWindowIsOpen(sessionId)
+        && countBefore < limit
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.sessionId == sessionId
@@ -279,20 +274,14 @@ service cloud.firestore {
           "sessionId", "userId", "email", "name", "studentId", "note",
           "membershipStatusAtSignup", "isFormalMemberAtSignup", "dropInPaymentStatus",
           "sessionDate", "sessionWeekday", "sessionTitle", "sessionTimeLabel",
-          "slotPreferences", "timeSlots", "createdAt", "updatedAt"
+          "timeSlots", "createdAt", "updatedAt"
         ])
         && request.resource.data.name is string && request.resource.data.name.size() <= 100
         && request.resource.data.studentId is string && request.resource.data.studentId.size() <= 30
         && request.resource.data.note is string && request.resource.data.note.size() <= 500
         && request.resource.data.timeSlots is list
-        && request.resource.data.timeSlots.size() > 0
-        && request.resource.data.timeSlots.size() <= 2
-        && request.resource.data.timeSlots.hasOnly(["firstHalf", "secondHalf"])
-        && request.resource.data.slotPreferences is list
-        && request.resource.data.slotPreferences.size() > 0
-        && request.resource.data.slotPreferences.size() <= 2
-        && request.resource.data.slotPreferences.hasOnly(["firstHalf", "secondHalf"])
-        && request.resource.data.slotPreferences.hasAll(request.resource.data.timeSlots)
+        && request.resource.data.timeSlots.size() == 2
+        && request.resource.data.timeSlots.hasAll(["firstHalf", "secondHalf"])
         && request.resource.data.membershipStatusAtSignup is string
         && request.resource.data.isFormalMemberAtSignup == formalAccess
         && request.resource.data.dropInPaymentStatus == (formalAccess ? "not_required" : "unpaid")
@@ -302,37 +291,20 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time
         && statsAfter.signupCount == countBefore + 1
-        && statsAfter.firstHalfCount == firstBefore + (firstSelected ? 1 : 0)
-        && statsAfter.secondHalfCount == secondBefore + (secondSelected ? 1 : 0)
-        && statsAfter.firstHalfCount >= 0
-        && statsAfter.secondHalfCount >= 0;
+        && statsAfter.firstHalfCount == countBefore + 1
+        && statsAfter.secondHalfCount == countBefore + 1;
     }
 
     function validOwnSignupUpdate(sessionId) {
       let statsBefore = get(classStatsPath(sessionId)).data;
       let statsAfter = getAfter(classStatsPath(sessionId)).data;
       let count = statsBefore.signupCount;
-      let firstBefore = statsBefore.get("firstHalfCount", count);
-      let secondBefore = statsBefore.get("secondHalfCount", count);
-      let oldSlots = resource.data.get("timeSlots", ["firstHalf", "secondHalf"]);
-      let newSlots = request.resource.data.get("timeSlots", oldSlots);
-      let limit = get(/databases/$(database)/documents/classSessions/$(sessionId)).data.get("signupLimit", 30);
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(["note", "slotPreferences", "timeSlots", "updatedAt"])
-        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["slotPreferences", "timeSlots"])
-          || classSignupWindowIsOpen(sessionId))
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(["note", "updatedAt"])
         && request.resource.data.note is string
         && request.resource.data.note.size() <= 500
-        && newSlots is list && newSlots.size() > 0 && newSlots.size() <= 2
-        && newSlots.hasOnly(["firstHalf", "secondHalf"])
-        && request.resource.data.get("slotPreferences", newSlots) is list
-        && request.resource.data.get("slotPreferences", newSlots).size() > 0
-        && request.resource.data.get("slotPreferences", newSlots).size() <= 2
-        && request.resource.data.get("slotPreferences", newSlots).hasOnly(["firstHalf", "secondHalf"])
-        && request.resource.data.get("slotPreferences", newSlots).hasAll(newSlots)
         && statsAfter.signupCount == count
-        && statsAfter.firstHalfCount == firstBefore + (newSlots.hasAny(["firstHalf"]) ? 1 : 0) - (oldSlots.hasAny(["firstHalf"]) ? 1 : 0)
-        && statsAfter.secondHalfCount == secondBefore + (newSlots.hasAny(["secondHalf"]) ? 1 : 0) - (oldSlots.hasAny(["secondHalf"]) ? 1 : 0)
-        && statsAfter.firstHalfCount >= 0 && statsAfter.secondHalfCount >= 0
+        && statsAfter.firstHalfCount == count
+        && statsAfter.secondHalfCount == count
         && request.resource.data.updatedAt == request.time;
     }
     match /admins/{userId} {
@@ -513,16 +485,13 @@ service cloud.firestore {
       allow delete: if isAdmin() || (
         isSignedIn()
         && resource.data.userId == request.auth.uid
-        && resource.data.get("signupStatus", "accepted") != "waitlisted"
         && (
           !exists(classStatsPath(resource.data.sessionId)) ||
           getAfter(classStatsPath(resource.data.sessionId)).data.signupCount == get(classStatsPath(resource.data.sessionId)).data.signupCount - 1
           && getAfter(classStatsPath(resource.data.sessionId)).data.firstHalfCount
-            == get(classStatsPath(resource.data.sessionId)).data.get("firstHalfCount", get(classStatsPath(resource.data.sessionId)).data.signupCount)
-              - (resource.data.get("timeSlots", ["firstHalf", "secondHalf"]).hasAny(["firstHalf"]) ? 1 : 0)
+            == get(classStatsPath(resource.data.sessionId)).data.signupCount - 1
           && getAfter(classStatsPath(resource.data.sessionId)).data.secondHalfCount
-            == get(classStatsPath(resource.data.sessionId)).data.get("secondHalfCount", get(classStatsPath(resource.data.sessionId)).data.signupCount)
-              - (resource.data.get("timeSlots", ["firstHalf", "secondHalf"]).hasAny(["secondHalf"]) ? 1 : 0)
+            == get(classStatsPath(resource.data.sessionId)).data.signupCount - 1
         )
       );
     }
@@ -559,15 +528,9 @@ service cloud.firestore {
         && request.resource.data.signupCount >= 0
         && request.resource.data.firstHalfCount is int && request.resource.data.firstHalfCount >= 0
         && request.resource.data.secondHalfCount is int && request.resource.data.secondHalfCount >= 0
-        && request.resource.data.firstHalfCount
-          == resource.data.get("firstHalfCount", resource.data.signupCount)
-            + (existsAfter(ownClassSignupPath(sessionId)) && getAfter(ownClassSignupPath(sessionId)).data.get("timeSlots", ["firstHalf", "secondHalf"]).hasAny(["firstHalf"]) ? 1 : 0)
-            - (exists(ownClassSignupPath(sessionId)) && get(ownClassSignupPath(sessionId)).data.get("timeSlots", ["firstHalf", "secondHalf"]).hasAny(["firstHalf"]) ? 1 : 0)
-        && request.resource.data.secondHalfCount
-          == resource.data.get("secondHalfCount", resource.data.signupCount)
-            + (existsAfter(ownClassSignupPath(sessionId)) && getAfter(ownClassSignupPath(sessionId)).data.get("timeSlots", ["firstHalf", "secondHalf"]).hasAny(["secondHalf"]) ? 1 : 0)
-            - (exists(ownClassSignupPath(sessionId)) && get(ownClassSignupPath(sessionId)).data.get("timeSlots", ["firstHalf", "secondHalf"]).hasAny(["secondHalf"]) ? 1 : 0)
-        && request.resource.data.get("waitlistCount", 0) == resource.data.get("waitlistCount", 0)
+        && request.resource.data.firstHalfCount == request.resource.data.signupCount
+        && request.resource.data.secondHalfCount == request.resource.data.signupCount
+        && request.resource.data.get("waitlistCount", 0) == 0
         && request.resource.data.updatedAt == request.time
         && (
           (request.resource.data.signupCount == resource.data.signupCount + 1
